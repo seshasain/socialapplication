@@ -276,10 +276,11 @@
     try {
       const { timeRange = '7d' } = req.query;
       const userId = req.user.id;
-
+  
       // Calculate date range
       const endDate = new Date();
       const startDate = new Date();
+      
       switch (timeRange) {
         case '30d':
           startDate.setDate(startDate.getDate() - 30);
@@ -290,7 +291,10 @@
         default: // 7d
           startDate.setDate(startDate.getDate() - 7);
       }
-
+  
+      console.log('Start Date:', startDate, 'End Date:', endDate);
+      console.log('User ID:', userId);
+  
       const analytics = await prisma.analytics.findMany({
         where: {
           userId,
@@ -303,7 +307,18 @@
           date: 'asc'
         }
       });
-
+  
+      console.log('Analytics:', analytics);
+  
+      // Handle no results
+      if (analytics.length === 0) {
+        return res.json({
+          timeRange,
+          analytics: [],
+          totals: { reach: 0, impressions: 0, engagement: 0, shares: 0 }
+        });
+      }
+  
       // Calculate totals
       const totals = analytics.reduce((acc, curr) => ({
         reach: acc.reach + curr.reach,
@@ -311,7 +326,7 @@
         engagement: acc.engagement + curr.engagement,
         shares: acc.shares + curr.shares
       }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
-
+  
       res.json({
         timeRange,
         analytics,
@@ -321,6 +336,7 @@
       res.status(500).json({ error: error.message });
     }
   });
+  
 
   // Overview endpoints
   app.get('/api/overview/stats', authenticateToken, async (req, res) => {
@@ -415,163 +431,14 @@
           id: id, // Use the ID to find the account
           userId: req.user.id, // Ensure it belongs to the user
         },
-      });
-      res.json(account);import express from 'express';
-      import cors from 'cors';
-      import { PrismaClient } from '@prisma/client';
-      import facebookAuth from './auth/facebook.js';
-      import instagramAuth from './auth/instagram.js';
-      import linkedinAuth from './auth/linkedin.js';
-      import { initializeSocialClient, publishToSocialMedia } from './social.js';
-      
-      const app = express();
-      const prisma = new PrismaClient();
-      
-      app.use(cors());
-      app.use(express.json());
-      
-      // Auth routes
-      app.use('/api/auth', facebookAuth);
-      app.use('/api/auth', instagramAuth);
-      app.use('/api/auth', linkedinAuth);
-      
-      // Post creation endpoint
-      app.post('/api/posts', async (req, res) => {
-        try {
-          const {
-            caption,
-            scheduledDate,
-            platforms,
-            hashtags,
-            visibility,
-            mediaFiles,
-            publishNow,
-          } = req.body;
-      
-          if (!caption || !platforms) {
-            return res.status(400).json({ error: 'Caption and platforms are required' });
-          }
-      
-          const selectedPlatforms = JSON.parse(platforms);
-          
-          // Create post
-          const postData = {
-            userId: req.user.id,
-            caption,
-            scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
-            hashtags: hashtags || '',
-            visibility: visibility || 'public',
-            status: publishNow ? 'publishing' : 'scheduled',
-            platforms: {
-              create: selectedPlatforms.map(platform => ({
-                platform,
-                status: publishNow ? 'publishing' : 'scheduled',
-                settings: {}
-              }))
-            }
-          };
-      
-          if (mediaFiles) {
-            const mediaFileIds = JSON.parse(mediaFiles);
-            if (Array.isArray(mediaFileIds) && mediaFileIds.length > 0) {
-              postData.mediaFiles = {
-                connect: mediaFileIds.map(id => ({ id }))
-              };
-            }
-          }
-      
-          const post = await prisma.post.create({
-            data: postData,
-            include: {
-              mediaFiles: true,
-              platforms: true,
-              user: {
-                include: {
-                  socialAccounts: true
-                }
-              }
-            }
-          });
-      
-          if (publishNow) {
-            for (const platformData of post.platforms) {
-              const socialAccount = post.user.socialAccounts.find(
-                account => account.platform.toLowerCase() === platformData.platform.toLowerCase()
-              );
-      
-              if (!socialAccount) {
-                await prisma.postPlatform.update({
-                  where: { id: platformData.id },
-                  data: {
-                    status: 'failed',
-                    error: `No connected ${platformData.platform} account found`
-                  }
-                });
-                continue;
-              }
-      
-              try {
-                const client = await initializeSocialClient(platformData.platform, {
-                  accessToken: socialAccount.accessToken,
-                  accessSecret: socialAccount.refreshToken,
-                  username: socialAccount.username
-                });
-      
-                const result = await publishToSocialMedia(
-                  platformData.platform,
-                  client,
-                  {
-                    caption: `${caption} ${hashtags}`.trim(),
-                    mediaFiles: post.mediaFiles
-                  }
-                );
-      
-                await prisma.postPlatform.update({
-                  where: { id: platformData.id },
-                  data: {
-                    status: 'published',
-                    publishedAt: new Date(),
-                    externalId: result.id
-                  }
-                });
-              } catch (error) {
-                await prisma.postPlatform.update({
-                  where: { id: platformData.id },
-                  data: {
-                    status: 'failed',
-                    error: error.message
-                  }
-                });
-              }
-            }
-      
-            // Update main post status
-            const updatedPlatforms = await prisma.postPlatform.findMany({
-              where: { postId: post.id }
-            });
-      
-            const allPublished = updatedPlatforms.every(p => p.status === 'published');
-            const allFailed = updatedPlatforms.every(p => p.status === 'failed');
-      
-            await prisma.post.update({
-              where: { id: post.id },
-              data: {
-                status: allPublished ? 'published' : allFailed ? 'failed' : 'partial',
-                error: allFailed ? 'Failed to publish to all platforms' : null
-              }
-            });
-          }
-      
-          res.status(201).json(post);
-        } catch (error) {
-          console.error('Post creation error:', error);
-          res.status(500).json({ error: 'Failed to create post' });
-        }
-      });
-      
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-      });
+      }
+      )
+    }catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+
 
   app.post('/api/social-accounts/connect', authenticateToken, async (req, res) => {
     try {
@@ -609,7 +476,6 @@
       res.status(500).json({ error: 'Failed to connect social account' });
     }
   });
-
   
   
   // Helper function for immediate publishing
