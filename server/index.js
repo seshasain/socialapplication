@@ -811,6 +811,7 @@
 // Update post endpoint
 // Post creation endpoint
 app.post('/api/posts', authenticateToken, async (req, res) => {
+  
   try {
     const {
       caption,
@@ -821,7 +822,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       mediaFiles,
       publishNow,
     } = req.body;
-
+    console.log("caption:",caption);
     if (!caption || !platforms) {
       return res.status(400).json({ error: 'Caption and platforms are required' });
     }

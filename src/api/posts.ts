@@ -1,4 +1,4 @@
-import { Post, MediaFile } from '../types/posts';
+import { Post, MediaFile, PostFormData} from '../types/posts';
   
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -21,56 +21,6 @@ export async function getPostHistory(filter = 'all', sortBy = 'date', order = 'd
 
   return response.json();
 }
-
-export async function createPost(postData: any): Promise<Post> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/posts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(postData)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create post');
-    }
-
-    return response.json();
-  } catch (error) {
-    console.error('Create post error:', error);
-    throw error instanceof Error ? error : new Error('Failed to create post');
-  }
-}
-
-export async function uploadMedia(file: File): Promise<MediaFile> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
-
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(`${API_BASE_URL}/media/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    },
-    body: formData
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to upload media');
-  }
-
-  return response.json();
-}
-
 export async function getScheduledPosts(): Promise<Post[]> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
@@ -88,6 +38,94 @@ export async function getScheduledPosts(): Promise<Post[]> {
   return response.json();
 }
 
+
+export async function createPost(data: PostFormData): Promise<Post> {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    // Transform the data to match the schema
+    const requestBody = {
+      caption: data.caption,
+      scheduledDate: data.scheduledDate ? new Date(data.scheduledDate).toISOString() : new Date().toISOString(),
+      hashtags: data.hashtags || '',
+      visibility: data.visibility || 'public',
+      mediaFiles: data.mediaFiles?.length ? {
+        connect: data.mediaFiles.map(file => ({ id: file.id }))
+      } : undefined,
+      platforms: {
+        create: data.selectedPlatforms?.map(platform => ({
+          platform,
+          status: data.publishNow ? 'publishing' : 'scheduled',
+          settings: {}
+        })) || []
+      }
+    };
+
+    const response = await fetch(`${API_BASE_URL}/post`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to create post');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Create post error:', error);
+    throw error;
+  }
+}
+export async function getAnalytics(dateRange: string = '7d') {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`${API_BASE_URL}/analytics/overview`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch analytics');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Analytics error:', error);
+    throw error;
+  }
+}
+export async function uploadMedia(formData: FormData) {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`${API_BASE_URL}/media/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to upload media');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
+  }
+}
 export async function deletePost(postId: string): Promise<void> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
@@ -103,43 +141,24 @@ export async function deletePost(postId: string): Promise<void> {
     throw new Error('Failed to delete post');
   }
 }
+export async function getPosts() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
 
-export async function updatePost(postId: string, postData: FormData): Promise<Post> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
+    const response = await fetch(`${API_BASE_URL}/posts`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
 
-  const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    },
-    body: postData
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update post');
-  }
-
-  return response.json();
-}
-
-// Add these functions to your existing posts.ts file
-
-export async function duplicatePost(postId: string): Promise<Post> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
-
-  const response = await fetch(`${API_BASE_URL}/posts/${postId}/duplicate`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
+    if (!response.ok) {
+      throw new Error('Failed to fetch posts');
     }
-  });
 
-  if (!response.ok) {
-    throw new Error('Failed to duplicate post');
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch posts error:', error);
+    throw error;
   }
-
-  return response.json();
 }

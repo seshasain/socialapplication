@@ -3,33 +3,12 @@ import {
   Calendar, Instagram, Facebook, Twitter, Linkedin, Youtube, Search, Filter,
   ArrowUp, ArrowDown, Eye, Heart, MessageCircle, Share2, Loader2,
   MoreHorizontal, Edit2, RefreshCw, Calendar as CalendarIcon,
-  ChevronDown, BarChart2, AlertTriangle, Send, Trash2
+  AlertTriangle, Send, Trash2
 } from 'lucide-react';
 import { toRelative } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewPostModal from '../modals/NewPostModal';
-
-interface HistoryPost {
-  id: string;
-  caption: string;
-  platform: string;
-  platforms?: string[];
-  status: string;
-  scheduledDate: string;
-  publishedDate?: string;
-  engagementRate: number;
-  likes: number;
-  comments: number;
-  shares: number;
-  mediaFiles: Array<{
-    id: string;
-    url: string;
-    type: string;
-  }>;
-  error?: string;
-  hashtags: string;
-  visibility: string;
-}
+import type { Post, PostPlatform } from '../../types/posts';
 
 // Define available platforms statically since we can't fetch them
 const AVAILABLE_PLATFORMS = [
@@ -41,7 +20,7 @@ const AVAILABLE_PLATFORMS = [
 ];
 
 export default function HistoryView() {
-  const [posts, setPosts] = useState<HistoryPost[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
@@ -53,7 +32,7 @@ export default function HistoryView() {
   const [dateRange, setDateRange] = useState('7d');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingPost, setEditingPost] = useState<HistoryPost | null>(null);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
 
   useEffect(() => {
     fetchPosts();
@@ -88,7 +67,12 @@ export default function HistoryView() {
       }
 
       const data = await response.json();
-      setPosts(data);
+      // Ensure each post has a platforms array
+      const normalizedPosts = data.map((post: Post) => ({
+        ...post,
+        platforms: post.platforms || []
+      }));
+      setPosts(normalizedPosts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch posts');
     } finally {
@@ -100,7 +84,7 @@ export default function HistoryView() {
     fetchPosts();
   };
 
-  const handleSaveEdit = async (updatedPost: any) => {
+  const handleSaveEdit = async (updatedPost: Post) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
@@ -120,7 +104,7 @@ export default function HistoryView() {
 
       const updated = await response.json();
       setPosts(posts => posts.map(post =>
-        post.id === updated.id ? updated : post
+        post.id === updated.id ? { ...updated, platforms: updated.platforms || [] } : post
       ));
       setIsEditModalOpen(false);
       setEditingPost(null);
@@ -201,7 +185,7 @@ export default function HistoryView() {
     }
   };
 
-  const renderPostActions = (post: HistoryPost) => {
+  const renderPostActions = (post: Post) => {
     const actions = [];
 
     if (post.status === 'scheduled') {
@@ -256,12 +240,14 @@ export default function HistoryView() {
     }
   };
 
-  const formatPostDate = (post: HistoryPost) => {
-    if (post.status === 'published' && post.publishedDate) {
+  const formatPostDate = (post: Post) => {
+    const publishedPlatform = post.platforms?.find(p => p.publishedAt);
+    
+    if (post.status === 'published' && publishedPlatform?.publishedAt) {
       return (
         <span className="flex items-center text-gray-500">
           <CalendarIcon className="w-4 h-4 mr-1" />
-          Posted {toRelative(post.publishedDate)}
+          Posted {toRelative(publishedPlatform.publishedAt)}
         </span>
       );
     } else {
@@ -290,22 +276,31 @@ export default function HistoryView() {
     }
   };
 
-  const handleEditPost = (post: HistoryPost) => {
+  const handleEditPost = (post: Post) => {
     if (post.status !== 'scheduled') {
       setError('Only scheduled posts can be edited');
       return;
     }
 
-    // Ensure we have the platforms array
-    const postWithPlatforms = {
-      ...post,
-      // If post.platforms exists, use it; otherwise create array from single platform
-      platforms: post.platforms || [post.platform]
-    };
-
-    setEditingPost(postWithPlatforms);
+    setEditingPost(post);
     setIsEditModalOpen(true);
     setSelectedPost(null);
+  };
+
+  const renderPlatformBadges = (platforms: PostPlatform[] = []) => {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {platforms.map((platform) => (
+          <div
+            key={platform.id}
+            className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+          >
+            {getPlatformIcon(platform.platform)}
+            <span>{platform.platform}</span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -328,7 +323,7 @@ export default function HistoryView() {
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
             >
-              <BarChart2 className="w-5 h-5" />
+              <Calendar className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('list')}
@@ -420,10 +415,9 @@ export default function HistoryView() {
               >
                 <div className="p-6">
                   <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center space-x-3">
-                      {getPlatformIcon(post.platform)}
-                      <span className="font-medium capitalize">{post.platform}</span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(post.status)}`}>
+                    <div className="flex-1">
+                      {renderPlatformBadges(post.platforms)}
+                      <span className={`mt-2 inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(post.status)}`}>
                         {post.status}
                       </span>
                     </div>
@@ -464,22 +458,22 @@ export default function HistoryView() {
                     <div className="grid grid-cols-4 gap-4 mb-4">
                       <div className="text-center p-2 bg-gray-50 rounded-lg">
                         <Heart className="w-4 h-4 text-pink-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.likes.toLocaleString()}</span>
+                        <span className="text-sm font-medium">{post.likes?.toLocaleString() ?? 0}</span>
                         <p className="text-xs text-gray-500">Likes</p>
                       </div>
                       <div className="text-center p-2 bg-gray-50 rounded-lg">
                         <MessageCircle className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.comments.toLocaleString()}</span>
+                        <span className="text-sm font-medium">{post.comments?.toLocaleString() ?? 0}</span>
                         <p className="text-xs text-gray-500">Comments</p>
                       </div>
                       <div className="text-center p-2 bg-gray-50 rounded-lg">
                         <Share2 className="w-4 h-4 text-green-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.shares.toLocaleString()}</span>
+                        <span className="text-sm font-medium">{post.shares?.toLocaleString() ?? 0}</span>
                         <p className="text-xs text-gray-500">Shares</p>
                       </div>
                       <div className="text-center p-2 bg-gray-50 rounded-lg">
                         <Eye className="w-4 h-4 text-purple-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.engagementRate.toFixed(1)}%</span>
+                        <span className="text-sm font-medium">{post.engagementRate?.toFixed(1) ?? 0}%</span>
                         <p className="text-xs text-gray-500">Engagement</p>
                       </div>
                     </div>

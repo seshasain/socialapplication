@@ -1,6 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
+// This is your Prisma schema file
 generator client {
   provider = "prisma-client-js"
 }
@@ -18,8 +16,8 @@ model User {
   role            String          @default("USER")
   subscription    String          @default("free")
   timezone        String?         @default("UTC")
-  bio            String?
-  avatar         String?
+  bio             String?
+  avatar          String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   settings        UserSettings?
@@ -93,28 +91,44 @@ model MediaFile {
 }
 
 model Post {
-  id            String      @id @default(cuid())
-  userId        String
-  user          User        @relation(fields: [userId], references: [id])
-  caption       String
-  scheduledDate DateTime
-  platform      String
-  hashtags      String?
-  visibility    String      @default("public")
-  status        String      @default("scheduled")
-  error         String?
-  mediaFiles    MediaFile[] @relation("PostToMediaFile")
-  engagementRate Float?     @default(0)
-  likes         Int?        @default(0)
-  comments      Int?        @default(0)
-  shares        Int?        @default(0)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  externalPostId String?    @default("")
-  platformSettings PlatformSettings[]
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id])
+  caption        String
+  scheduledDate  DateTime
+  hashtags       String?
+  visibility     String            @default("public")
+  status         String            @default("scheduled")
+  error          String?
+  mediaFiles     MediaFile[]       @relation("PostToMediaFile")
+  engagementRate Float?            @default(0)
+  likes          Int?              @default(0)
+  comments       Int?              @default(0)
+  shares         Int?              @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  externalPostId String?           @default("")
+  platforms      PostPlatform[]    // New relation to PostPlatform
 
   @@index([userId, status])
   @@index([scheduledDate])
+}
+
+model PostPlatform {
+  id            String   @id @default(cuid())
+  postId        String
+  post          Post     @relation(fields: [postId], references: [id])
+  platform      String
+  status        String   @default("scheduled")
+  error         String?
+  externalId    String?
+  settings      Json     @default("{}")
+  publishedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([postId])
+  @@index([platform])
 }
 
 model Analytics {
@@ -134,11 +148,4 @@ model Analytics {
 
   @@index([userId, date])
   @@index([platform])
-}
-model PlatformSettings{
-  id String @id @default(cuid())
-  platform String
-  settings Json @default("{}")
-  post Post @relation(fields: [postId], references:[id])
-  postId String
 }
