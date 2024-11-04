@@ -9,12 +9,6 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import { OverviewStats, Post, SocialAccount } from '../../types/overview';
 import { fetchOverviewData, connectSocialAccount, disconnectSocialAccount } from '../../api/overview';
 
-interface OverviewData {
-  stats: OverviewStats;
-  posts: Post[];
-  accounts: SocialAccount[];
-}
-
 export default function Overview() {
   const [isNewPostModalOpen, setIsNewPostModalOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
@@ -31,7 +25,7 @@ export default function Overview() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const data: OverviewData = await fetchOverviewData();
+      const data = await fetchOverviewData();
       setStats(data.stats);
       setScheduledPosts(data.posts);
       setSocialAccounts(data.accounts || []);
@@ -51,7 +45,7 @@ export default function Overview() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect account');
-      throw err; // Re-throw to be handled by the modal
+      throw err;
     }
   };
 
@@ -62,7 +56,7 @@ export default function Overview() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect account');
-      throw err; // Re-throw to be handled by the modal
+      throw err;
     }
   };
 
@@ -123,6 +117,7 @@ export default function Overview() {
         isOpen={isNewPostModalOpen}
         onClose={() => setIsNewPostModalOpen(false)}
         onSave={() => {}}
+        connectedAccounts={socialAccounts}
       />
 
       <ConnectAccountModal

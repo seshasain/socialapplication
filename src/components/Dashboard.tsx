@@ -6,8 +6,9 @@ import Analytics from './dashboard/Analytics';
 import TeamView from './dashboard/TeamView';
 import SettingsView from './dashboard/SettingsView';
 import Overview from './dashboard/Overview';
+import HistoryView from './dashboard/HistoryView';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings';
+type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
 
 export default function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('overview');
@@ -43,10 +44,12 @@ export default function Dashboard() {
           </div>
 
           {currentView === 'overview' && <Overview />}
+          {currentView === 'history' && <HistoryView />}
           {currentView === 'calendar' && <CalendarView />}
           {currentView === 'analytics' && <Analytics />}
           {currentView === 'team' && <TeamView />}
           {currentView === 'settings' && <SettingsView />}
+          
         </div>
       </main>
     </div>

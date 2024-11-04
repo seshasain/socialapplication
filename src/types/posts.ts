@@ -32,4 +32,18 @@ export interface MediaFile {
     hashtags: string;
     visibility: string;
     mediaFiles: File[];
+    connectedAccounts?: Array<{ platform: string; id: string }>;
+  }
+  export interface SocialAccount {
+    id: string;
+    userId: string;
+    platform: string;
+    username: string;
+    profileUrl: string;
+    accessToken: string;
+    refreshToken?: string;
+    followerCount: number;
+    createdAt: String;
+    updatedAt: String;
+
   }

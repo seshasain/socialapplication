@@ -1,734 +1,1086 @@
-import express from 'express';
-import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
-import { TwitterApi } from 'twitter-api-v2';
-import multer from 'multer';
-import sharp from 'sharp';
-import AWS from 'aws-sdk';
-import path from 'path';
-import { scheduleJob } from 'node-schedule';
-import { createTwitterClient, postToTwitter } from './twitter.js';
-import { schedulePost } from './schedular.js';
-dotenv.config();
+  import express from 'express';
+  import cors from 'cors';
+  import { PrismaClient } from '@prisma/client';
+  import jwt from 'jsonwebtoken';
+  import bcrypt from 'bcryptjs';
+  import dotenv from 'dotenv';
+  import { TwitterApi } from 'twitter-api-v2';
+  import multer from 'multer';
+  import sharp from 'sharp';
+  import AWS from 'aws-sdk';
+  import path from 'path';
+  import { scheduleJob } from 'node-schedule';
+  import { createTwitterClient, postToTwitter } from './twitter.js';
+  import { schedulePost, cancelScheduledPost} from './schedular.js';
+  
+  dotenv.config();
 
-const prisma = new PrismaClient();
-const app = express();
+  const prisma = new PrismaClient();
+  const app = express();
 
-// Configure Twitter OAuth client
-const twitterClient = new TwitterApi({
-  appKey: process.env.TWITTER_API_KEY || '',
-  appSecret: process.env.TWITTER_API_SECRET || '',
-});
-
-// Store OAuth tokens temporarily (in production, use Redis or another session store)
-const oauthTokens = new Map();
-
-app.use(cors());
-app.use(express.json());
-
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid token' });
-    }
-    req.user = user;
-    next();
+  // Configure Twitter OAuth client
+  const twitterClient = new TwitterApi({
+    appKey: process.env.TWITTER_API_KEY || '',
+    appSecret: process.env.TWITTER_API_SECRET || '',
   });
-};
 
-// Twitter OAuth routes
-app.get('/api/auth/twitter', authenticateToken, async (req, res) => {
-  try {
-    if (!process.env.TWITTER_API_KEY || !process.env.TWITTER_API_SECRET) {
-      throw new Error('Twitter API credentials not configured');
+  // Store OAuth tokens temporarily (in production, use Redis or another session store)
+  const oauthTokens = new Map();
+
+  app.use(cors());
+  app.use(express.json());
+
+  // Authentication middleware
+  const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
     }
 
-    const { url, oauth_token, oauth_token_secret } = await twitterClient.generateAuthLink(
-      'http://localhost:5000/api/auth/twitter/callback',
-      { linkMode: 'authorize' }
-    );
-
-    // Store the OAuth token secret for this session
-    oauthTokens.set(oauth_token, {
-      oauth_token_secret,
-      userId: req.user.id
-    });
-
-    res.json({ authUrl: url });
-  } catch (error) {
-    console.error('Twitter auth error:', error);
-    res.status(500).json({ error: 'Failed to initialize Twitter authentication' });
-  }
-});
-
-app.get('/api/auth/twitter/callback', async (req, res) => {
-  try {
-    const { oauth_token, oauth_verifier } = req.query;
-    const storedData = oauthTokens.get(oauth_token);
-
-    if (!storedData) {
-      throw new Error('Invalid OAuth token');
-    }
-
-    const { oauth_token_secret, userId } = storedData;
-
-    const client = new TwitterApi({
-      appKey: process.env.TWITTER_API_KEY,
-      appSecret: process.env.TWITTER_API_SECRET,
-      accessToken: oauth_token,
-      accessSecret: oauth_token_secret,
-    });
-
-    const { client: loggedClient, accessToken, accessSecret } = await client.login(oauth_verifier);
-    const twitterUser = await loggedClient.v2.me();
-
-    // Save the Twitter account to the database
-    const socialAccount = await prisma.socialAccount.create({
-      data: {
-        platform: 'twitter',
-        accessToken,
-        refreshToken: accessSecret,
-        username: twitterUser.data.username,
-        profileUrl: `https://twitter.com/${twitterUser.data.username}`,
-        userId
+    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+      if (err) {
+        return res.status(403).json({ error: 'Invalid token' });
       }
+      req.user = user;
+      next();
     });
+  };
 
-    // Clean up stored OAuth token
-    oauthTokens.delete(oauth_token);
-
-    // Redirect back to the frontend
-    res.redirect(`http://localhost:5173/dashboard?twitter=connected`);
-  } catch (error) {
-    console.error('Twitter callback error:', error);
-    res.redirect(`http://localhost:5173/dashboard?twitter=error`);
-  }
-});
-
-// Get current user
-app.get('/api/auth/me', authenticateToken, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: {
-        settings: true
+  // Twitter OAuth routes
+  app.get('/api/auth/twitter', authenticateToken, async (req, res) => {
+    try {
+      if (!process.env.TWITTER_API_KEY || !process.env.TWITTER_API_SECRET) {
+        throw new Error('Twitter API credentials not configured');
       }
-    });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      const { url, oauth_token, oauth_token_secret } = await twitterClient.generateAuthLink(
+        'http://localhost:5000/api/auth/twitter/callback',
+        { linkMode: 'authorize' }
+      );
+
+      // Store the OAuth token secret for this session
+      oauthTokens.set(oauth_token, {
+        oauth_token_secret,
+        userId: req.user.id
+      });
+
+      res.json({ authUrl: url });
+    } catch (error) {
+      console.error('Twitter auth error:', error);
+      res.status(500).json({ error: 'Failed to initialize Twitter authentication' });
     }
+  });
 
-    // Remove sensitive data
-    const { password, ...userData } = user;
-    res.json(userData);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  app.get('/api/auth/twitter/callback', async (req, res) => {
+    try {
+      const { oauth_token, oauth_verifier } = req.query;
+      const storedData = oauthTokens.get(oauth_token);
 
-// Auth endpoints
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        settings: {
-          create: {} // Create default settings
-        }
-      },
-      include: {
-        settings: true
+      if (!storedData) {
+        throw new Error('Invalid OAuth token');
       }
-    });
 
-    const token = jwt.sign(
-      { id: user.id }, 
-      process.env.JWT_SECRET || 'your-secret-key'
-    );
+      const { oauth_token_secret, userId } = storedData;
 
-    // Remove sensitive data
-    const { password: _, ...userData } = user;
+      const client = new TwitterApi({
+        appKey: process.env.TWITTER_API_KEY,
+        appSecret: process.env.TWITTER_API_SECRET,
+        accessToken: oauth_token,
+        accessSecret: oauth_token_secret,
+      });
 
-    res.json({ 
-      token,
-      user: userData
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+      const { client: loggedClient, accessToken, accessSecret } = await client.login(oauth_verifier);
+      const twitterUser = await loggedClient.v2.me();
 
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        settings: true
-      }
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'User not found' });
-    }
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Invalid password' });
-    }
-
-    const token = jwt.sign(
-      { id: user.id }, 
-      process.env.JWT_SECRET || 'your-secret-key'
-    );
-
-    // Remove sensitive data
-    const { password: _, ...userData } = user;
-
-    res.json({ 
-      token,
-      user: userData
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Settings endpoints
-app.get('/api/settings', authenticateToken, async (req, res) => {
-  try {
-    const settings = await prisma.userSettings.findUnique({
-      where: { userId: req.user.id }
-    });
-
-    if (!settings) {
-      // Create default settings if they don't exist
-      const defaultSettings = await prisma.userSettings.create({
+      // Save the Twitter account to the database
+      const socialAccount = await prisma.socialAccount.create({
         data: {
+          platform: 'twitter',
+          accessToken,
+          refreshToken: accessSecret,
+          username: twitterUser.data.username,
+          profileUrl: `https://twitter.com/${twitterUser.data.username}`,
+          userId
+        }
+      });
+
+      // Clean up stored OAuth token
+      oauthTokens.delete(oauth_token);
+
+      // Redirect back to the frontend
+      res.redirect(`http://localhost:5173/dashboard?twitter=connected`);
+    } catch (error) {
+      console.error('Twitter callback error:', error);
+      res.redirect(`http://localhost:5173/dashboard?twitter=error`);
+    }
+  });
+
+  // Get current user
+  app.get('/api/auth/me', authenticateToken, async (req, res) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: {
+          settings: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Remove sensitive data
+      const { password, ...userData } = user;
+      res.json(userData);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Auth endpoints
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const { email, password, name } = req.body;
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name,
+          settings: {
+            create: {} // Create default settings
+          }
+        },
+        include: {
+          settings: true
+        }
+      });
+
+      const token = jwt.sign(
+        { id: user.id }, 
+        process.env.JWT_SECRET || 'your-secret-key'
+      );
+
+      // Remove sensitive data
+      const { password: _, ...userData } = user;
+
+      res.json({ 
+        token,
+        user: userData
+      });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          settings: true
+        }
+      });
+
+      if (!user) {
+        return res.status(400).json({ error: 'User not found' });
+      }
+
+      const validPassword = await bcrypt.compare(password, user.password);
+      if (!validPassword) {
+        return res.status(400).json({ error: 'Invalid password' });
+      }
+
+      const token = jwt.sign(
+        { id: user.id }, 
+        process.env.JWT_SECRET || 'your-secret-key'
+      );
+
+      // Remove sensitive data
+      const { password: _, ...userData } = user;
+
+      res.json({ 
+        token,
+        user: userData
+      });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Settings endpoints
+  app.get('/api/settings', authenticateToken, async (req, res) => {
+    try {
+      const settings = await prisma.userSettings.findUnique({
+        where: { userId: req.user.id }
+      });
+
+      if (!settings) {
+        // Create default settings if they don't exist
+        const defaultSettings = await prisma.userSettings.create({
+          data: {
+            userId: req.user.id
+          }
+        });
+        return res.json(defaultSettings);
+      }
+
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch('/api/settings', authenticateToken, async (req, res) => {
+    try {
+      const settings = await prisma.userSettings.upsert({
+        where: { userId: req.user.id },
+        update: req.body,
+        create: {
+          userId: req.user.id,
+          ...req.body
+        }
+      });
+
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Profile update endpoint
+  app.patch('/api/auth/update', authenticateToken, async (req, res) => {
+    try {
+      const user = await prisma.user.update({
+        where: { id: req.user.id },
+        data: req.body,
+        include: {
+          settings: true
+        }
+      });
+
+      // Remove sensitive data
+      const { password, ...userData } = user;
+      res.json(userData);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Analytics endpoints
+  app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
+    try {
+      const { timeRange = '7d' } = req.query;
+      const userId = req.user.id;
+
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      switch (timeRange) {
+        case '30d':
+          startDate.setDate(startDate.getDate() - 30);
+          break;
+        case '90d':
+          startDate.setDate(startDate.getDate() - 90);
+          break;
+        default: // 7d
+          startDate.setDate(startDate.getDate() - 7);
+      }
+
+      const analytics = await prisma.analytics.findMany({
+        where: {
+          userId,
+          date: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        orderBy: {
+          date: 'asc'
+        }
+      });
+
+      // Calculate totals
+      const totals = analytics.reduce((acc, curr) => ({
+        reach: acc.reach + curr.reach,
+        impressions: acc.impressions + curr.impressions,
+        engagement: acc.engagement + curr.engagement,
+        shares: acc.shares + curr.shares
+      }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
+
+      res.json({
+        timeRange,
+        analytics,
+        totals
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Overview endpoints
+  app.get('/api/overview/stats', authenticateToken, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      
+      const totalPosts = await prisma.post.count({
+        where: { userId }
+      });
+
+      const posts = await prisma.post.findMany({
+        where: { userId },
+        select: {
+          engagementRate: true
+        }
+      });
+      
+      const avgEngagementRate = posts.length > 0
+        ? posts.reduce((acc, post) => acc + (post.engagementRate || 0), 0) / posts.length
+        : 0;
+
+      const socialAccounts = await prisma.socialAccount.findMany({
+        where: { userId }
+      });
+
+      const totalFollowers = socialAccounts.reduce((acc, account) => acc + (account.followerCount || 0), 0);
+
+      const scheduledPosts = await prisma.post.count({
+        where: {
+          userId,
+          status: 'scheduled',
+          scheduledDate: {
+            gte: new Date()
+          }
+        }
+      });
+
+      res.json({
+        totalPosts,
+        engagementRate: avgEngagementRate,
+        totalFollowers,
+        scheduledPosts
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/overview/upcoming-posts', authenticateToken, async (req, res) => {
+    try {
+      const posts = await prisma.post.findMany({
+        where: {
+          userId: req.user.id,
+          status: 'scheduled',
+          scheduledDate: {
+            gte: new Date()
+          }
+        },
+        orderBy: {
+          scheduledDate: 'asc'
+        },
+        take: 5
+      });
+
+      res.json(posts);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Social Accounts endpoints
+  app.get('/api/social-accounts', authenticateToken, async (req, res) => {
+
+    try {
+      const accounts = await prisma.socialAccount.findMany({
+        where: {
           userId: req.user.id
         }
       });
-      return res.json(defaultSettings);
+      res.json(accounts);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
 
-    res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  });
 
-app.patch('/api/settings', authenticateToken, async (req, res) => {
-  try {
-    const settings = await prisma.userSettings.upsert({
-      where: { userId: req.user.id },
-      update: req.body,
-      create: {
-        userId: req.user.id,
-        ...req.body
-      }
-    });
+  app.post('/api/social-accounts/connect', authenticateToken, async (req, res) => {
+    try {
+      const { platform } = req.body;
+      const userId = req.user.id;
 
-    res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Profile update endpoint
-app.patch('/api/auth/update', authenticateToken, async (req, res) => {
-  try {
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: req.body,
-      include: {
-        settings: true
-      }
-    });
-
-    // Remove sensitive data
-    const { password, ...userData } = user;
-    res.json(userData);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Analytics endpoints
-app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
-  try {
-    const { timeRange = '7d' } = req.query;
-    const userId = req.user.id;
-
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    switch (timeRange) {
-      case '30d':
-        startDate.setDate(startDate.getDate() - 30);
-        break;
-      case '90d':
-        startDate.setDate(startDate.getDate() - 90);
-        break;
-      default: // 7d
-        startDate.setDate(startDate.getDate() - 7);
-    }
-
-    const analytics = await prisma.analytics.findMany({
-      where: {
-        userId,
-        date: {
-          gte: startDate,
-          lte: endDate
+      // Check if account already exists
+      const existingAccount = await prisma.socialAccount.findFirst({
+        where: {
+          userId,
+          platform: platform.toLowerCase()
         }
-      },
-      orderBy: {
-        date: 'asc'
+      });
+
+      if (existingAccount) {
+        return res.status(400).json({ error: 'Account already connected' });
       }
-    });
 
-    // Calculate totals
-    const totals = analytics.reduce((acc, curr) => ({
-      reach: acc.reach + curr.reach,
-      impressions: acc.impressions + curr.impressions,
-      engagement: acc.engagement + curr.engagement,
-      shares: acc.shares + curr.shares
-    }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
-
-    res.json({
-      timeRange,
-      analytics,
-      totals
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Overview endpoints
-app.get('/api/overview/stats', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const totalPosts = await prisma.post.count({
-      where: { userId }
-    });
-
-    const posts = await prisma.post.findMany({
-      where: { userId },
-      select: {
-        engagementRate: true
-      }
-    });
-    
-    const avgEngagementRate = posts.length > 0
-      ? posts.reduce((acc, post) => acc + (post.engagementRate || 0), 0) / posts.length
-      : 0;
-
-    const socialAccounts = await prisma.socialAccount.findMany({
-      where: { userId }
-    });
-
-    const totalFollowers = socialAccounts.reduce((acc, account) => acc + (account.followerCount || 0), 0);
-
-    const scheduledPosts = await prisma.post.count({
-      where: {
-        userId,
-        status: 'scheduled',
-        scheduledDate: {
-          gte: new Date()
+      // Mock data for demo purposes
+      const account = await prisma.socialAccount.create({
+        data: {
+          platform: platform.toLowerCase(),
+          accessToken: 'mock-token',
+          refreshToken: 'mock-refresh',
+          followerCount: Math.floor(Math.random() * 50000) + 1000,
+          userId,
+          username: `demo_${platform.toLowerCase()}`,
+          profileUrl: `https://${platform.toLowerCase()}.com/demo`
         }
-      }
-    });
+      });
 
-    res.json({
-      totalPosts,
-      engagementRate: avgEngagementRate,
-      totalFollowers,
-      scheduledPosts
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+      res.json(account);
+    } catch (error) {
+      console.error('Error connecting social account:', error);
+      res.status(500).json({ error: 'Failed to connect social account' });
+    }
+  });
 
-app.get('/api/overview/upcoming-posts', authenticateToken, async (req, res) => {
-  try {
-    const posts = await prisma.post.findMany({
-      where: {
-        userId: req.user.id,
-        status: 'scheduled',
-        scheduledDate: {
-          gte: new Date()
+  app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      const account = await prisma.socialAccount.findFirst({
+        where: {
+          id,
+          userId
         }
-      },
-      orderBy: {
-        scheduledDate: 'asc'
-      },
-      take: 5
-    });
+      });
 
-    res.json(posts);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Social Accounts endpoints
-app.get('/api/social-accounts', authenticateToken, async (req, res) => {
-  try {
-    const accounts = await prisma.socialAccount.findMany({
-      where: {
-        userId: req.user.id
+      if (!account) {
+        return res.status(404).json({ error: 'Account not found' });
       }
-    });
-    res.json(accounts);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-app.post('/api/social-accounts/connect', authenticateToken, async (req, res) => {
-  try {
-    const { platform } = req.body;
-    const userId = req.user.id;
+      await prisma.socialAccount.delete({
+        where: { id }
+      });
 
-    // Check if account already exists
-    const existingAccount = await prisma.socialAccount.findFirst({
-      where: {
-        userId,
-        platform: platform.toLowerCase()
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error disconnecting social account:', error);
+      res.status(500).json({ error: 'Failed to disconnect social account' });
+    }
+  });
+
+  app.post('/api/auth/password', authenticateToken, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
-    });
 
-    if (existingAccount) {
-      return res.status(400).json({ error: 'Account already connected' });
-    }
-
-    // Mock data for demo purposes
-    const account = await prisma.socialAccount.create({
-      data: {
-        platform: platform.toLowerCase(),
-        accessToken: 'mock-token',
-        refreshToken: 'mock-refresh',
-        followerCount: Math.floor(Math.random() * 50000) + 1000,
-        userId,
-        username: `demo_${platform.toLowerCase()}`,
-        profileUrl: `https://${platform.toLowerCase()}.com/demo`
+      const validPassword = await bcrypt.compare(currentPassword, user.password);
+      if (!validPassword) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
       }
-    });
 
-    res.json(account);
-  } catch (error) {
-    console.error('Error connecting social account:', error);
-    res.status(500).json({ error: 'Failed to connect social account' });
-  }
-});
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { password: hashedPassword }
+      });
 
-app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
+      res.json({ message: 'Password updated successfully' });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-    const account = await prisma.socialAccount.findFirst({
-      where: {
-        id,
-        userId
+  // Billing information endpoint
+  app.get('/api/billing', authenticateToken, async (req, res) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
-    });
 
-    if (!account) {
-      return res.status(404).json({ error: 'Account not found' });
-    }
-
-    await prisma.socialAccount.delete({
-      where: { id }
-    });
-
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error disconnecting social account:', error);
-    res.status(500).json({ error: 'Failed to disconnect social account' });
-  }
-});
-
-app.post('/api/auth/password', authenticateToken, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const validPassword = await bcrypt.compare(currentPassword, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Current password is incorrect' });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { password: hashedPassword }
-    });
-
-    res.json({ message: 'Password updated successfully' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Billing information endpoint
-app.get('/api/billing', authenticateToken, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    if (user.subscription === 'free') {
-      return res.status(404).json({ error: 'No billing information available for free plan' });
-    }
-
-    // In a real application, you would fetch this from your payment provider
-    const billingInfo = {
-      plan: user.subscription,
-      status: 'active',
-      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      amount: user.subscription === 'standard' ? 29.99 : 79.99,
-      cardLast4: '4242',
-      cardBrand: 'Visa'
-    };
-
-    res.json(billingInfo);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Team management routes
-app.get('/api/team', authenticateToken, async (req, res) => {
-  try {
-    const teamMembers = await prisma.teamMember.findMany({
-      where: {
-        userId: req.user.id
-      },
-      orderBy: {
-        createdAt: 'desc'
+      if (user.subscription === 'free') {
+        return res.status(404).json({ error: 'No billing information available for free plan' });
       }
-    });
 
-    // If no team members found, return empty array instead of error
-    if (!teamMembers || teamMembers.length === 0) {
-      return res.json([]);
+      // In a real application, you would fetch this from your payment provider
+      const billingInfo = {
+        plan: user.subscription,
+        status: 'active',
+        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: user.subscription === 'standard' ? 29.99 : 79.99,
+        cardLast4: '4242',
+        cardBrand: 'Visa'
+      };
+
+      res.json(billingInfo);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
+  });
 
-    res.json(teamMembers);
-  } catch (error) {
-    console.error('Error fetching team members:', error);
-    res.status(500).json({ error: 'Failed to fetch team members' });
-  }
-});
+  // Team management routes
+  app.get('/api/team', authenticateToken, async (req, res) => {
+    try {
+      const teamMembers = await prisma.teamMember.findMany({
+        where: {
+          userId: req.user.id
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
 
-app.post('/api/team', authenticateToken, async (req, res) => {
-  try {
-    const { name, email, role } = req.body;
-
-    const existingMember = await prisma.teamMember.findUnique({
-      where: { email }
-    });
-
-    if (existingMember) {
-      return res.status(400).json({ error: 'Team member already exists' });
-    }
-
-    const teamMember = await prisma.teamMember.create({
-      data: {
-        userId: req.user.id,
-        name,
-        email,
-        role,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+      // If no team members found, return empty array instead of error
+      if (!teamMembers || teamMembers.length === 0) {
+        return res.json([]);
       }
-    });
 
-    res.status(201).json(teamMember);
-  } catch (error) {
-    console.error('Error creating team member:', error);
-    res.status(500).json({ error: 'Failed to create team member' });
-  }
-});
+      res.json(teamMembers);
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+      res.status(500).json({ error: 'Failed to fetch team members' });
+    }
+  });
 
-app.patch('/api/team/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { role } = req.body;
+  app.post('/api/team', authenticateToken, async (req, res) => {
+    try {
+      const { name, email, role } = req.body;
 
-    const teamMember = await prisma.teamMember.findFirst({
-      where: {
-        id,
-        userId: req.user.id
+      const existingMember = await prisma.teamMember.findUnique({
+        where: { email }
+      });
+
+      if (existingMember) {
+        return res.status(400).json({ error: 'Team member already exists' });
       }
-    });
 
-    if (!teamMember) {
-      return res.status(404).json({ error: 'Team member not found' });
+      const teamMember = await prisma.teamMember.create({
+        data: {
+          userId: req.user.id,
+          name,
+          email,
+          role,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+        }
+      });
+
+      res.status(201).json(teamMember);
+    } catch (error) {
+      console.error('Error creating team member:', error);
+      res.status(500).json({ error: 'Failed to create team member' });
     }
+  });
 
-    const updatedMember = await prisma.teamMember.update({
-      where: { id },
-      data: { role }
-    });
+  app.patch('/api/team/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
 
-    res.json(updatedMember);
-  } catch (error) {
-    console.error('Error updating team member:', error);
-    res.status(500).json({ error: 'Failed to update team member' });
-  }
-});
+      const teamMember = await prisma.teamMember.findFirst({
+        where: {
+          id,
+          userId: req.user.id
+        }
+      });
 
-app.delete('/api/team/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const teamMember = await prisma.teamMember.findFirst({
-      where: {
-        id,
-        userId: req.user.id
+      if (!teamMember) {
+        return res.status(404).json({ error: 'Team member not found' });
       }
-    });
 
-    if (!teamMember) {
-      return res.status(404).json({ error: 'Team member not found' });
+      const updatedMember = await prisma.teamMember.update({
+        where: { id },
+        data: { role }
+      });
+
+      res.json(updatedMember);
+    } catch (error) {
+      console.error('Error updating team member:', error);
+      res.status(500).json({ error: 'Failed to update team member' });
     }
+  });
 
-    await prisma.teamMember.delete({
-      where: { id }
-    });
+  app.delete('/api/team/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting team member:', error);
-    res.status(500).json({ error: 'Failed to delete team member' });
-  }
-});
+      const teamMember = await prisma.teamMember.findFirst({
+        where: {
+          id,
+          userId: req.user.id
+        }
+      });
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-// Configure AWS S3
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
-});
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type'));
-    }
-  }
-});
-
-// Store scheduled jobs in memory
-const scheduledJobs = new Map();
-
-// Media upload endpoint
-app.post('/api/media/upload', authenticateToken, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const fileData = await saveFile(req.file);
-    
-    const mediaFile = await prisma.mediaFile.create({
-      data: {
-        userId: req.user.id,
-        url: fileData.url,
-        type: fileData.type.startsWith('image/') ? 'image' : 'video',
-        filename: fileData.filename,
-        size: fileData.size,
-        s3Key: fileData.filename,
-        originalName: fileData.originalName
+      if (!teamMember) {
+        return res.status(404).json({ error: 'Team member not found' });
       }
-    });
 
-    res.json(mediaFile);
-  } catch (error) {
-    console.error('Media upload error:', error);
-    await deleteFile(req.file?.filename).catch(console.error);
-    res.status(500).json({ error: 'Failed to upload media' });
-  }
-});
+      await prisma.teamMember.delete({
+        where: { id }
+      });
 
-// Create/Schedule post endpoint
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting team member:', error);
+      res.status(500).json({ error: 'Failed to delete team member' });
+    }
+  });
+
+  const PORT = process.env.PORT || 5000;
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+  // Configure AWS S3
+  const s3 = new AWS.S3({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+  });
+
+  // Configure multer for file uploads
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 100 * 1024 * 1024, // 100MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type'));
+      }
+    }
+  });
+
+  // Store scheduled jobs in memory
+  const scheduledJobs = new Map();
+
+  // Media upload endpoint
+  app.post('/api/media/upload', authenticateToken, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const fileData = await saveFile(req.file);
+      
+      const mediaFile = await prisma.mediaFile.create({
+        data: {
+          userId: req.user.id,
+          url: fileData.url,
+          type: fileData.type.startsWith('image/') ? 'image' : 'video',
+          filename: fileData.filename,
+          size: fileData.size,
+          s3Key: fileData.filename,
+          originalName: fileData.originalName
+        }
+      });
+
+      res.json(mediaFile);
+    } catch (error) {
+      console.error('Media upload error:', error);
+      await deleteFile(req.file?.filename).catch(console.error);
+      res.status(500).json({ error: 'Failed to upload media' });
+    }
+  });
+
+
+  // Create/Schedule post endpoint
+  
+  
+  // Post creation endpoint
+  app.post('/api/posts', authenticateToken, async (req, res) => {
+    try {
+      const {
+        caption,
+        scheduledDate,
+        platforms,
+        hashtags,
+        visibility,
+        mediaFiles,
+        publishNow,
+      } = req.body;
+  
+      if (!caption || !platforms) {
+        return res.status(400).json({ error: 'Caption and platforms are required' });
+      }
+  
+      const selectedPlatforms = JSON.parse(platforms);
+      const mainPlatform = selectedPlatforms[0];
+  
+      // Create a single post with platform settings
+      const postData = {
+        userId: req.user.id, // Add userId directly
+        caption,
+        platform: mainPlatform,
+        scheduledDate: publishNow ? new Date() : new Date(scheduledDate), // Ensure scheduledDate is always set
+        hashtags: hashtags || '',
+        visibility: visibility || 'public',
+        status: publishNow ? 'publishing' : 'scheduled',
+        mediaFiles: mediaFiles ? {
+          connect: JSON.parse(mediaFiles).map((id) => ({ id })),
+        } : undefined,
+        platformSettings: {
+          create: selectedPlatforms.map(platform => ({
+            platform,
+            settings: {}
+          }))
+        }
+      };
+  
+      // Create single post with platform settings
+      const post = await prisma.post.create({
+        data: postData,
+        include: {
+          mediaFiles: true,
+          platformSettings: true,
+          user: {
+            include: {
+              socialAccounts: true,
+            },
+          },
+        },
+      });
+  
+      // Handle immediate publishing
+      if (publishNow) {
+        try {
+          // Publish to each platform
+          for (const platformSetting of post.platformSettings) {
+            const socialAccount = post.user.socialAccounts.find(
+              account => account.platform.toLowerCase() === platformSetting.platform.toLowerCase()
+            );
+  
+            if (!socialAccount) {
+              throw new Error(`No connected ${platformSetting.platform} account found`);
+            }
+  
+            switch (platformSetting.platform.toLowerCase()) {
+              case 'twitter':
+                const client = createTwitterClient(
+                  socialAccount.accessToken,
+                  socialAccount.refreshToken
+                );
+                await postToTwitter(client, {
+                  caption: `${caption} ${hashtags}`.trim(),
+                  mediaFiles: post.mediaFiles,
+                });
+                break;
+              default:
+                console.log(`Publishing to ${platformSetting.platform} not implemented yet`);
+            }
+          }
+  
+          // Mark the post as published
+          await prisma.post.update({
+            where: { id: post.id },
+            data: { status: 'published' },
+          });
+        } catch (error) {
+          await prisma.post.update({
+            where: { id: post.id },
+            data: { status: 'failed', error: error.message },
+          });
+          throw error;
+        }
+      } else {
+        // Schedule the post for each platform
+        await schedulePost(post);
+      }
+  
+      res.status(201).json(post);
+    } catch (error) {
+      console.error('Post creation error:', error);
+      res.status(500).json({ error: 'Failed to create posts' });
+    }
+  });
+
+// Update post endpoint
+// Post creation endpoint
 app.post('/api/posts', authenticateToken, async (req, res) => {
   try {
     const {
       caption,
       scheduledDate,
-      platform,
+      platforms,
       hashtags,
       visibility,
       mediaFiles,
-      publishNow
+      publishNow,
     } = req.body;
 
-    // Validate required fields
-    if (!caption || !platform) {
-      return res.status(400).json({ error: 'Caption and platform are required' });
+    if (!caption || !platforms) {
+      return res.status(400).json({ error: 'Caption and platforms are required' });
     }
 
-    // Create post data
+    const selectedPlatforms = JSON.parse(platforms);
+    if (selectedPlatforms.length === 0) {
+      return res.status(400).json({ error: 'At least one platform must be selected' });
+    }
+
+    // Create post with platform-specific entries
     const postData = {
       userId: req.user.id,
       caption,
-      platform,
+      scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
       hashtags: hashtags || '',
       visibility: visibility || 'public',
       status: publishNow ? 'publishing' : 'scheduled',
-      scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
-      mediaFiles: {
-        connect: mediaFiles ? JSON.parse(mediaFiles).map((id) => ({ id })) : []
+      mediaFiles: mediaFiles ? {
+        connect: JSON.parse(mediaFiles).map((id) => ({ id })),
+      } : undefined,
+      platforms: {
+        create: selectedPlatforms.map(platform => ({
+          platform,
+          status: publishNow ? 'publishing' : 'scheduled',
+          settings: {}
+        }))
       }
     };
 
-    // Create post in database
+    // Create post with all platforms
     const post = await prisma.post.create({
       data: postData,
+      include: {
+        mediaFiles: true,
+        platforms: true,
+        user: {
+          include: {
+            socialAccounts: true,
+          },
+        },
+      },
+    });
+
+    // Handle immediate publishing
+    if (publishNow) {
+      try {
+        // Publish to each platform
+        for (const platformData of post.platforms) {
+          const socialAccount = post.user.socialAccounts.find(
+            account => account.platform.toLowerCase() === platformData.platform.toLowerCase()
+          );
+
+          if (!socialAccount) {
+            // Update platform status to failed if no account found
+            await prisma.postPlatform.update({
+              where: { id: platformData.id },
+              data: {
+                status: 'failed',
+                error: `No connected ${platformData.platform} account found`
+              }
+            });
+            continue;
+          }
+
+          try {
+            switch (platformData.platform.toLowerCase()) {
+              case 'twitter':
+                const client = createTwitterClient(
+                  socialAccount.accessToken,
+                  socialAccount.refreshToken
+                );
+                const result = await postToTwitter(client, {
+                  caption: `${caption} ${hashtags}`.trim(),
+                  mediaFiles: post.mediaFiles,
+                });
+                
+                // Update platform status to published
+                await prisma.postPlatform.update({
+                  where: { id: platformData.id },
+                  data: {
+                    status: 'published',
+                    publishedAt: new Date(),
+                    externalId: result.id
+                  }
+                });
+                break;
+              default:
+                console.log(`Publishing to ${platformData.platform} not implemented yet`);
+                // Mark as pending implementation
+                await prisma.postPlatform.update({
+                  where: { id: platformData.id },
+                  data: {
+                    status: 'pending',
+                    error: 'Platform publishing not implemented'
+                  }
+                });
+            }
+          } catch (error) {
+            // Update platform status to failed
+            await prisma.postPlatform.update({
+              where: { id: platformData.id },
+              data: {
+                status: 'failed',
+                error: error.message
+              }
+            });
+          }
+        }
+
+        // Update main post status based on platform statuses
+        const updatedPlatforms = await prisma.postPlatform.findMany({
+          where: { postId: post.id }
+        });
+
+        const allPublished = updatedPlatforms.every(p => p.status === 'published');
+        const allFailed = updatedPlatforms.every(p => p.status === 'failed');
+
+        await prisma.post.update({
+          where: { id: post.id },
+          data: {
+            status: allPublished ? 'published' : allFailed ? 'failed' : 'partial',
+            error: allFailed ? 'Failed to publish to all platforms' : null
+          }
+        });
+      } catch (error) {
+        console.error('Publishing error:', error);
+        await prisma.post.update({
+          where: { id: post.id },
+          data: { 
+            status: 'failed',
+            error: error.message
+          }
+        });
+      }
+    } else {
+      // Schedule the post for each platform
+      await schedulePost(post);
+    }
+
+    // Fetch the final post state with all relations
+    const finalPost = await prisma.post.findUnique({
+      where: { id: post.id },
+      include: {
+        mediaFiles: true,
+        platforms: true,
+        user: {
+          include: {
+            socialAccounts: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json(finalPost);
+  } catch (error) {
+    console.error('Post creation error:', error);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+  // Delete post
+  app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+  
+      // Verify post ownership
+      const post = await prisma.post.findFirst({
+        where: {
+          id,
+          userId: req.user.id,
+        },
+      });
+  
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found or unauthorized' });
+      }
+  
+      // Cancel any scheduled job first
+      await cancelScheduledPost(id);
+  
+      // Delete the post and related data in a transaction
+      await prisma.$transaction([
+        // Delete platform settings
+        prisma.platformSettings.deleteMany({
+          where: { postId: id }
+        }),
+        // Delete media file associations
+        prisma.post.update({
+          where: { id },
+          data: {
+            mediaFiles: {
+              set: [] // Remove all media file associations
+            }
+          }
+        }),
+        // Finally delete the post
+        prisma.post.delete({
+          where: { id }
+        })
+      ]);
+  
+      res.json({ message: 'Post deleted successfully' });
+    } catch (error) {
+      console.error('Post deletion error:', error);
+      res.status(500).json({ error: 'Failed to delete post' });
+    }
+  });
+  app.get('/api/posts/history', authenticateToken, async (req, res) => {
+    try {
+      const { filter = 'all', sortBy = 'date', order = 'desc' } = req.query;
+      
+      // Build where clause based on filter
+      const whereClause = {
+        userId: req.user.id
+      };
+
+      if (filter === 'published') {
+        whereClause.status = 'published';
+      } else if (filter === 'failed') {
+        whereClause.status = 'failed';
+      }
+
+      // Build order by clause
+      const orderByClause= {};
+      if (sortBy === 'date') {
+        orderByClause.scheduledDate = order;
+      } else if (sortBy === 'engagement') {
+        orderByClause.engagementRate = order;
+      }
+
+      const posts = await prisma.post.findMany({
+        where: whereClause,
+        orderBy: orderByClause,
+        include: {
+          mediaFiles: true
+        }
+      });
+
+      res.json(posts);
+    } catch (error) {
+      console.error('Error fetching post history:', error);
+      res.status(500).json({ error: 'Failed to fetch post history' });
+    }
+  });
+  
+
+  
+  // Add this endpoint for retrying failed posts
+app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify post ownership
+    const post = await prisma.post.findFirst({
+      where: {
+        id,
+        userId: req.user.id,
+        status: 'failed'
+      },
       include: {
         mediaFiles: true,
         user: {
@@ -739,65 +1091,77 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       }
     });
 
-    // Handle immediate publishing
-    if (publishNow) {
-      try {
-        const twitterAccount = post.user.socialAccounts.find(
-          account => account.platform === 'twitter'
-        );
-        if (!twitterAccount) {
-          throw new Error('No connected Twitter account found');
-        } else {
-          console.log("Twitter account reached:", twitterAccount);
-        }
-
-        const twitterClient = createTwitterClient(
-          twitterAccount.accessToken,
-          twitterAccount.refreshToken
-        );
-        
-        const tweet = await postToTwitter(twitterClient, {
-          caption: `${caption} ${hashtags}`.trim(),
-          mediaFiles: post.mediaFiles
-        });
-
-        // Mark the post as published
-        await prisma.post.update({
-          where: { id: post.id },
-          data: { status: 'published' }
-        });
-      } catch (error) {
-        await prisma.post.update({
-          where: { id: post.id },
-          data: { status: 'failed', error: error.message }
-        });
-        
-        // Extract specific error message from the Twitter API response
-        const errorDetail = error.data?.detail || 'An unknown error occurred.';
-        console.error('Post creation error:', errorDetail);
-        
-        return res.status(500).json({ error: errorDetail });
-      }
-    } else {
-      // Schedule the post
-      await schedulePost(post);
+    if (!post) {
+      return res.status(404).json({ error: 'Failed post not found or unauthorized' });
     }
 
-    res.status(201).json(post);
+    // Update post status to retrying
+    await prisma.post.update({
+      where: { id },
+      data: { status: 'retrying' }
+    });
+
+    // Get social account for the platform
+    const socialAccount = post.user.socialAccounts.find(
+      account => account.platform.toLowerCase() === post.platform.toLowerCase()
+    );
+
+    if (!socialAccount) {
+      throw new Error(`No connected ${post.platform} account found`);
+    }
+
+    // Attempt to publish based on platform
+    switch (post.platform.toLowerCase()) {
+      case 'twitter':
+        const client = createTwitterClient(
+          socialAccount.accessToken,
+          socialAccount.refreshToken
+        );
+        await postToTwitter(client, {
+          caption: `${post.caption} ${post.hashtags}`.trim(),
+          mediaFiles: post.mediaFiles
+        });
+        break;
+      // Add cases for other platforms
+      default:
+        throw new Error(`Publishing to ${post.platform} not implemented yet`);
+    }
+
+    // Update post status to published if successful
+    const updatedPost = await prisma.post.update({
+      where: { id },
+      data: {
+        status: 'published',
+        publishedDate: new Date(),
+        error: null
+      }
+    });
+
+    res.json(updatedPost);
   } catch (error) {
-    console.error('Post creation error:', error);
-    res.status(500).json({ error: 'Failed to create post' });
+    console.error('Post retry error:', error);
+    
+    // Update post with error
+    await prisma.post.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'failed',
+        error: error.message
+      }
+    });
+
+    res.status(500).json({ error: 'Failed to retry post' });
   }
 });
 
-// Update post
+// Update the PUT endpoint for updating posts
 app.put('/api/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const {
       caption,
       scheduledDate,
-      platform,
+      platforms,
       hashtags,
       visibility,
       mediaFiles
@@ -807,69 +1171,50 @@ app.put('/api/posts/:id', authenticateToken, async (req, res) => {
     const existingPost = await prisma.post.findFirst({
       where: {
         id,
-        userId: req.user.id
+        userId: req.user.id,
+        status: 'scheduled' 
       }
+    });
+    await prisma.socialAccount.delete({
+      where: { id }
     });
 
     if (!existingPost) {
-      return res.status(404).json({ error: 'Post not found or unauthorized' });
+      return res.status(404).json({ error: 'Post not found or cannot be updated' });
     }
 
-    const post = await prisma.post.update({
+    // Cancel existing scheduled job
+    await cancelScheduledPost(id);
+
+    // Parse platforms and media files
+    const selectedPlatforms = Array.isArray(platforms) ? platforms : JSON.parse(platforms);
+    const mediaFileIds = mediaFiles ? JSON.parse(mediaFiles) : [];
+
+    // Update the post
+    const updatedPost = await prisma.post.update({
       where: { id },
       data: {
         caption,
         scheduledDate: new Date(scheduledDate),
-        platform,
         hashtags,
         visibility,
         mediaFiles: {
-          set: [],
-          connect: mediaFiles ? JSON.parse(mediaFiles).map((id) => ({ id })) : []
-        }
+          set: [], // Clear existing connections
+          connect: mediaFileIds.map(fileId => ({ id: fileId }))
+        },
+        platforms: selectedPlatforms // Store selected platforms
       },
       include: {
         mediaFiles: true
       }
     });
 
-    await schedulePost(post);
+    // Schedule the updated post
+    await schedulePost(updatedPost);
 
-    res.json(post);
+    res.json(updatedPost);
   } catch (error) {
     console.error('Post update error:', error);
     res.status(500).json({ error: 'Failed to update post' });
-  }
-});
-
-// Delete post
-app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Verify post ownership
-    const post = await prisma.post.findFirst({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
-
-    if (!post) {
-      return res.status(404).json({ error: 'Post not found or unauthorized' });
-    }
-
-    // Cancel scheduled job
-    cancelScheduledPost(id);
-
-    // Delete the post
-    await prisma.post.delete({
-      where: { id }
-    });
-
-    res.json({ message: 'Post deleted successfully' });
-  } catch (error) {
-    console.error('Post deletion error:', error);
-    res.status(500).json({ error: 'Failed to delete post' });
   }
 });

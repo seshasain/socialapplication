@@ -24,7 +24,6 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
         })
       );
     }
-    console.log("caption:",caption)
     // Create tweet
     const tweet = await client.v2.tweet({
       text: caption,

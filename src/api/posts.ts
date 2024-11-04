@@ -1,21 +1,30 @@
 import { Post, MediaFile } from '../types/posts';
-
+  
 const API_BASE_URL = 'http://localhost:5000/api';
 
-export async function createPost(formData: FormData): Promise<Post> {
+export async function getPostHistory(filter = 'all', sortBy = 'date', order = 'desc'): Promise<Post[]> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
 
-  // Convert FormData to JSON for proper API handling
-  const jsonData = {
-    caption: formData.get('caption'),
-    scheduledDate: formData.get('scheduledDate'),
-    platform: formData.get('platform'),
-    hashtags: formData.get('hashtags'),
-    visibility: formData.get('visibility'),
-    mediaFiles: formData.get('mediaFiles'),
-    publishNow: formData.get('publishNow') === 'true'
-  };
+  const response = await fetch(
+    `${API_BASE_URL}/posts/history?filter=${filter}&sortBy=${sortBy}&order=${order}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch post history');
+  }
+
+  return response.json();
+}
+
+export async function createPost(postData: any): Promise<Post> {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No authentication token');
 
   try {
     const response = await fetch(`${API_BASE_URL}/posts`, {
@@ -24,32 +33,34 @@ export async function createPost(formData: FormData): Promise<Post> {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(jsonData)
+      body: JSON.stringify(postData)
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create post');
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create post');
     }
 
-    return data;
+    return response.json();
   } catch (error) {
     console.error('Create post error:', error);
     throw error instanceof Error ? error : new Error('Failed to create post');
   }
 }
 
-export async function uploadMedia(file: FormData): Promise<MediaFile> {
+export async function uploadMedia(file: File): Promise<MediaFile> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
+
+  const formData = new FormData();
+  formData.append('file', file);
 
   const response = await fetch(`${API_BASE_URL}/media/upload`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`
     },
-    body: file
+    body: formData
   });
 
   if (!response.ok) {
@@ -108,6 +119,26 @@ export async function updatePost(postId: string, postData: FormData): Promise<Po
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to update post');
+  }
+
+  return response.json();
+}
+
+// Add these functions to your existing posts.ts file
+
+export async function duplicatePost(postId: string): Promise<Post> {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('No authentication token');
+
+  const response = await fetch(`${API_BASE_URL}/posts/${postId}/duplicate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to duplicate post');
   }
 
   return response.json();

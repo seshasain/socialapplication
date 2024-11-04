@@ -6,10 +6,11 @@ import {
   Users2,
   Settings,
   Crown,
+  History,
 } from 'lucide-react';
 import PricingModal from '../modals/PricingModal';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings';
+type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
 
 interface SidebarProps {
   currentView: View;
@@ -21,6 +22,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
   const menuItems = [
     { icon: Layout, label: 'Overview', value: 'overview' as View },
+    { icon: History, label: 'History', value: 'history' as View },
     { icon: Calendar, label: 'Calendar', value: 'calendar' as View },
     { icon: BarChart2, label: 'Analytics', value: 'analytics' as View },
     { icon: Users2, label: 'Team', value: 'team' as View },
