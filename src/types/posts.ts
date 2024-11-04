@@ -43,17 +43,3 @@ export interface PostFormData {
   mediaFiles?: MediaFile[];
   publishNow?: boolean;
 }
-
-export interface SocialAccount {
-  id: string;
-  userId: string;
-  platform: string;
-  username: string;
-  profileUrl: string;
-  accessToken: string;
-  refreshToken?: string;
-  followerCount: number;
-  createdAt: String;
-  updatedAt: String;
-}
-

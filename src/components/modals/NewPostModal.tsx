@@ -77,10 +77,16 @@ const platforms = [
         visibility: initialData.visibility || 'public',
         mediaFiles: [],
       });
-      setSelectedPlatforms([initialData.platform]);
-      setUploadedFiles(initialData.mediaFiles || []);
-    }
-  }, [initialData]);
+      // Set selected platforms based on initialData
+    const initialSelectedPlatforms = initialData.platforms.map(p => p.platform);
+    
+    // Check if all platforms are included
+    if (initialSelectedPlatforms.length === connectedAccounts.length) {
+      setSelectedPlatforms(['all']);
+    } else {
+      setSelectedPlatforms(initialSelectedPlatforms);
+    } }
+  }, [initialData, connectedAccounts]);
 
   useEffect(() => {
     if (isOpen) {
@@ -90,6 +96,7 @@ const platforms = [
   }, [isOpen]);
 
   const handlePlatformSelect = (platformId: string) => {
+    console.log("plt:",platformId);
     if (platformId === 'all') {
       if (selectedPlatforms.includes('all')) {
         setSelectedPlatforms([]);
@@ -106,7 +113,7 @@ const platforms = [
         }
       });
     }
-  };
+  };  
   
   const isPlatformSelected = (platformId: string) => {
     return selectedPlatforms.includes(platformId) || 
@@ -171,32 +178,34 @@ const platforms = [
       setLoading(true);
       setError(null);
   
-      // Get the actual platforms to post to (excluding 'all')
-      const platformsToPost = selectedPlatforms.includes('all') 
-        ? platforms.filter(p => p.id !== 'all').map(p => p.id)
+      const platformsToPost = selectedPlatforms.includes('all')
+        ? connectedAccounts.map(account => account.id) // Add all connected accounts if "all" is selected
         : selectedPlatforms;
   
       const requestBody = {
         caption: postData.caption,
-        scheduledDate: publishNow ? null : new Date(
-          `${postData.scheduledDate}T${postData.scheduledTime}`
-        ).toISOString(),
-        platforms: JSON.stringify(platformsToPost),
+        scheduledDate: publishNow
+          ? null
+          : new Date(`${postData.scheduledDate}T${postData.scheduledTime}`).toISOString(),
+        selectedPlatforms: platformsToPost, // Make sure this is included
         hashtags: postData.hashtags,
         visibility: postData.visibility,
-        mediaFiles: uploadedFiles.length > 0 ? JSON.stringify(uploadedFiles.map(f => f.id)) : null,
-        publishNow: publishNow
+        mediaFiles: uploadedFiles.length > 0
+          ? JSON.stringify(uploadedFiles.map(file => file.id))
+          : null,
+        publishNow: publishNow,
       };
+  
       const post = await createPost(requestBody);
-    onSave(post);
-    onClose();
-  } catch (err) {
-    console.error('Post creation error:', err);
-    setError(err instanceof Error ? err.message : 'Failed to create post');
-  } finally {
-    setLoading(false);
-  }
-};
+      onSave(post);
+      onClose();
+    } catch (err) {
+      console.error('Post creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create post');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
