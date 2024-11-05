@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import NewPostModal from '../modals/NewPostModal';
 import type { Post, PostPlatform } from '../../types/posts';
 
-// Define available platforms statically since we can't fetch them
 const AVAILABLE_PLATFORMS = [
   { platform: 'instagram', id: 'instagram' },
   { platform: 'facebook', id: 'facebook' },
@@ -34,16 +33,38 @@ export default function HistoryView() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
 
-  useEffect(() => {
-    fetchPosts();
-  }, [filter, sortBy, sortOrder, dateRange]);
+  // Get overall post status based on platform statuses
+  const getPostStatus = (platforms: PostPlatform[]) => {
+    if (!platforms || platforms.length === 0) return 'draft';
+
+    const statuses = platforms.map(p => p.status);
+    
+    if (statuses.every(status => status === 'published')) {
+      return 'published';
+    }
+    if (statuses.some(status => status === 'failed')) {
+      return 'failed';
+    }
+    if (statuses.some(status => status === 'publishing')) {
+      return 'publishing';
+    }
+    if (statuses.every(status => status === 'scheduled')) {
+      return 'scheduled';
+    }
+    
+    return 'draft';
+  };
 
   const filteredPosts = posts.filter(post => {
     if (searchQuery) {
       return post.caption.toLowerCase().includes(searchQuery.toLowerCase());
     }
+    if (filter !== 'all') {
+      const postStatus = getPostStatus(post.platforms);
+      return postStatus === filter;
+    }
     return true;
-  });   
+  });
 
   const fetchPosts = async () => {
     try {
@@ -67,12 +88,7 @@ export default function HistoryView() {
       }
 
       const data = await response.json();
-      // Ensure each post has a platforms array
-      const normalizedPosts = data.map((post: Post) => ({
-        ...post,
-        platforms: post.platforms || []
-      }));
-      setPosts(normalizedPosts);
+      setPosts(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch posts');
     } finally {
@@ -80,8 +96,111 @@ export default function HistoryView() {
     }
   };
 
+  useEffect(() => {
+    fetchPosts();
+  }, [filter, sortBy, sortOrder, dateRange]);
+
   const handleRefresh = () => {
     fetchPosts();
+  };
+
+  const getPlatformIcon = (platform: string) => {
+    switch (platform.toLowerCase()) {
+      case 'instagram':
+        return <Instagram className="w-5 h-5 text-pink-600" />;
+      case 'facebook':
+        return <Facebook className="w-5 h-5 text-blue-600" />;
+      case 'twitter':
+        return <Twitter className="w-5 h-5 text-sky-600" />;
+      case 'linkedin':
+        return <Linkedin className="w-5 h-5 text-blue-700" />;
+      case 'youtube':
+        return <Youtube className="w-5 h-5 text-red-600" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'published':
+        return 'text-green-600';
+      case 'failed':
+        return 'text-red-600';
+      case 'publishing':
+        return 'text-blue-600';
+      case 'scheduled':
+        return 'text-yellow-600';
+      default:
+        return 'text-gray-600';
+    }
+  };
+
+  const renderPlatformBadges = (platforms: PostPlatform[] = []) => {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {platforms.map((platform, index) => (
+          <div
+            key={`${platform.platform}-${index}`}
+            className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+          >
+            {getPlatformIcon(platform.platform)}
+            <span>{platform.platform}</span>
+            <span className={`ml-1 ${getStatusColor(platform.status)}`}>
+              • {platform.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const formatPostDate = (post: Post) => {
+    const publishedPlatform = post.platforms?.find(p => p.status === 'published');
+    
+    if (publishedPlatform) {
+      return (
+        <span className="flex items-center text-gray-500">
+          <CalendarIcon className="w-4 h-4 mr-1" />
+          Posted {toRelative(post.updatedAt)}
+        </span>
+      );
+    } else {
+      const scheduledDate = new Date(post.scheduledDate);
+      const isUpcoming = scheduledDate > new Date();
+      return (
+        <span className="flex items-center text-gray-500">
+          <CalendarIcon className="w-4 h-4 mr-1" />
+          {isUpcoming ? (
+            `Scheduled for ${scheduledDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit'
+            })}`
+          ) : (
+            `Was scheduled for ${scheduledDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit'
+            })}`
+          )}
+        </span>
+      );
+    }
+  };
+
+  const handleEditPost = (post: Post) => {
+    const status = getPostStatus(post.platforms);
+    if (status !== 'scheduled' && status !== 'draft') {
+      setError('Only scheduled or draft posts can be edited');
+      return;
+    }
+
+    setEditingPost(post);
+    setIsEditModalOpen(true);
+    setSelectedPost(null);
   };
 
   const handleSaveEdit = async (updatedPost: Post) => {
@@ -104,11 +223,10 @@ export default function HistoryView() {
 
       const updated = await response.json();
       setPosts(posts => posts.map(post =>
-        post.id === updated.id ? { ...updated, platforms: updated.platforms || [] } : post
+        post.id === updated.id ? updated : post
       ));
       setIsEditModalOpen(false);
       setEditingPost(null);
-      fetchPosts();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update post');
     }
@@ -119,7 +237,8 @@ export default function HistoryView() {
       const post = posts.find(p => p.id === postId);
       if (!post) return;
 
-      if (post.status === 'published') {
+      const status = getPostStatus(post.platforms);
+      if (status === 'published') {
         setError('Published posts cannot be deleted');
         return;
       }
@@ -168,27 +287,11 @@ export default function HistoryView() {
     }
   };
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform.toLowerCase()) {
-      case 'instagram':
-        return <Instagram className="w-5 h-5 text-pink-600" />;
-      case 'facebook':
-        return <Facebook className="w-5 h-5 text-blue-600" />;
-      case 'twitter':
-        return <Twitter className="w-5 h-5 text-sky-600" />;
-      case 'linkedin':
-        return <Linkedin className="w-5 h-5 text-blue-700" />;
-      case 'youtube':
-        return <Youtube className="w-5 h-5 text-red-600" />;
-      default:
-        return null;
-    }
-  };
-
   const renderPostActions = (post: Post) => {
+    const status = getPostStatus(post.platforms);
     const actions = [];
 
-    if (post.status === 'scheduled') {
+    if (status === 'scheduled' || status === 'draft') {
       actions.push(
         <button
           key="edit"
@@ -200,19 +303,19 @@ export default function HistoryView() {
       );
     }
 
-    if (post.status === 'failed') {
+    if (status === 'failed') {
       actions.push(
         <button
           key="retry"
           onClick={() => handleRetryPost(post.id)}
           className="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center"
         >
-          <Send className="w-4 h-4 mr-2" /> Retry Post
+          <RefreshCw className="w-4 h-4 mr-2" /> Retry Post
         </button>
       );
     }
 
-    if (post.status !== 'published') {
+    if (status !== 'published') {
       actions.push(
         <button
           key="delete"
@@ -227,85 +330,8 @@ export default function HistoryView() {
     return actions;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'published':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'failed':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const formatPostDate = (post: Post) => {
-    const publishedPlatform = post.platforms?.find(p => p.publishedAt);
-    
-    if (post.status === 'published' && publishedPlatform?.publishedAt) {
-      return (
-        <span className="flex items-center text-gray-500">
-          <CalendarIcon className="w-4 h-4 mr-1" />
-          Posted {toRelative(publishedPlatform.publishedAt)}
-        </span>
-      );
-    } else {
-      const scheduledDate = new Date(post.scheduledDate);
-      const isUpcoming = scheduledDate > new Date();
-      return (
-        <span className="flex items-center text-gray-500">
-          <CalendarIcon className="w-4 h-4 mr-1" />
-          {isUpcoming ? (
-            `Scheduled for ${scheduledDate.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit'
-            })}`
-          ) : (
-            `Was scheduled for ${scheduledDate.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit'
-            })}`
-          )}
-        </span>
-      );
-    }
-  };
-
-  const handleEditPost = (post: Post) => {
-    if (post.status !== 'scheduled') {
-      setError('Only scheduled posts can be edited');
-      return;
-    }
-
-    setEditingPost(post);
-    setIsEditModalOpen(true);
-    setSelectedPost(null);
-  };
-
-  const renderPlatformBadges = (platforms: PostPlatform[] = []) => {
-    return (
-      <div className="flex flex-wrap gap-2">
-        {platforms.map((platform) => (
-          <div
-            key={platform.id}
-            className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
-          >
-            {getPlatformIcon(platform.platform)}
-            <span>{platform.platform}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header and Filters */}
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div className="flex items-center space-x-4">
@@ -367,6 +393,7 @@ export default function HistoryView() {
               <option value="published">Published</option>
               <option value="scheduled">Scheduled</option>
               <option value="failed">Failed</option>
+              <option value="draft">Draft</option>
             </select>
 
             <button
@@ -385,7 +412,6 @@ export default function HistoryView() {
         </div>
       )}
 
-      {/* Posts Grid/List */}
       <AnimatePresence>
         <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-6' : 'space-y-4'}>
           {loading ? (
@@ -417,25 +443,23 @@ export default function HistoryView() {
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
                       {renderPlatformBadges(post.platforms)}
-                      <span className={`mt-2 inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(post.status)}`}>
-                        {post.status}
+                      <span className={`mt-2 inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(getPostStatus(post.platforms))}`}>
+                        {getPostStatus(post.platforms)}
                       </span>
                     </div>
-                    {post.status !== 'published' && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setSelectedPost(selectedPost === post.id ? null : post.id)}
-                          className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          <MoreHorizontal className="w-5 h-5 text-gray-600" />
-                        </button>
-                        {selectedPost === post.id && (
-                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
-                            {renderPostActions(post)}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div className="relative">
+                      <button
+                        onClick={() => setSelectedPost(selectedPost === post.id ? null : post.id)}
+                        className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5 text-gray-600" />
+                      </button>
+                      {selectedPost === post.id && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                          {renderPostActions(post)}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {post.mediaFiles?.length > 0 && (
@@ -454,32 +478,7 @@ export default function HistoryView() {
                     {formatPostDate(post)}
                   </div>
 
-                  {post.status === 'published' && (
-                    <div className="grid grid-cols-4 gap-4 mb-4">
-                      <div className="text-center p-2 bg-gray-50 rounded-lg">
-                        <Heart className="w-4 h-4 text-pink-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.likes?.toLocaleString() ?? 0}</span>
-                        <p className="text-xs text-gray-500">Likes</p>
-                      </div>
-                      <div className="text-center p-2 bg-gray-50 rounded-lg">
-                        <MessageCircle className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.comments?.toLocaleString() ?? 0}</span>
-                        <p className="text-xs text-gray-500">Comments</p>
-                      </div>
-                      <div className="text-center p-2 bg-gray-50 rounded-lg">
-                        <Share2 className="w-4 h-4 text-green-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.shares?.toLocaleString() ?? 0}</span>
-                        <p className="text-xs text-gray-500">Shares</p>
-                      </div>
-                      <div className="text-center p-2 bg-gray-50 rounded-lg">
-                        <Eye className="w-4 h-4 text-purple-500 mx-auto mb-1" />
-                        <span className="text-sm font-medium">{post.engagementRate?.toFixed(1) ?? 0}%</span>
-                        <p className="text-xs text-gray-500">Engagement</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {post.status === 'failed' && post.error && (
+                  {post.error && (
                     <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700 flex items-center">
                       <AlertTriangle className="w-4 h-4 mr-2" />
                       {post.error}
@@ -492,7 +491,6 @@ export default function HistoryView() {
         </div>
       </AnimatePresence>
 
-      {/* Edit Modal */}
       {editingPost && (
         <NewPostModal
           isOpen={isEditModalOpen}

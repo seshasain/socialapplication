@@ -6,8 +6,15 @@ import UpcomingPosts from './overview/UpcomingPosts';
 import NewPostModal from '../modals/NewPostModal';
 import ConnectAccountModal from '../modals/ConnectAccountModal';
 import LoadingSpinner from '../common/LoadingSpinner';
-import { OverviewStats, Post, SocialAccount } from '../../types/overview';
-import { fetchOverviewData, connectSocialAccount, disconnectSocialAccount } from '../../api/overview';
+import type { Post } from '../../types/posts';
+import type { SocialAccount } from '../../types/overview';
+
+interface OverviewStats {
+  totalPosts: number;
+  engagementRate: number;
+  totalFollowers: number;
+  scheduledPosts: number;
+}
 
 export default function Overview() {
   const [isNewPostModalOpen, setIsNewPostModalOpen] = useState(false);
@@ -25,10 +32,40 @@ export default function Overview() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const data = await fetchOverviewData();
-      setStats(data.stats);
-      setScheduledPosts(data.posts);
-      setSocialAccounts(data.accounts || []);
+      
+      const [statsData, postsData, accountsData] = await Promise.all([
+        fetch('http://localhost:5000/api/overview/stats', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to fetch stats');
+          return res.json();
+        }),
+        
+        fetch('http://localhost:5000/api/overview/upcoming-posts', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to fetch posts');
+          return res.json();
+        }),
+        
+        fetch('http://localhost:5000/api/social-accounts', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }).then(res => {
+          if (!res.ok) throw new Error('Failed to fetch accounts');
+          return res.json();
+        })
+      ]);
+      
+      // Ensure postsData conforms to the Post type by casting it
+      setStats(statsData);
+      setScheduledPosts(postsData as Post[]); // Cast postsData as Post[]
+      setSocialAccounts(accountsData);
       setError(null);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -40,23 +77,56 @@ export default function Overview() {
 
   const handleConnectAccount = async (platform: string) => {
     try {
-      const newAccount = await connectSocialAccount(platform);
+      const response = await fetch('http://localhost:5000/api/social-accounts/connect', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ platform })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to connect account');
+      }
+
+      const newAccount = await response.json();
       setSocialAccounts(prev => [...prev, newAccount]);
-      setError(null);
+      setIsConnectModalOpen(false);
+      await loadData(); // Refresh all data
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect account');
-      throw err;
     }
   };
-
+  
   const handleDisconnectAccount = async (accountId: string) => {
     try {
-      await disconnectSocialAccount(accountId);
+      const response = await fetch(`http://localhost:5000/api/social-accounts/${accountId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to disconnect account');
+      }
+
       setSocialAccounts(prev => prev.filter(account => account.id !== accountId));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect account');
       throw err;
+    }
+  };
+
+  const handleSavePost = async (postData: Post) => {
+    try {
+      // Refresh data after creating new post
+      await loadData();
+      setIsNewPostModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create post');
     }
   };
 
@@ -116,7 +186,7 @@ export default function Overview() {
       <NewPostModal
         isOpen={isNewPostModalOpen}
         onClose={() => setIsNewPostModalOpen(false)}
-        onSave={() => {}}
+        onSave={handleSavePost}
         connectedAccounts={socialAccounts}
       />
 

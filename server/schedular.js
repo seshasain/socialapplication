@@ -17,7 +17,9 @@ export const schedulePost = async (post) => {
       try {
         for (const platformData of post.platforms) {
           const socialAccount = post.user.socialAccounts.find(
-            account => account.platform.toLowerCase() === platformData.platform.toLowerCase()
+            (account) =>
+              account.platform.toLowerCase() ===
+              platformData.platform.toLowerCase()
           );
 
           if (!socialAccount) {
@@ -25,8 +27,8 @@ export const schedulePost = async (post) => {
               where: { id: platformData.id },
               data: {
                 status: 'failed',
-                error: `No connected ${platformData.platform} account found`
-              }
+                error: `No connected ${platformData.platform} account found`,
+              },
             });
             continue;
           }
@@ -42,14 +44,14 @@ export const schedulePost = async (post) => {
                   caption: `${post.caption} ${post.hashtags}`.trim(),
                   mediaFiles: post.mediaFiles,
                 });
-                
+
                 await prisma.postPlatform.update({
                   where: { id: platformData.id },
                   data: {
                     status: 'published',
                     publishedAt: new Date(),
-                    externalId: result.id
-                  }
+                    externalId: result.id,
+                  },
                 });
                 break;
               default:
@@ -57,8 +59,8 @@ export const schedulePost = async (post) => {
                   where: { id: platformData.id },
                   data: {
                     status: 'pending',
-                    error: 'Platform publishing not implemented'
-                  }
+                    error: 'Platform publishing not implemented',
+                  },
                 });
             }
           } catch (error) {
@@ -66,26 +68,32 @@ export const schedulePost = async (post) => {
               where: { id: platformData.id },
               data: {
                 status: 'failed',
-                error: error.message
-              }
+                error: error.message,
+              },
             });
           }
         }
 
         // Update main post status based on platform statuses
         const updatedPlatforms = await prisma.postPlatform.findMany({
-          where: { postId: post.id }
+          where: { postId: post.id },
         });
 
-        const allPublished = updatedPlatforms.every(p => p.status === 'published');
-        const allFailed = updatedPlatforms.every(p => p.status === 'failed');
+        const allPublished = updatedPlatforms.every(
+          (p) => p.status === 'published'
+        );
+        const allFailed = updatedPlatforms.every((p) => p.status === 'failed');
 
         await prisma.post.update({
           where: { id: post.id },
           data: {
-            status: allPublished ? 'published' : allFailed ? 'failed' : 'partial',
-            error: allFailed ? 'Failed to publish to all platforms' : null
-          }
+            status: allPublished
+              ? 'published'
+              : allFailed
+              ? 'failed'
+              : 'partial',
+            error: allFailed ? 'Failed to publish to all platforms' : null,
+          },
         });
       } catch (error) {
         console.error(`Failed to publish scheduled post ${post.id}:`, error);
@@ -93,8 +101,8 @@ export const schedulePost = async (post) => {
           where: { id: post.id },
           data: {
             status: 'failed',
-            error: error.message
-          }
+            error: error.message,
+          },
         });
       }
     });

@@ -31,7 +31,7 @@ export default function NewPostModal({
   isOpen,
   onClose,
   onSave,
-  initialData,  
+  initialData,
   connectedAccounts = [],
 }: NewPostModalProps) {
   const [loading, setLoading] = useState(false);
@@ -39,10 +39,15 @@ export default function NewPostModal({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [publishNow, setPublishNow] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  
+  // Initialize with a date 1 hour from now for better default scheduling
+  const defaultDate = new Date();
+  defaultDate.setHours(defaultDate.getHours() + 1);
+  
   const [postData, setPostData] = useState<PostFormData>({
     caption: '',
-    scheduledDate: new Date().toISOString().split('T')[0],
-    scheduledTime: new Date().toTimeString().slice(0, 5),
+    scheduledDate: defaultDate.toISOString().split('T')[0],
+    scheduledTime: defaultDate.toTimeString().slice(0, 5),
     platform: '',
     hashtags: '',
     visibility: 'public',
@@ -58,13 +63,18 @@ export default function NewPostModal({
     { id: 'linkedin', name: 'LinkedIn', icon: Linkedin },
     { id: 'youtube', name: 'YouTube', icon: Youtube },
   ];
- // Filter platforms to only show connected accounts, including the "All" option
-const platforms = [
-  allPlatforms[0], // Add the "All" option first
-  ...allPlatforms.slice(1).filter(platform => 
-    connectedAccounts.some(account => account.platform.toLowerCase() === platform.id)
-  )
-];  
+
+  const platforms = [
+    allPlatforms[0],
+    ...allPlatforms
+      .slice(1)
+      .filter((platform) =>
+        connectedAccounts.some(
+          (account) => account.platform.toLowerCase() === platform.id
+        )
+      ),
+  ];
+
   useEffect(() => {
     if (initialData) {
       const scheduledDate = new Date(initialData.scheduledDate);
@@ -77,16 +87,32 @@ const platforms = [
         visibility: initialData.visibility || 'public',
         mediaFiles: [],
       });
-      // Set selected platforms based on initialData
-    const initialSelectedPlatforms = initialData.platforms.map(p => p.platform);
-    
-    // Check if all platforms are included
-    if (initialSelectedPlatforms.length === connectedAccounts.length) {
-      setSelectedPlatforms(['all']);
+
+      const initialSelectedPlatforms = initialData.platforms.map(
+        (p) => p.platform.toLowerCase()
+      );
+
+      if (initialSelectedPlatforms.length === connectedAccounts.length) {
+        setSelectedPlatforms(['all']);
+      } else {
+        setSelectedPlatforms(initialSelectedPlatforms);
+      }
     } else {
-      setSelectedPlatforms(initialSelectedPlatforms);
-    } }
-  }, [initialData, connectedAccounts]);
+      // Reset form when opening for new post
+      setPostData({
+        caption: '',
+        scheduledDate: defaultDate.toISOString().split('T')[0],
+        scheduledTime: defaultDate.toTimeString().slice(0, 5),
+        platform: '',
+        hashtags: '',
+        visibility: 'public',
+        mediaFiles: [],
+      });
+      setSelectedPlatforms([]);
+      setUploadedFiles([]);
+      setPublishNow(false);
+    }
+  }, [initialData, connectedAccounts, isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -96,29 +122,38 @@ const platforms = [
   }, [isOpen]);
 
   const handlePlatformSelect = (platformId: string) => {
-    console.log("plt:",platformId);
     if (platformId === 'all') {
       if (selectedPlatforms.includes('all')) {
         setSelectedPlatforms([]);
       } else {
-        setSelectedPlatforms(['all', ...platforms.map(p => p.id)]);
+        setSelectedPlatforms(['all']);
       }
     } else {
-      setSelectedPlatforms(prev => {
-        const newPlatforms = prev.filter(p => p !== 'all');
+      setSelectedPlatforms((prev) => {
+        const newPlatforms = prev.filter((p) => p !== 'all');
         if (newPlatforms.includes(platformId)) {
-          return newPlatforms.filter(p => p !== platformId);
+          return newPlatforms.filter((p) => p !== platformId);
         } else {
           return [...newPlatforms, platformId];
         }
       });
     }
-  };  
-  
-  const isPlatformSelected = (platformId: string) => {
-    return selectedPlatforms.includes(platformId) || 
-           (selectedPlatforms.includes('all') && platformId !== 'all');
   };
+
+  const isPlatformSelected = (platformId: string) => {
+    return (
+      selectedPlatforms.includes(platformId) ||
+      (selectedPlatforms.includes('all') && platformId !== 'all')
+    );
+  };
+
+  const getSelectedPlatformNames = (): string[] => {
+    if (selectedPlatforms.includes('all')) {
+      return connectedAccounts.map(account => account.platform.toLowerCase());
+    }
+    return selectedPlatforms.map(platform => platform.toLowerCase());
+  };
+
   const handleMediaUpload = async (files: File[]) => {
     try {
       setLoading(true);
@@ -157,12 +192,12 @@ const platforms = [
       setError('Please select at least one platform');
       return false;
     }
-    if (!publishNow) {
+    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
       const scheduledDateTime = new Date(
         `${postData.scheduledDate}T${postData.scheduledTime}`
       );
-      if (scheduledDateTime < new Date()) {
-        setError('Scheduled date cannot be in the past');
+      if (scheduledDateTime <= new Date()) {
+        setError('Scheduled date must be in the future');
         return false;
       }
     }
@@ -171,31 +206,41 @@ const platforms = [
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-  
+
     if (!validateForm()) return;
-  
+
     try {
       setLoading(true);
       setError(null);
-  
-      const platformsToPost = selectedPlatforms.includes('all')
-        ? connectedAccounts.map(account => account.id) // Add all connected accounts if "all" is selected
-        : selectedPlatforms;
-  
+
+      const platformsToPost = getSelectedPlatformNames();
+
+      // Create a proper date object by combining date and time
+      let scheduledDateTime: Date;
+      
+      if (publishNow) {
+        // Set scheduled date to 1 minute from now for immediate publishing
+        scheduledDateTime = new Date();
+        scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
+      } else {
+        // Parse the date and time inputs
+        const [year, month, day] = postData.scheduledDate!.split('-').map(Number);
+        const [hours, minutes] = postData.scheduledTime!.split(':').map(Number);
+        scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
+      }
+
       const requestBody = {
         caption: postData.caption,
-        scheduledDate: publishNow
-          ? null
-          : new Date(`${postData.scheduledDate}T${postData.scheduledTime}`).toISOString(),
-        selectedPlatforms: platformsToPost, // Make sure this is included
+        scheduledDate: scheduledDateTime.toISOString(),
+        selectedPlatforms: platformsToPost,
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles: uploadedFiles.length > 0
-          ? JSON.stringify(uploadedFiles.map(file => file.id))
+          ? uploadedFiles.map(file => file.id)
           : null,
-        publishNow: publishNow,
+        publishNow
       };
-  
+
       const post = await createPost(requestBody);
       onSave(post);
       onClose();
@@ -258,22 +303,20 @@ const platforms = [
             </div>
 
             {selectedPlatforms.length > 0 && (
-  <div className="flex flex-wrap gap-2">
-    {platforms
-      .filter(p => isPlatformSelected(p.id) && p.id !== 'all')
-      .map(platform => (
-        <div
-          key={platform.id}
-          className="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full"
-        >
-          <platform.icon className="w-4 h-4 mr-1" />
-          <span className="text-sm">{platform.name}</span>
-        </div>
-      ))}
-  </div>
-)}
-
-
+              <div className="flex flex-wrap gap-2">
+                {platforms
+                  .filter((p) => isPlatformSelected(p.id) && p.id !== 'all')
+                  .map((platform) => (
+                    <div
+                      key={platform.id}
+                      className="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full"
+                    >
+                      <platform.icon className="w-4 h-4 mr-1" />
+                      <span className="text-sm">{platform.name}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -432,4 +475,4 @@ const platforms = [
       </div>
     </div>
   );
-} 
+}

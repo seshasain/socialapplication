@@ -28,28 +28,24 @@ model User {
 }
 
 model Post {
-  id             String         @id @default(cuid())
-  userId         String
-  user           User           @relation(fields: [userId], references: [id])
-  caption        String
-  scheduledDate  DateTime
-  hashtags       String?
-  visibility     String         @default("public")
-  status         String         @default("scheduled")
-  error          String?
-  mediaFiles     MediaFile[]    @relation("PostToMediaFile")
-  platforms      PostPlatform[]
-  engagementRate Float?         @default(0)
-  likes          Int?           @default(0)
-  comments       Int?           @default(0)
-  shares         Int?           @default(0)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  externalPostId String?        @default("")
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  caption       String
+  scheduledDate DateTime
+  hashtags      String?
+  visibility    String        @default("public")
+  error         String?
+  mediaFiles    MediaFile[]   @relation("PostToMediaFile")
+  platforms     PostPlatform[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  externalPostId String?      @default("")
 
-  @@index([userId, status])
+  @@index([userId])
   @@index([scheduledDate])
 }
+
 
 model PostPlatform {
   id          String    @id @default(cuid())

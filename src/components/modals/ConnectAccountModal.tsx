@@ -139,6 +139,7 @@ export default function ConnectAccountModal({
       setError(err instanceof Error ? err.message : 'Failed to disconnect account');
     } finally {
       setLoading(null);
+      
     }
   };
 

@@ -16,10 +16,12 @@ async function main() {
 
   // Create password hash
   const passwordHash = await bcrypt.hash('123456789', 10);
+  
   // Create users
   const users = await Promise.all([
     prisma.user.create({
       data: {
+        //id: 'cm34ifpf30002sujn9pt8wyus',
         email: 'admin@example.com',
         password: passwordHash,
         name: 'John Doe',
@@ -115,7 +117,7 @@ async function main() {
     }),
   ]);
 
-  // Create posts with platform-specific data
+  // Create posts without the removed fields
   const posts = await Promise.all([
     prisma.post.create({
       data: {
@@ -124,11 +126,6 @@ async function main() {
         scheduledDate: new Date("2024-11-06T09:43:00.954Z"),
         hashtags: "#summer #fashion #newcollection",
         visibility: "public",
-        status: "scheduled",
-        engagementRate: 4.2,
-        likes: 0,
-        comments: 0,
-        shares: 0,
         mediaFiles: {
           connect: [{ id: mediaFiles[0].id }]
         },
@@ -155,11 +152,6 @@ async function main() {
         scheduledDate: new Date("2024-12-01T10:00:00.000Z"),
         hashtags: "#winter #fashion #preview",
         visibility: "public",
-        status: "scheduled",
-        engagementRate: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
         mediaFiles: {
           connect: [{ id: mediaFiles[1].id }]
         },
