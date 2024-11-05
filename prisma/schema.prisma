@@ -38,6 +38,7 @@ model Post {
   error         String?
   mediaFiles    MediaFile[]   @relation("PostToMediaFile")
   platforms     PostPlatform[]
+  analytics     Analytics[]   // Added relation to Analytics
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   externalPostId String?      @default("")
@@ -45,7 +46,6 @@ model Post {
   @@index([userId])
   @@index([scheduledDate])
 }
-
 
 model PostPlatform {
   id          String    @id @default(cuid())
@@ -62,6 +62,7 @@ model PostPlatform {
 
   @@index([postId])
   @@index([platform])
+  @@unique([id, postId])
 }
 
 model MediaFile {
@@ -110,10 +111,13 @@ model UserSettings {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
+
 model Analytics {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
+  postId      String?  // Added optional post ID
+  post        Post?    @relation(fields: [postId], references: [id]) // Added relation to Post
   date        DateTime
   platform    String
   reach       Int      @default(0)
@@ -127,6 +131,7 @@ model Analytics {
 
   @@index([userId, date])
   @@index([platform])
+  @@index([postId]) // Added index for postId
 }
 
 model TeamMember {

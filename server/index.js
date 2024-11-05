@@ -294,10 +294,10 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
       default: // 7d
         startDate.setDate(startDate.getDate() - 7);
     }
-      // Use .toISOString() to convert to UTC (ISO 8601 format)
-  const startDateISOString = startDate.toISOString();
-  const endDateISOString = endDate.toISOString();
-    console.log(startDateISOString,endDateISOString);
+    // Use .toISOString() to convert to UTC (ISO 8601 format)
+    const startDateISOString = startDate.toISOString();
+    const endDateISOString = endDate.toISOString();
+    console.log(startDateISOString, endDateISOString);
     const analytics = await prisma.analytics.findMany({
       where: {
         userId,
@@ -825,7 +825,35 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
 });
 
 
-// Create/Schedule post endpoint
+/// Delete post endpoint
+app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete associated analytics first
+    await prisma.analytics.deleteMany({
+      where: { postId: id }
+    });
+
+    // Delete post platforms
+    await prisma.postPlatform.deleteMany({
+      where: { postId: id }
+    });
+
+    // Delete the post
+    await prisma.post.delete({
+      where: { id }
+    });
+
+    res.status(200).json({ message: 'Post deleted successfully' });
+  } catch (error) {
+    console.error('Post deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+
+// Update the post creation endpoint to handle multiple platforms
 app.post('/api/posts', authenticateToken, async (req, res) => {
   try {
     const {
@@ -841,8 +869,8 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
     if (!caption || !platforms) {
       return res.status(400).json({ error: 'Caption and platforms are required' });
     }
+
     const selectedPlatforms = JSON.parse(platforms);
-    console.log("selectedplatforms",selectedPlatforms);
 
     // Create post
     const postData = {
@@ -850,6 +878,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       caption,
       scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
       hashtags: hashtags || '',
+      visibility: visibility || 'public',
       platforms: {
         create: selectedPlatforms.map(platform => ({
           platform,
@@ -868,12 +897,28 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       }
     }
 
-    // After creating the post, you get the postId
+    // Create post with initial analytics entries
     const post = await prisma.post.create({
-      data: postData,
+      data: {
+        ...postData,
+        analytics: {
+          create: selectedPlatforms.map(platform => ({
+            userId: req.user.id,
+            platform: platform.toLowerCase(),
+            date: new Date(),
+            reach: 0,
+            impressions: 0,
+            engagement: 0,
+            clicks: 0,
+            shares: 0,
+            saves: 0
+          }))
+        }
+      },
       include: {
         mediaFiles: true,
         platforms: true,
+        analytics: true,
         user: {
           include: {
             socialAccounts: true
@@ -881,19 +926,20 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
         }
       }
     });
-    // In the post creation endpoint where you handle publishing
+
     if (publishNow) {
+      // For each platform, try to publish content
       for (const platformData of post.platforms) {
-        console.log("working for:",post);
         const socialAccount = post.user.socialAccounts.find(
           account => account.platform.toLowerCase() === platformData.platform.toLowerCase()
         );
 
         if (!socialAccount) {
+          // If no social account found, update the platform status to failed
           await prisma.postPlatform.update({
             where: { id: platformData.id },
             data: {
-              status: 'failed1',
+              status: 'failed',
               error: `No connected ${platformData.platform} account found`
             }
           });
@@ -901,38 +947,64 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
         }
 
         try {
-          // const client = await SocialMediaManager.initializeClient(platformData.platform, {
-          //   accessToken: socialAccount.accessToken,
-          //   accessSecret: socialAccount.refreshToken,
-          // });
-          const result = '';
-          // const result = await SocialMediaManager.publishContent(
-          //   platformData.platform,
-          //   client,
-          //   {
-          //     caption: `${caption} ${hashtags}`.trim(),
-          //     mediaFiles: post.mediaFiles
-          //   }
-          // );
-          console.log("Publish result:", platformData);
+          // Initialize client for the platform
+          const client = await SocialMediaManager.initializeClient(platformData.platform, {
+            accessToken: socialAccount.accessToken,
+            accessSecret: socialAccount.refreshToken,
+            username: socialAccount.username
+          });
+
+          // Publish the content on the platform
+          const result = await SocialMediaManager.publishContent(
+            platformData.platform,
+            client,
+            {
+              caption: `${caption} ${hashtags}`.trim(),
+              mediaFiles: post.mediaFiles
+            }
+          );
+
+          // Update the platform status after successful publishing
           await prisma.postPlatform.update({
             where: { id: platformData.id },
             data: {
-              status: 'published'
+              status: 'published',
+              publishedAt: new Date(),
+              externalId: result.id
             }
           });
+
         } catch (error) {
+          console.log(error);
+          // If an error occurs during publishing, update the platform status to failed
           await prisma.postPlatform.update({
             where: { id: platformData.id },
             data: {
               status: 'failed',
-              error: error.message
+              error: `Failed to publish content on ${platformData.platform}: ${error.message}`
             }
           });
         }
       }
-    }
-    else {
+
+      // After attempting to publish all platforms, update the post status based on the platform statuses
+      const updatedPlatforms = await prisma.postPlatform.findMany({
+        where: { postId: post.id }
+      });
+
+      const allPublished = updatedPlatforms.every(p => p.status === 'published');
+      const allFailed = updatedPlatforms.every(p => p.status === 'failed');
+
+      // Only update the `error` field on the post if all platforms failed
+      await prisma.post.update({
+        where: { id: post.id },
+        data: {
+          error: allFailed ? 'Failed to publish to all platforms' : null
+        }
+      });
+
+    } else {
+      // If not publishing immediately, schedule the post
       await schedulePost(post);
     }
 
@@ -943,53 +1015,6 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete post
-app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Verify post ownership
-    const post = await prisma.post.findFirst({
-      where: {
-        id,
-        userId: req.user.id,
-      },
-    });
-
-    if (!post) {
-      return res.status(404).json({ error: 'Post not found or unauthorized' });
-    }
-
-    // Cancel any scheduled job first
-    await cancelScheduledPost(id);
-
-    // Delete the post and related data in a transaction
-    await prisma.$transaction([
-      // Delete platform settings
-      prisma.postPlatform.deleteMany({
-        where: { postId: id }
-      }),
-      // Delete media file associations
-      prisma.post.update({
-        where: { id },
-        data: {
-          mediaFiles: {
-            set: [] // Remove all media file associations
-          }
-        }
-      }),
-      // Finally delete the post
-      prisma.post.delete({
-        where: { id }
-      })
-    ]);
-
-    res.json({ message: 'Post deleted successfully' });
-  } catch (error) {
-    console.error('Post deletion error:', error);
-    res.status(500).json({ error: 'Failed to delete post' });
-  }
-});
 app.get('/api/posts/history', authenticateToken, async (req, res) => {
   try {
     const { filter = 'all', sortBy = 'date', order = 'desc' } = req.query;
@@ -1051,20 +1076,18 @@ app.get('/api/posts/history', authenticateToken, async (req, res) => {
 
 
 
-// Add this endpoint for retrying failed posts
+// Retry failed post endpoint
 app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verify post ownership
-    const post = await prisma.post.findFirst({
-      where: {
-        id,
-        userId: req.user.id,
-        status: 'failed'
-      },
+    // Get the post with all related data
+    const post = await prisma.post.findUnique({
+      where: { id },
       include: {
         mediaFiles: true,
+        platforms: true,
+        analytics: true,
         user: {
           include: {
             socialAccounts: true
@@ -1074,67 +1097,120 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
     });
 
     if (!post) {
-      return res.status(404).json({ error: 'Failed post not found or unauthorized' });
+      return res.status(404).json({ error: 'Post not found' });
     }
 
-    // Update post status to retrying
-    await prisma.post.update({
-      where: { id },
-      data: { status: 'retrying' }
+    // Reset analytics for failed platforms
+    const failedPlatforms = post.platforms.filter(p => p.status === 'failed');
+
+    for (const platform of failedPlatforms) {
+      // Delete existing analytics for failed platform
+      await prisma.analytics.deleteMany({
+        where: {
+          postId: post.id,
+          platform: platform.platform.toLowerCase()
+        }
+      });
+
+      // Create new analytics entry
+      await prisma.analytics.create({
+        data: {
+          userId: post.userId,
+          postId: post.id,
+          platform: platform.platform.toLowerCase(),
+          date: new Date(),
+          reach: 0,
+          impressions: 0,
+          engagement: 0,
+          clicks: 0,
+          shares: 0,
+          saves: 0
+        }
+      });
+
+      const socialAccount = post.user.socialAccounts.find(
+        account => account.platform.toLowerCase() === platform.platform.toLowerCase()
+      );
+
+      if (!socialAccount) {
+        await prisma.postPlatform.update({
+          where: { id: platform.id },
+          data: {
+            status: 'failed',
+            error: `No connected ${platform.platform} account found`
+          }
+        });
+        continue;
+      }
+
+      try {
+        const client = await SocialMediaManager.initializeClient(platform.platform, {
+          accessToken: socialAccount.accessToken,
+          accessSecret: socialAccount.refreshToken,
+          username: socialAccount.username
+        });
+
+        const result = await SocialMediaManager.publishContent(
+          platform.platform,
+          client,
+          {
+            caption: `${post.caption} ${post.hashtags}`.trim(),
+            mediaFiles: post.mediaFiles
+          }
+        );
+
+        await prisma.postPlatform.update({
+          where: { id: platform.id },
+          data: {
+            status: 'published',
+            publishedAt: new Date(),
+            externalId: result.id,
+            error: null
+          }
+        });
+      } catch (error) {
+        await prisma.postPlatform.update({
+          where: { id: platform.id },
+          data: {
+            status: 'failed',
+            error: error.message
+          }
+        });
+      }
+    }
+
+    // Update main post status
+    const updatedPlatforms = await prisma.postPlatform.findMany({
+      where: { postId: post.id }
     });
 
-    // Get social account for the platform
-    const socialAccount = post.user.socialAccounts.find(
-      account => account.platform.toLowerCase() === post.platform.toLowerCase()
-    );
+    const allPublished = updatedPlatforms.every(p => p.status === 'published');
+    const allFailed = updatedPlatforms.every(p => p.status === 'failed');
 
-    if (!socialAccount) {
-      throw new Error(`No connected ${post.platform} account found`);
-    }
-
-    // Attempt to publish based on platform
-    switch (post.platform.toLowerCase()) {
-      case 'twitter':
-        const client = createTwitterClient(
-          socialAccount.accessToken,
-          socialAccount.refreshToken
-        );
-        await postToTwitter(client, {
-          caption: `${post.caption} ${post.hashtags}`.trim(),
-          mediaFiles: post.mediaFiles
-        });
-        break;
-      // Add cases for other platforms
-      default:
-        throw new Error(`Publishing to ${post.platform} not implemented yet`);
-    }
-
-    // Update post status to published if successful
-    const updatedPost = await prisma.post.update({
-      where: { id },
+    await prisma.post.update({
+      where: { id: post.id },
       data: {
-        status: 'published',
-        publishedDate: new Date(),
-        error: null
+        status: allPublished ? 'published' : allFailed ? 'failed' : 'partial',
+        error: allFailed ? 'Failed to publish to all platforms' : null
       }
     });
 
-    res.json(updatedPost);
+    const updatedPost = await prisma.post.findUnique({
+      where: { id },
+      include: {
+        mediaFiles: true,
+        platforms: true,
+        analytics: true
+      }
+    });
+
+    res.status(200).json(updatedPost);
   } catch (error) {
     console.error('Post retry error:', error);
-
-    // Update post with error
-    await prisma.post.update({
-      where: { id: req.params.id },
-      data: {
-        status: 'failed',
-        error: error.message
-      }
-    });
-
     res.status(500).json({ error: 'Failed to retry post' });
   }
 });
+
 
 // Update the PUT endpoint for updating posts
 app.put('/api/posts/:id', authenticateToken, async (req, res) => {

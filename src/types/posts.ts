@@ -39,7 +39,6 @@ export interface Post {
 export interface PostFormData {
   caption: string;
   scheduledDate: string;
-  scheduledTime: string;
   selectedPlatforms?: string[];
   hashtags?: string;
   visibility: string;

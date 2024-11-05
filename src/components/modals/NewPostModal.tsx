@@ -47,7 +47,6 @@ export default function NewPostModal({
   const [postData, setPostData] = useState<PostFormData>({
     caption: '',
     scheduledDate: defaultDate.toISOString().split('T')[0],
-    scheduledTime: defaultDate.toTimeString().slice(0, 5),
     platform: '',
     hashtags: '',
     visibility: 'public',
@@ -242,6 +241,7 @@ export default function NewPostModal({
       };
 
       const post = await createPost(requestBody);
+      console.log("resuqst",requestBody);
       onSave(post);
       onClose();
     } catch (err) {

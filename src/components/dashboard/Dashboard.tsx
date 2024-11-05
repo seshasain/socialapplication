@@ -16,7 +16,13 @@ import SettingsView from '../dashboard/SettingsView';
 import Overview from '../dashboard/Overview';
 import HistoryView from '../dashboard/HistoryView';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
+type View =
+  | 'overview'
+  | 'calendar'
+  | 'analytics'
+  | 'team'
+  | 'settings'
+  | 'history';
 
 export default function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('overview');

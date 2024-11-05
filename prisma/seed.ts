@@ -16,7 +16,7 @@ async function main() {
 
   // Create password hash
   const passwordHash = await bcrypt.hash('123456789', 10);
-  
+
   // Create users
   const users = await Promise.all([
     prisma.user.create({
@@ -122,48 +122,48 @@ async function main() {
     prisma.post.create({
       data: {
         userId: users[0].id,
-        caption: "Summer Collection Launch! 🌞 #SummerFashion",
-        scheduledDate: new Date("2024-11-06T09:43:00.954Z"),
-        hashtags: "#summer #fashion #newcollection",
-        visibility: "public",
+        caption: 'Summer Collection Launch! 🌞 #SummerFashion',
+        scheduledDate: new Date('2024-11-06T09:43:00.954Z'),
+        hashtags: '#summer #fashion #newcollection',
+        visibility: 'public',
         mediaFiles: {
-          connect: [{ id: mediaFiles[0].id }]
+          connect: [{ id: mediaFiles[0].id }],
         },
         platforms: {
           create: [
             {
-              platform: "instagram",
-              status: "scheduled",
-              settings: {}
+              platform: 'instagram',
+              status: 'scheduled',
+              settings: {},
             },
             {
-              platform: "twitter",
-              status: "scheduled",
-              settings: {}
-            }
-          ]
-        }
+              platform: 'twitter',
+              status: 'scheduled',
+              settings: {},
+            },
+          ],
+        },
       },
     }),
     prisma.post.create({
       data: {
         userId: users[0].id,
-        caption: "Winter Collection Preview ❄️ #WinterFashion",
-        scheduledDate: new Date("2024-12-01T10:00:00.000Z"),
-        hashtags: "#winter #fashion #preview",
-        visibility: "public",
+        caption: 'Winter Collection Preview ❄️ #WinterFashion',
+        scheduledDate: new Date('2024-12-01T10:00:00.000Z'),
+        hashtags: '#winter #fashion #preview',
+        visibility: 'public',
         mediaFiles: {
-          connect: [{ id: mediaFiles[1].id }]
+          connect: [{ id: mediaFiles[1].id }],
         },
         platforms: {
           create: [
             {
-              platform: "instagram",
-              status: "scheduled",
-              settings: {}
-            }
-          ]
-        }
+              platform: 'instagram',
+              status: 'scheduled',
+              settings: {},
+            },
+          ],
+        },
       },
     }),
   ]);
@@ -186,8 +186,8 @@ async function main() {
     prisma.analytics.create({
       data: {
         userId: users[0].id,
-        date: new Date("2024-03-01"),
-        platform: "instagram",
+        date: new Date('2024-03-01'),
+        platform: 'instagram',
         reach: 1500,
         impressions: 2000,
         engagement: 300,
@@ -199,8 +199,8 @@ async function main() {
     prisma.analytics.create({
       data: {
         userId: users[0].id,
-        date: new Date("2024-03-01"),
-        platform: "twitter",
+        date: new Date('2024-03-01'),
+        platform: 'twitter',
         reach: 1000,
         impressions: 1500,
         engagement: 200,
