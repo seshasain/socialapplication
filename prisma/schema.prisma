@@ -13,7 +13,7 @@ model User {
   password       String
   name           String?
   role           String          @default("USER")
-  subscription   String          @default("free")
+  subscription   Subscription?
   timezone       String?         @default("UTC")
   bio            String?
   avatar         String?
@@ -27,6 +27,114 @@ model User {
   teamMembers    TeamMember[]    
 }
 
+model Subscription {
+  id                String             @id @default(cuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id])
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id])
+  status           String             @default("active") // active, canceled, past_due
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean          @default(false)
+  paymentMethod     PaymentMethod?
+  invoices          Invoice[]
+  usageRecords      UsageRecord[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([planId])
+}
+
+model Plan {
+  id              String        @id @default(cuid())
+  name            String        @unique
+  description     String
+  price           Float
+  interval        String        // monthly, yearly
+  features        PlanFeature[]
+  subscriptions   Subscription[]
+  active          Boolean       @default(true)
+  sortOrder       Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  limits          PlanLimit[]
+  metadata        Json          @default("{}")
+
+  @@index([name])
+}
+
+model PlanFeature {
+  id          String   @id @default(cuid())
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+  name        String
+  description String?
+  included    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([planId])
+}
+
+model PlanLimit {
+  id          String   @id @default(cuid())
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+  name        String   // e.g., "social_accounts", "scheduled_posts"
+  value       Int      // The limit value
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([planId])
+}
+
+model PaymentMethod {
+  id             String       @id @default(cuid())
+  subscriptionId String       @unique
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  type           String       // card, paypal, etc.
+  brand          String?      // visa, mastercard, etc.
+  last4          String?      // Last 4 digits for cards
+  expiryMonth    Int?        // For cards
+  expiryYear     Int?        // For cards
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([subscriptionId])
+}
+
+model Invoice {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  amount         Float
+  currency       String       @default("USD")
+  status         String       // paid, pending, failed
+  paidAt         DateTime?
+  hostedUrl      String?      // URL to hosted invoice page
+  pdfUrl         String?      // URL to PDF invoice
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([subscriptionId])
+}
+
+model UsageRecord {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  feature        String       // The feature being tracked
+  quantity       Int          // Amount used
+  recordedAt     DateTime     @default(now())
+  metadata       Json         @default("{}")
+
+  @@index([subscriptionId])
+  @@index([feature])
+}
+
 model Post {
   id            String        @id @default(cuid())
   userId        String
@@ -38,7 +146,6 @@ model Post {
   error         String?
   mediaFiles    MediaFile[]   @relation("PostToMediaFile")
   platforms     PostPlatform[]
-  analytics     Analytics[]   // Added relation to Analytics
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   externalPostId String?      @default("")
@@ -62,7 +169,6 @@ model PostPlatform {
 
   @@index([postId])
   @@index([platform])
-  @@unique([id, postId])
 }
 
 model MediaFile {
@@ -116,8 +222,6 @@ model Analytics {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
-  postId      String?  // Added optional post ID
-  post        Post?    @relation(fields: [postId], references: [id]) // Added relation to Post
   date        DateTime
   platform    String
   reach       Int      @default(0)
@@ -131,7 +235,6 @@ model Analytics {
 
   @@index([userId, date])
   @@index([platform])
-  @@index([postId]) // Added index for postId
 }
 
 model TeamMember {

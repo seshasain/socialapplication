@@ -241,7 +241,6 @@ export default function NewPostModal({
       };
 
       const post = await createPost(requestBody);
-      console.log("resuqst",requestBody);
       onSave(post);
       onClose();
     } catch (err) {

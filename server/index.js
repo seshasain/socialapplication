@@ -1144,12 +1144,14 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
       }
 
       try {
+        // Initialize client for the platform
         const client = await SocialMediaManager.initializeClient(platform.platform, {
           accessToken: socialAccount.accessToken,
           accessSecret: socialAccount.refreshToken,
           username: socialAccount.username
         });
 
+        // Publish the content on the platform
         const result = await SocialMediaManager.publishContent(
           platform.platform,
           client,

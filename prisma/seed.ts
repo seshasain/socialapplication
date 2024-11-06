@@ -5,6 +5,13 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Clear existing data
+  await prisma.usageRecord.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.paymentMethod.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.planFeature.deleteMany();
+  await prisma.planLimit.deleteMany();
+  await prisma.plan.deleteMany();
   await prisma.analytics.deleteMany();
   await prisma.postPlatform.deleteMany();
   await prisma.post.deleteMany();
@@ -14,22 +21,119 @@ async function main() {
   await prisma.teamMember.deleteMany();
   await prisma.user.deleteMany();
 
+  // Create plans
+  const plans = await Promise.all([
+    prisma.plan.create({
+      data: {
+        name: 'Free',
+        description: 'Basic features for individuals',
+        price: 0,
+        interval: 'monthly',
+        sortOrder: 1,
+        features: {
+          create: [
+            { name: 'Up to 3 social accounts', included: true },
+            { name: 'Basic analytics', included: true },
+            { name: 'Manual post scheduling', included: true },
+            { name: 'Single user', included: true },
+          ],
+        },
+        limits: {
+          create: [
+            { name: 'social_accounts', value: 3 },
+            { name: 'scheduled_posts', value: 10 },
+            { name: 'team_members', value: 1 },
+          ],
+        },
+      },
+    }),
+    prisma.plan.create({
+      data: {
+        name: 'Pro',
+        description: 'Advanced features for professionals',
+        price: 29.99,
+        interval: 'monthly',
+        sortOrder: 2,
+        features: {
+          create: [
+            { name: 'Up to 10 social accounts', included: true },
+            { name: 'Advanced analytics', included: true },
+            { name: 'Auto post scheduling', included: true },
+            { name: 'Team collaboration', included: true },
+            { name: 'Custom reporting', included: true },
+            { name: 'Priority support', included: true },
+          ],
+        },
+        limits: {
+          create: [
+            { name: 'social_accounts', value: 10 },
+            { name: 'scheduled_posts', value: 100 },
+            { name: 'team_members', value: 5 },
+          ],
+        },
+      },
+    }),
+    prisma.plan.create({
+      data: {
+        name: 'Business',
+        description: 'Enterprise-grade solution',
+        price: 99.99,
+        interval: 'monthly',
+        sortOrder: 3,
+        features: {
+          create: [
+            { name: 'Unlimited social accounts', included: true },
+            { name: 'Advanced analytics', included: true },
+            { name: 'AI content suggestions', included: true },
+            { name: 'Advanced team roles', included: true },
+            { name: 'Custom branding', included: true },
+            { name: 'API access', included: true },
+            { name: 'Dedicated support', included: true },
+          ],
+        },
+        limits: {
+          create: [
+            { name: 'social_accounts', value: -1 }, // -1 indicates unlimited
+            { name: 'scheduled_posts', value: -1 },
+            { name: 'team_members', value: -1 },
+          ],
+        },
+      },
+    }),
+  ]);
+
   // Create password hash
   const passwordHash = await bcrypt.hash('123456789', 10);
 
-  // Create users
+  // Create users with subscriptions
   const users = await Promise.all([
     prisma.user.create({
       data: {
-        //id: 'cm34ifpf30002sujn9pt8wyus',
         email: 'admin@example.com',
         password: passwordHash,
         name: 'John Doe',
         role: 'ADMIN',
-        subscription: 'premium',
         timezone: 'America/New_York',
         bio: 'Digital Marketing Expert',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
+        subscription: {
+          create: {
+            planId: plans[1].id, // Pro plan
+            status: 'active',
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+            paymentMethod: {
+              create: {
+                type: 'card',
+                brand: 'visa',
+                last4: '4242',
+                expiryMonth: 12,
+                expiryYear: 2024,
+                isDefault: true,
+              },
+            },
+          },
+        },
         settings: {
           create: {
             emailNotifications: true,
@@ -47,11 +151,19 @@ async function main() {
       data: {
         email: 'jane@example.com',
         password: await bcrypt.hash('password123', 10),
+        name: 'Jane Smith',
         role: 'USER',
-        subscription: 'free',
         timezone: 'Europe/London',
         bio: 'Content Creator',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jane',
+        subscription: {
+          create: {
+            planId: plans[0].id, // Free plan
+            status: 'active',
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        },
         settings: {
           create: {
             emailNotifications: true,
@@ -66,6 +178,36 @@ async function main() {
       },
     }),
   ]);
+
+  // Create invoices for the pro user
+  const proUserSubscription = await prisma.subscription.findFirst({
+    where: { userId: users[0].id },
+  });
+
+  if (proUserSubscription) {
+    await Promise.all([
+      prisma.invoice.create({
+        data: {
+          subscriptionId: proUserSubscription.id,
+          amount: 29.99,
+          status: 'paid',
+          paidAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          hostedUrl: 'https://example.com/invoice/1',
+          pdfUrl: 'https://example.com/invoice/1/pdf',
+        },
+      }),
+      prisma.invoice.create({
+        data: {
+          subscriptionId: proUserSubscription.id,
+          amount: 29.99,
+          status: 'paid',
+          paidAt: new Date(),
+          hostedUrl: 'https://example.com/invoice/2',
+          pdfUrl: 'https://example.com/invoice/2/pdf',
+        },
+      }),
+    ]);
+  }
 
   // Create social accounts
   const socialAccounts = await Promise.all([
@@ -93,6 +235,32 @@ async function main() {
     }),
   ]);
 
+  // Create usage records
+  if (proUserSubscription) {
+    await Promise.all([
+      prisma.usageRecord.create({
+        data: {
+          subscriptionId: proUserSubscription.id,
+          feature: 'scheduled_posts',
+          quantity: 45,
+          metadata: {
+            lastRecorded: new Date().toISOString(),
+          },
+        },
+      }),
+      prisma.usageRecord.create({
+        data: {
+          subscriptionId: proUserSubscription.id,
+          feature: 'social_accounts',
+          quantity: 2,
+          metadata: {
+            lastRecorded: new Date().toISOString(),
+          },
+        },
+      }),
+    ]);
+  }
+
   // Create media files
   const mediaFiles = await Promise.all([
     prisma.mediaFile.create({
@@ -117,7 +285,7 @@ async function main() {
     }),
   ]);
 
-  // Create posts without the removed fields
+  // Create posts
   const posts = await Promise.all([
     prisma.post.create({
       data: {
@@ -212,6 +380,7 @@ async function main() {
   ]);
 
   console.log({
+    plans: plans.length,
     users: users.length,
     socialAccounts: socialAccounts.length,
     mediaFiles: mediaFiles.length,

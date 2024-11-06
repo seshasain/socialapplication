@@ -10,8 +10,11 @@ import {
   MessageCircle,
   Share2,
   Calendar,
+  Lock,
+  Crown,
 } from 'lucide-react';
-import { generateMockAnalytics } from '../../utils/mockData';
+import { useAuth } from '../../context/AuthContext';
+import PricingModal from '../modals/PricingModal';
 
 interface AnalyticsData {
   timeRange: string;
@@ -30,6 +33,20 @@ interface AnalyticsData {
     shares: number;
   };
 }
+interface PricingModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+interface PricingPlan {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  features: string[];
+  icon: React.ElementType;
+  popular?: boolean;
+}
 
 export default function Analytics() {
   const [timeRange, setTimeRange] = useState('7d');
@@ -37,45 +54,106 @@ export default function Analytics() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const { user } = useAuth();
+
+  const isFreeTier = user?.subscription === 'free';
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) throw new Error('No authentication token');
+    if (!isFreeTier) {
+      fetchAnalytics();
+    } else {
+      setLoading(false);
+    }
+  }, [timeRange, isFreeTier]);
 
-        const response = await fetch(
-          `http://localhost:5000/api/analytics/overview?timeRange=${timeRange}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        const data = await response.json();
-        setAnalyticsData(data);
-        
-        setError(null);
-      } 
-         catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchAnalytics = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token');
 
-    fetchAnalytics();
-  }, [timeRange]);
-
-  const getFilteredData = () => {
-    if (!analyticsData?.analytics) return [];
-    return analyticsData.analytics.filter(
-      (item) => platformFilter === 'all' || item.platform === platformFilter
-    );
+      const response = await fetch(
+        `http://localhost:5000/api/analytics/overview?timeRange=${timeRange}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+      setAnalyticsData(data);
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to fetch analytics'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
+  if (isFreeTier) {
+    return (
+      <div className="relative">
+        {/* Blurred Analytics Background */}
+        <div className="filter blur-sm pointer-events-none">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl p-6 shadow-sm border border-gray-100"
+              >
+                <div className="h-20 bg-gray-100 rounded-lg"></div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="h-80 bg-gray-100 rounded-lg"></div>
+          </div>
+        </div>
+
+        {/* Premium Feature Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 backdrop-blur-sm rounded-xl">
+          <div className="text-center p-8 max-w-md">
+            <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Crown className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-4">
+              Unlock Advanced Analytics
+            </h3>
+            <p className="text-gray-200 mb-6">
+              Get detailed insights into your social media performance, engagement metrics, and audience growth with our Premium plan.
+            </p>
+            <button
+              onClick={() => setShowPricingModal(true)}
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              Upgrade to Premium
+            </button>
+          </div>
+        </div>
+
+        <PricingModal
+          isOpen={showPricingModal}
+          onClose={() => setShowPricingModal(false)}
+        />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  const filteredData = analyticsData?.analytics.filter(
+    (item) => platformFilter === 'all' || item.platform === platformFilter
+  ) || [];
+
   const getFilteredTotals = () => {
-    const filteredData = getFilteredData();
     return filteredData.reduce(
       (acc, curr) => ({
         reach: acc.reach + (curr.reach || 0),
@@ -95,9 +173,7 @@ export default function Analytics() {
   };
 
   const getGraphData = () => {
-    const filteredData = getFilteredData();
     const dates = [...new Set(filteredData.map((item) => item.date))].sort();
-
     return dates.map((date) => {
       const dayData = filteredData.filter((item) => item.date === date);
       return {
@@ -107,14 +183,6 @@ export default function Analytics() {
       };
     });
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   const filteredTotals = getFilteredTotals();
   const graphData = getGraphData();
@@ -160,10 +228,7 @@ export default function Analytics() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Time Range
-          </label>
+        <div className="relative flex-1 max-w-md">
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
@@ -174,10 +239,8 @@ export default function Analytics() {
             <option value="90d">Last 90 days</option>
           </select>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Platform
-          </label>
+
+        <div className="flex items-center space-x-3">
           <select
             value={platformFilter}
             onChange={(e) => setPlatformFilter(e.target.value)}
@@ -186,6 +249,7 @@ export default function Analytics() {
             <option value="all">All Platforms</option>
             <option value="instagram">Instagram</option>
             <option value="facebook">Facebook</option>
+            <option value="twitter">Twitter</option>
           </select>
         </div>
       </div>
