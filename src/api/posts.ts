@@ -49,7 +49,6 @@ export async function createPost(data: PostFormData): Promise<Post> {
   try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No authentication token');
-
     const requestBody = {
       caption: data.caption,
       scheduledDate: data.scheduledDate && data.scheduledTime

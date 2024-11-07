@@ -154,6 +154,7 @@ export default function NewPostModal({
   };
 
   const handleMediaUpload = async (files: File[]) => {
+    
     try {
       setLoading(true);
       setUploadError(null);

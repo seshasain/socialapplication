@@ -57,8 +57,11 @@ export default function Analytics() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const { user } = useAuth();
 
-  const isFreeTier = user?.subscription === 'free';
-
+  const hasAnalyticsAccess = () => {
+    const subscription = user?.subscription;
+    return subscription?.planId !== 'free' && subscription?.status === 'active';
+  };
+  const isFreeTier =  !hasAnalyticsAccess();
   useEffect(() => {
     if (!isFreeTier) {
       fetchAnalytics();
@@ -228,7 +231,7 @@ export default function Analytics() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative max-w-md">
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}

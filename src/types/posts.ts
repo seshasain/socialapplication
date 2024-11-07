@@ -9,7 +9,26 @@ export interface MediaFile {
   createdAt: string;
   updatedAt: string;
 }
-
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  subscription: {
+    planId: string;
+    status: string;
+    plan: {
+      name: string;
+      price: number;
+      interval: string;
+    };
+  };
+  timezone?: string;
+  bio?: string;
+  avatar?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface PostPlatform {
   id: string;
   postId: string;

@@ -11,7 +11,7 @@ import {
 import Sidebar from '../dashboard/Sidebar';
 import CalendarView from '../dashboard/CalendarView';
 import Analytics from '../dashboard/Analytics';
-import TeamView from '../dashboard/TeamView';
+import TeamView from './context/TeamView';
 import SettingsView from '../dashboard/SettingsView';
 import Overview from '../dashboard/Overview';
 import HistoryView from '../dashboard/HistoryView';

@@ -462,7 +462,7 @@ export default function HistoryView() {
                     </div>
                   </div>
 
-                  {post.mediaFiles?.length > 0 && (
+                  {/* {post.mediaFiles?.length > 0 && (
                     <div className="mb-4 rounded-lg overflow-hidden">
                       <img
                         src={post.mediaFiles[0].url}
@@ -470,7 +470,7 @@ export default function HistoryView() {
                         className="w-full h-48 object-cover hover:scale-105 transition-transform duration-300"
                       />
                     </div>
-                  )}
+                  )} */}
 
                   <p className="text-gray-900 mb-4">{post.caption}</p>
 

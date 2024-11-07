@@ -23,25 +23,49 @@ model User {
   posts          Post[]
   socialAccounts SocialAccount[]
   mediaFiles     MediaFile[]
-  analytics      Analytics[]     
+  analytics      Analytics[]
   teamMembers    TeamMember[]    
 }
 
+model Analytics {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  postPlatformId String?
+  postPlatform   PostPlatform? @relation(fields: [postPlatformId], references: [id])
+  platform       String        // Platform name (e.g., "instagram", "facebook")
+  date           DateTime      @default(now())
+  reach          Int          @default(0)
+  impressions    Int          @default(0)
+  engagement     Int          @default(0)
+  clicks         Int          @default(0)
+  shares         Int          @default(0)
+  saves          Int          @default(0)
+  likes          Int          @default(0)
+  comments       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([postPlatformId])
+  @@index([date])
+}
+
 model Subscription {
-  id                String             @id @default(cuid())
-  userId           String             @unique
-  user             User               @relation(fields: [userId], references: [id])
+  id                String         @id @default(cuid())
+  userId           String         @unique
+  user             User           @relation(fields: [userId], references: [id])
   planId           String
-  plan             Plan               @relation(fields: [planId], references: [id])
-  status           String             @default("active") // active, canceled, past_due
+  plan             Plan           @relation(fields: [planId], references: [id])
+  status           String         @default("active")
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean          @default(false)
+  cancelAtPeriodEnd  Boolean      @default(false)
   paymentMethod     PaymentMethod?
   invoices          Invoice[]
   usageRecords      UsageRecord[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([userId])
   @@index([planId])
@@ -52,7 +76,7 @@ model Plan {
   name            String        @unique
   description     String
   price           Float
-  interval        String        // monthly, yearly
+  interval        String
   features        PlanFeature[]
   subscriptions   Subscription[]
   active          Boolean       @default(true)
@@ -82,8 +106,8 @@ model PlanLimit {
   id          String   @id @default(cuid())
   planId      String
   plan        Plan     @relation(fields: [planId], references: [id])
-  name        String   // e.g., "social_accounts", "scheduled_posts"
-  value       Int      // The limit value
+  name        String
+  value       Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -94,11 +118,11 @@ model PaymentMethod {
   id             String       @id @default(cuid())
   subscriptionId String       @unique
   subscription   Subscription @relation(fields: [subscriptionId], references: [id])
-  type           String       // card, paypal, etc.
-  brand          String?      // visa, mastercard, etc.
-  last4          String?      // Last 4 digits for cards
-  expiryMonth    Int?        // For cards
-  expiryYear     Int?        // For cards
+  type           String
+  brand          String?
+  last4          String?
+  expiryMonth    Int?
+  expiryYear     Int?
   isDefault      Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -112,10 +136,10 @@ model Invoice {
   subscription   Subscription @relation(fields: [subscriptionId], references: [id])
   amount         Float
   currency       String       @default("USD")
-  status         String       // paid, pending, failed
+  status         String
   paidAt         DateTime?
-  hostedUrl      String?      // URL to hosted invoice page
-  pdfUrl         String?      // URL to PDF invoice
+  hostedUrl      String?
+  pdfUrl         String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -126,8 +150,8 @@ model UsageRecord {
   id             String       @id @default(cuid())
   subscriptionId String
   subscription   Subscription @relation(fields: [subscriptionId], references: [id])
-  feature        String       // The feature being tracked
-  quantity       Int          // Amount used
+  feature        String
+  quantity       Int
   recordedAt     DateTime     @default(now())
   metadata       Json         @default("{}")
 
@@ -148,24 +172,24 @@ model Post {
   platforms     PostPlatform[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  externalPostId String?      @default("")
 
   @@index([userId])
   @@index([scheduledDate])
 }
 
 model PostPlatform {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   postId      String
-  post        Post      @relation(fields: [postId], references: [id])
+  post        Post       @relation(fields: [postId], references: [id])
   platform    String
-  status      String    @default("scheduled")
+  status      String     @default("scheduled")
   error       String?
   externalId  String?
-  settings    Json      @default("{}")
+  settings    Json       @default("{}")
   publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  analytics   Analytics[]
 
   @@index([postId])
   @@index([platform])
@@ -216,25 +240,6 @@ model UserSettings {
   defaultVisibility  String   @default("public")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-}
-
-model Analytics {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  date        DateTime
-  platform    String
-  reach       Int      @default(0)
-  impressions Int      @default(0)
-  engagement  Int      @default(0)
-  clicks      Int      @default(0)
-  shares      Int      @default(0)
-  saves       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([userId, date])
-  @@index([platform])
 }
 
 model TeamMember {

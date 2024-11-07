@@ -13,12 +13,32 @@ import path from 'path';
 import { scheduleJob } from 'node-schedule';
 import { createTwitterClient, postToTwitter } from './twitter.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
+import { uploadToS3, deleteFromS3, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
 
-
-dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type'));
+    }
+  }
+});
+
 
 // Configure Twitter OAuth client
 const twitterClient = new TwitterApi({
@@ -32,8 +52,7 @@ const oauthTokens = new Map();
 app.use(cors());
 app.use(express.json());
 
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
+function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -41,14 +60,14 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid token' });
     }
     req.user = user;
     next();
   });
-};
+}
 
 // Twitter OAuth routes
 app.get('/api/auth/twitter', authenticateToken, async (req, res) => {
@@ -117,100 +136,220 @@ app.get('/api/auth/twitter/callback', async (req, res) => {
     console.error('Twitter callback error:', error);
     res.redirect(`http://localhost:5173/dashboard?twitter=error`);
   }
-});
-
-// Get current user
+})
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: {
-        settings: true
-      }
+        settings: true,
+        subscription: {
+          include: {
+            plan: true,
+          },
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            platform: true,
+            username: true,
+            profileUrl: true,
+            followerCount: true,
+          },
+        },
+      },
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Remove sensitive data
-    const { password, ...userData } = user;
+    // Format user data
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      subscription: user.subscription ? {
+        planId: user.subscription.plan.name.toLowerCase(),
+        status: user.subscription.status,
+        currentPeriodEnd: user.subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
+      } : {
+        planId: 'free',
+        status: 'active',
+      },
+      settings: user.settings || {
+        emailNotifications: true,
+        pushNotifications: true,
+        smsNotifications: false,
+        language: 'en',
+        theme: 'light',
+        autoSchedule: true,
+        defaultVisibility: 'public',
+      },
+      timezone: user.timezone || 'UTC',
+      bio: user.bio || '',
+      avatar: user.avatar,
+      socialAccounts: user.socialAccounts,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
     res.json(userData);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Auth check error:', error);
+    res.status(500).json({ error: 'Failed to fetch user data' });
+  }
+});
+// Login endpoint
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        settings: true,
+        subscription: {
+          include: {
+            plan: true,
+          },
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            platform: true,
+            username: true,
+            profileUrl: true,
+            followerCount: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
+
+    // Format user data
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      subscription: user.subscription ? {
+        planId: user.subscription.plan.name.toLowerCase(),
+        status: user.subscription.status,
+        currentPeriodEnd: user.subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
+      } : {
+        planId: 'free',
+        status: 'active',
+      },
+      settings: user.settings || {
+        emailNotifications: true,
+        pushNotifications: true,
+        smsNotifications: false,
+        language: 'en',
+        theme: 'light',
+        autoSchedule: true,
+        defaultVisibility: 'public',
+      },
+      timezone: user.timezone || 'UTC',
+      bio: user.bio || '',
+      avatar: user.avatar,
+      socialAccounts: user.socialAccounts,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    res.json({ token, user: userData });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
-// Auth endpoints
-app.post('/api/auth/register', async (req, res) => {
+// Signup endpoint
+app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body;
+
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create user with default settings
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
+        role: 'USER',
         settings: {
-          create: {} // Create default settings
-        }
+          create: {
+            emailNotifications: true,
+            pushNotifications: true,
+            smsNotifications: false,
+            language: 'en',
+            theme: 'light',
+            autoSchedule: true,
+            defaultVisibility: 'public',
+          },
+        },
       },
       include: {
-        settings: true
-      }
+        settings: true,
+        subscription: {
+          include: {
+            plan: true,
+          },
+        },
+        socialAccounts: true,
+      },
     });
 
-    const token = jwt.sign(
-      { id: user.id },
-      process.env.JWT_SECRET || 'your-secret-key'
-    );
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
 
-    // Remove sensitive data
-    const { password: _, ...userData } = user;
+    // Format user data
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      subscription: {
+        planId: 'free',
+        status: 'active',
+      },
+      settings: user.settings,
+      timezone: 'UTC',
+      bio: '',
+      avatar: null,
+      socialAccounts: [],
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
 
-    res.json({
-      token,
-      user: userData
-    });
+    res.status(201).json({ token, user: userData });
   } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        settings: true
-      }
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'User not found' });
-    }
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Invalid password' });
-    }
-
-    const token = jwt.sign(
-      { id: user.id },
-      process.env.JWT_SECRET || 'your-secret-key'
-    );
-
-    // Remove sensitive data
-    const { password: _, ...userData } = user;
-
-    res.json({
-      token,
-      user: userData
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed' });
   }
 });
 
@@ -273,9 +412,9 @@ app.patch('/api/auth/update', authenticateToken, async (req, res) => {
   }
 });
 
+
 // Analytics endpoints
 app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
-  console.log(req.user.id);
   try {
     const { timeRange = '7d' } = req.query;
     const userId = req.user.id;
@@ -294,33 +433,19 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
       default: // 7d
         startDate.setDate(startDate.getDate() - 7);
     }
-    // Use .toISOString() to convert to UTC (ISO 8601 format)
-    const startDateISOString = startDate.toISOString();
-    const endDateISOString = endDate.toISOString();
-    console.log(startDateISOString, endDateISOString);
+
     const analytics = await prisma.analytics.findMany({
       where: {
-        userId,
+        userId: userId,
         date: {
-          gte: startDateISOString,
-          lte: endDateISOString
+          gte: startDate,
+          lte: endDate
         }
       },
       orderBy: {
         date: 'asc'
       }
     });
-
-    console.log('Analytics:', analytics);
-
-    // Handle no results
-    if (analytics.length === 0) {
-      return res.json({
-        timeRange,
-        analytics: [],
-        totals: { reach: 0, impressions: 0, engagement: 0, shares: 0 }
-      });
-    }
 
     // Calculate totals
     const totals = analytics.reduce((acc, curr) => ({
@@ -336,33 +461,49 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
       totals
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });
-
-
 // Overview endpoints
 app.get('/api/overview/stats', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Get total posts
+    // Get total posts (both published and scheduled)
     const totalPosts = await prisma.post.count({
       where: { userId }
     });
 
-    // Calculate engagement rate from analytics
-    const analytics = await prisma.analytics.findMany({
-      where: { userId },
-      select: {
-        engagement: true,
-        impressions: true
+    // Get scheduled posts (only future posts with scheduled status)
+    const scheduledPosts = await prisma.post.count({
+      where: {
+        userId,
+        scheduledDate: {
+          gt: new Date()
+        },
+        platforms: {
+          some: {
+            status: 'scheduled'
+          }
+        }
       }
     });
 
-    const avgEngagementRate = analytics.length > 0
-      ? analytics.reduce((acc, curr) => acc + (curr.engagement / Math.max(curr.impressions, 1)), 0) / analytics.length
-      : 0;
+    // Calculate engagement rate from post platforms
+    const posts = await prisma.post.findMany({
+      where: {
+        userId,
+        platforms: {
+          some: {
+            status: 'published'
+          }
+        }
+      },
+      include: {
+        platforms: true
+      }
+    });
 
     // Get total followers from social accounts
     const socialAccounts = await prisma.socialAccount.findMany({
@@ -374,20 +515,23 @@ app.get('/api/overview/stats', authenticateToken, async (req, res) => {
 
     const totalFollowers = socialAccounts.reduce((acc, account) => acc + (account.followerCount || 0), 0);
 
-    // Get scheduled posts count
-    const scheduledPosts = await prisma.post.count({
+    // Calculate engagement rate from analytics
+    const analytics = await prisma.analytics.findMany({
       where: {
         userId,
-        platforms: {
-          some: {
-            status: 'scheduled'
-          }
-        },
-        scheduledDate: {
-          gte: new Date()
+        date: {
+          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
         }
+      },
+      select: {
+        engagement: true,
+        impressions: true
       }
     });
+
+    const avgEngagementRate = analytics.length > 0
+      ? (analytics.reduce((acc, curr) => acc + (curr.engagement / Math.max(curr.impressions, 1)), 0) / analytics.length) * 100
+      : 0;
 
     res.json({
       totalPosts,
@@ -401,12 +545,82 @@ app.get('/api/overview/stats', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/overview/upcoming-posts', authenticateToken, async (req, res) => {
+app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
   try {
-    // Get scheduled posts count
+    const { timeRange = '7d' } = req.query;
+    const userId = req.user.id;
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+
+    switch (timeRange) {
+      case '30d':
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+      case '90d':
+        startDate.setDate(startDate.getDate() - 90);
+        break;
+      default: // 7d
+        startDate.setDate(startDate.getDate() - 7);
+    }
+
+    // Get analytics through post platforms
+    const postPlatforms = await prisma.postPlatform.findMany({
+      where: {
+        post: {
+          userId
+        }
+      },
+      include: {
+        analytics: {
+          where: {
+            date: {
+              gte: startDate,
+              lte: endDate
+            }
+          }
+        }
+      }
+    });
+
+    // Transform the data to match the expected format
+    const analytics = postPlatforms.flatMap(platform =>
+      platform.analytics.map(analytic => ({
+        date: analytic.date,
+        platform: platform.platform,
+        reach: analytic.reach,
+        impressions: analytic.impressions,
+        engagement: analytic.engagement,
+        shares: analytic.shares
+      }))
+    );
+
+    // Calculate totals
+    const totals = analytics.reduce((acc, curr) => ({
+      reach: acc.reach + curr.reach,
+      impressions: acc.impressions + curr.impressions,
+      engagement: acc.engagement + curr.engagement,
+      shares: acc.shares + curr.shares
+    }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
+
+    res.json({
+      timeRange,
+      analytics,
+      totals
+    });
+  } catch (error) {
+    console.error('Analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+app.get('/api/posts/scheduled', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
     const posts = await prisma.post.findMany({
       where: {
-        userId: req.user.id,
+        userId,
         platforms: {
           some: {
             status: 'scheduled'
@@ -417,47 +631,33 @@ app.get('/api/overview/upcoming-posts', authenticateToken, async (req, res) => {
         }
       },
       include: {
-        mediaFiles: {
-          select: {
-            id: true,
-            url: true,
-            type: true
-          }
-        },
-        platforms: {
-          select: {
-            id: true,
-            platform: true,
-            status: true,
-            publishedAt: true
-          }
-        }
+        mediaFiles: true,
+        platforms: true
       },
       orderBy: {
         scheduledDate: 'asc'
-      },
-      take: 5
+      }
     });
+
     res.json(posts);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Scheduled posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch scheduled posts' });
   }
 });
 
-// Social Accounts endpoints
 app.get('/api/social-accounts', authenticateToken, async (req, res) => {
-
   try {
+    const userId = req.user.id;
     const accounts = await prisma.socialAccount.findMany({
-      where: {
-        userId: req.user.id
-      }
+      where: { userId }
     });
+
     res.json(accounts);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Social accounts error:', error);
+    res.status(500).json({ error: 'Failed to fetch social accounts' });
   }
-
 });
 // Social Accounts endpoints
 app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
@@ -776,22 +976,6 @@ const s3 = new AWS.S3({
   region: process.env.AWS_REGION
 });
 
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type'));
-    }
-  }
-});
-
 // Store scheduled jobs in memory
 const scheduledJobs = new Map();
 
@@ -803,16 +987,16 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
     }
 
     const fileData = await saveFile(req.file);
+    console.log(fileData);
 
     const mediaFile = await prisma.mediaFile.create({
       data: {
         userId: req.user.id,
-        url: fileData.url,
-        type: fileData.type.startsWith('image/') ? 'image' : 'video',
+        url: fileData.filepath,
+        type: fileData.mimetype.startsWith('image/') ? 'image' : 'video',
         filename: fileData.filename,
         size: fileData.size,
         s3Key: fileData.filename,
-        originalName: fileData.originalName
       }
     });
 
@@ -825,195 +1009,8 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
 });
 
 
-/// Delete post endpoint
-app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Delete associated analytics first
-    await prisma.analytics.deleteMany({
-      where: { postId: id }
-    });
-
-    // Delete post platforms
-    await prisma.postPlatform.deleteMany({
-      where: { postId: id }
-    });
-
-    // Delete the post
-    await prisma.post.delete({
-      where: { id }
-    });
-
-    res.status(200).json({ message: 'Post deleted successfully' });
-  } catch (error) {
-    console.error('Post deletion error:', error);
-    res.status(500).json({ error: 'Failed to delete post' });
-  }
-});
 
 
-// Update the post creation endpoint to handle multiple platforms
-app.post('/api/posts', authenticateToken, async (req, res) => {
-  try {
-    const {
-      caption,
-      scheduledDate,
-      platforms,
-      hashtags,
-      visibility,
-      mediaFiles,
-      publishNow,
-    } = req.body;
-
-    if (!caption || !platforms) {
-      return res.status(400).json({ error: 'Caption and platforms are required' });
-    }
-
-    const selectedPlatforms = JSON.parse(platforms);
-
-    // Create post
-    const postData = {
-      userId: req.user.id,
-      caption,
-      scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
-      hashtags: hashtags || '',
-      visibility: visibility || 'public',
-      platforms: {
-        create: selectedPlatforms.map(platform => ({
-          platform,
-          status: publishNow ? 'publishing' : 'scheduled',
-          settings: {}
-        }))
-      }
-    };
-
-    if (mediaFiles) {
-      const mediaFileIds = JSON.parse(mediaFiles);
-      if (Array.isArray(mediaFileIds) && mediaFileIds.length > 0) {
-        postData.mediaFiles = {
-          connect: mediaFileIds.map(id => ({ id }))
-        };
-      }
-    }
-
-    // Create post with initial analytics entries
-    const post = await prisma.post.create({
-      data: {
-        ...postData,
-        analytics: {
-          create: selectedPlatforms.map(platform => ({
-            userId: req.user.id,
-            platform: platform.toLowerCase(),
-            date: new Date(),
-            reach: 0,
-            impressions: 0,
-            engagement: 0,
-            clicks: 0,
-            shares: 0,
-            saves: 0
-          }))
-        }
-      },
-      include: {
-        mediaFiles: true,
-        platforms: true,
-        analytics: true,
-        user: {
-          include: {
-            socialAccounts: true
-          }
-        }
-      }
-    });
-
-    if (publishNow) {
-      // For each platform, try to publish content
-      for (const platformData of post.platforms) {
-        const socialAccount = post.user.socialAccounts.find(
-          account => account.platform.toLowerCase() === platformData.platform.toLowerCase()
-        );
-
-        if (!socialAccount) {
-          // If no social account found, update the platform status to failed
-          await prisma.postPlatform.update({
-            where: { id: platformData.id },
-            data: {
-              status: 'failed',
-              error: `No connected ${platformData.platform} account found`
-            }
-          });
-          continue;
-        }
-
-        try {
-          // Initialize client for the platform
-          const client = await SocialMediaManager.initializeClient(platformData.platform, {
-            accessToken: socialAccount.accessToken,
-            accessSecret: socialAccount.refreshToken,
-            username: socialAccount.username
-          });
-
-          // Publish the content on the platform
-          const result = await SocialMediaManager.publishContent(
-            platformData.platform,
-            client,
-            {
-              caption: `${caption} ${hashtags}`.trim(),
-              mediaFiles: post.mediaFiles
-            }
-          );
-
-          // Update the platform status after successful publishing
-          await prisma.postPlatform.update({
-            where: { id: platformData.id },
-            data: {
-              status: 'published',
-              publishedAt: new Date(),
-              externalId: result.id
-            }
-          });
-
-        } catch (error) {
-          console.log(error);
-          // If an error occurs during publishing, update the platform status to failed
-          await prisma.postPlatform.update({
-            where: { id: platformData.id },
-            data: {
-              status: 'failed',
-              error: `Failed to publish content on ${platformData.platform}: ${error.message}`
-            }
-          });
-        }
-      }
-
-      // After attempting to publish all platforms, update the post status based on the platform statuses
-      const updatedPlatforms = await prisma.postPlatform.findMany({
-        where: { postId: post.id }
-      });
-
-      const allPublished = updatedPlatforms.every(p => p.status === 'published');
-      const allFailed = updatedPlatforms.every(p => p.status === 'failed');
-
-      // Only update the `error` field on the post if all platforms failed
-      await prisma.post.update({
-        where: { id: post.id },
-        data: {
-          error: allFailed ? 'Failed to publish to all platforms' : null
-        }
-      });
-
-    } else {
-      // If not publishing immediately, schedule the post
-      await schedulePost(post);
-    }
-
-    res.status(201).json(post);
-  } catch (error) {
-    console.error('Post creation error:', error);
-    res.status(500).json({ error: 'Failed to create post' });
-  }
-});
 
 app.get('/api/posts/history', authenticateToken, async (req, res) => {
   try {
@@ -1076,142 +1073,277 @@ app.get('/api/posts/history', authenticateToken, async (req, res) => {
 
 
 
-// Retry failed post endpoint
-app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
+
+
+// Media upload endpoint
+app.post('/api/media/upload', authenticateToken, multer().single('file'), async (req, res) => {
   try {
-    const { id } = req.params;
-
-    // Get the post with all related data
-    const post = await prisma.post.findUnique({
-      where: { id },
-      include: {
-        mediaFiles: true,
-        platforms: true,
-        analytics: true,
-        user: {
-          include: {
-            socialAccounts: true
-          }
-        }
-      }
-    });
-
-    if (!post) {
-      return res.status(404).json({ error: 'Post not found' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Reset analytics for failed platforms
-    const failedPlatforms = post.platforms.filter(p => p.status === 'failed');
+    // Upload file to S3
+    const { url, s3Key } = await uploadToS3(req.file, req.user.id);
 
-    for (const platform of failedPlatforms) {
-      // Delete existing analytics for failed platform
-      await prisma.analytics.deleteMany({
-        where: {
-          postId: post.id,
-          platform: platform.platform.toLowerCase()
-        }
-      });
-
-      // Create new analytics entry
-      await prisma.analytics.create({
-        data: {
-          userId: post.userId,
-          postId: post.id,
-          platform: platform.platform.toLowerCase(),
-          date: new Date(),
-          reach: 0,
-          impressions: 0,
-          engagement: 0,
-          clicks: 0,
-          shares: 0,
-          saves: 0
-        }
-      });
-
-      const socialAccount = post.user.socialAccounts.find(
-        account => account.platform.toLowerCase() === platform.platform.toLowerCase()
-      );
-
-      if (!socialAccount) {
-        await prisma.postPlatform.update({
-          where: { id: platform.id },
-          data: {
-            status: 'failed',
-            error: `No connected ${platform.platform} account found`
-          }
-        });
-        continue;
-      }
-
-      try {
-        // Initialize client for the platform
-        const client = await SocialMediaManager.initializeClient(platform.platform, {
-          accessToken: socialAccount.accessToken,
-          accessSecret: socialAccount.refreshToken,
-          username: socialAccount.username
-        });
-
-        // Publish the content on the platform
-        const result = await SocialMediaManager.publishContent(
-          platform.platform,
-          client,
-          {
-            caption: `${post.caption} ${post.hashtags}`.trim(),
-            mediaFiles: post.mediaFiles
-          }
-        );
-
-        await prisma.postPlatform.update({
-          where: { id: platform.id },
-          data: {
-            status: 'published',
-            publishedAt: new Date(),
-            externalId: result.id,
-            error: null
-          }
-        });
-      } catch (error) {
-        await prisma.postPlatform.update({
-          where: { id: platform.id },
-          data: {
-            status: 'failed',
-            error: error.message
-          }
-        });
-      }
-    }
-
-    // Update main post status
-    const updatedPlatforms = await prisma.postPlatform.findMany({
-      where: { postId: post.id }
-    });
-
-    const allPublished = updatedPlatforms.every(p => p.status === 'published');
-    const allFailed = updatedPlatforms.every(p => p.status === 'failed');
-
-    await prisma.post.update({
-      where: { id: post.id },
+    // Create media file record in database
+    const mediaFile = await prisma.mediaFile.create({
       data: {
-        status: allPublished ? 'published' : allFailed ? 'failed' : 'partial',
-        error: allFailed ? 'Failed to publish to all platforms' : null
+        userId: req.user.id,
+        url,
+        type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
+        filename: req.file.originalname,
+        size: req.file.size,
+        s3Key
       }
     });
 
-    const updatedPost = await prisma.post.findUnique({
-      where: { id },
-      include: {
-        mediaFiles: true,
-        platforms: true,
-        analytics: true
-      }
-    });
-
-    res.status(200).json(updatedPost);
+    res.status(201).json(mediaFile);
   } catch (error) {
-    console.error('Post retry error:', error);
-    res.status(500).json({ error: 'Failed to retry post' });
+    console.error('Media upload error:', error);
+
+    // If there was an error and we uploaded to S3, clean up
+    if (error.s3Key) {
+      await deleteFromS3(error.s3Key).catch(console.error);
+    }
+
+    res.status(500).json({ error: 'Failed to upload media' });
   }
 });
+
+// Delete media endpoint
+app.delete('/api/media/:id', authenticateToken, async (req, res) => {
+  try {
+    const mediaFile = await prisma.mediaFile.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!mediaFile) {
+      return res.status(404).json({ error: 'Media file not found' });
+    }
+
+    if (mediaFile.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized to delete this file' });
+    }
+
+    // Delete from S3
+    await deleteFromS3(mediaFile.s3Key);
+
+    // Delete from database
+    await prisma.mediaFile.delete({
+      where: { id: req.params.id }
+    });
+
+    res.status(200).json({ message: 'Media file deleted successfully' });
+  } catch (error) {
+    console.error('Media deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete media file' });
+  }
+});
+app.post('/api/posts', authenticateToken, async (req, res) => {
+  try {
+    const {
+      caption,
+      scheduledDate,
+      platforms,
+      hashtags,
+      visibility,
+      mediaFiles,
+      publishNow
+    } = req.body;
+
+    // Validate required fields
+    if (!caption) {
+      return res.status(400).json({ error: 'Caption is required' });
+    }
+
+    if (!platforms || !Array.isArray(JSON.parse(platforms)) || JSON.parse(platforms).length === 0) {
+      return res.status(400).json({ error: 'At least one platform must be selected' });
+    }
+
+    const post = await prisma.post.create({
+      data: {
+        userId: req.user.id,
+        caption,
+        scheduledDate: publishNow ? new Date() : new Date(scheduledDate),
+        hashtags: hashtags || '',
+        visibility: visibility || 'public',
+        mediaFiles: mediaFiles ? {
+          connect: JSON.parse(mediaFiles).map(id => ({ id }))
+        } : undefined,
+        platforms: {
+          create: JSON.parse(platforms).map(platform => ({
+            platform,
+            status: publishNow ? 'publishing' : 'scheduled',
+            settings: {}
+          }))
+        }
+      },
+      include: {
+        mediaFiles: true,
+        platforms: true
+      }
+    });
+
+    // If publishing now, trigger the publishing process and create analytics
+    if (publishNow) {
+      // Initialize social media clients and publish
+      for (const platform of post.platforms) {
+        try {
+          const socialAccount = await prisma.socialAccount.findFirst({
+            where: {
+              userId: req.user.id,
+              platform: platform.platform.toLowerCase()
+            }
+          });
+
+          if (!socialAccount) {
+            await prisma.postPlatform.update({
+              where: { id: platform.id },
+              data: {
+                status: 'failed',
+                error: `No connected ${platform.platform} account found`
+              }
+            });
+            continue;
+          }
+
+          // Initialize client for the platform
+          const client = await SocialMediaManager.initializeClient(platform.platform, {
+            accessToken: socialAccount.accessToken,
+            accessSecret: socialAccount.refreshToken,
+            username: socialAccount.username
+          });
+
+          // Publish the content
+          const result = await SocialMediaManager.publishContent(platform.platform, client, {
+            caption: `${post.caption} ${post.hashtags}`.trim(),
+            mediaFiles: post.mediaFiles
+          });
+          console.log("result", result);
+          // Update the platform status and add analytics
+          await prisma.postPlatform.update({
+            where: { id: platform.id },
+            data: {
+              status: 'published',
+              publishedAt: new Date(),
+              externalId: result.id,
+              error: null
+            }
+          });
+          // Create initial analytics record
+          await prisma.analytics.create({
+            data: {
+              userId: req.user.id,
+              postPlatformId: platform.id,
+              platform: platform.platform.toLowerCase(),
+              date: new Date(),
+              reach: 0,
+              impressions: 0,
+              engagement: 0,
+              clicks: 0,
+              shares: 0,
+              saves: 0,
+              likes: 0,
+              comments: 0
+            }
+          });
+        } catch (error) {
+          await prisma.postPlatform.update({
+            where: { id: platform.id },
+            data: {
+              status: 'failed',
+              error: error.message
+            }
+          });
+        }
+      }
+    }
+
+    // Return the created post with all related data
+    const createdPost = await prisma.post.findUnique({
+      where: { id: post.id },
+      include: {
+        mediaFiles: true,
+        platforms: {
+          include: {
+            analytics: true
+          }
+        }
+      }
+    });
+
+    res.status(201).json(createdPost);
+  } catch (error) {
+    console.error('Post creation error:', error);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// Media upload endpoint
+app.post('/api/media/upload', authenticateToken, multer().single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Upload file to S3
+    const { url, s3Key } = await uploadToS3(req.file, req.user.id);
+
+    // Create media file record in database
+    const mediaFile = await prisma.mediaFile.create({
+      data: {
+        userId: req.user.id,
+        url,
+        type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
+        filename: req.file.originalname,
+        size: req.file.size,
+        s3Key
+      }
+    });
+
+    res.status(201).json(mediaFile);
+  } catch (error) {
+    console.error('Media upload error:', error);
+
+    // If there was an error and we uploaded to S3, clean up
+    if (error.s3Key) {
+      await deleteFromS3(error.s3Key).catch(console.error);
+    }
+
+    res.status(500).json({ error: 'Failed to upload media' });
+  }
+});
+
+// Delete media endpoint
+app.delete('/api/media/:id', authenticateToken, async (req, res) => {
+  try {
+    const mediaFile = await prisma.mediaFile.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!mediaFile) {
+      return res.status(404).json({ error: 'Media file not found' });
+    }
+
+    if (mediaFile.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized to delete this file' });
+    }
+
+    // Delete from S3
+    await deleteFromS3(mediaFile.s3Key);
+
+    // Delete from database
+    await prisma.mediaFile.delete({
+      where: { id: req.params.id }
+    });
+
+    res.status(200).json({ message: 'Media file deleted successfully' });
+  } catch (error) {
+    console.error('Media deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete media file' });
+  }
+});
+
 
 
 // Update the PUT endpoint for updating posts
@@ -1279,3 +1411,504 @@ app.put('/api/posts/:id', authenticateToken, async (req, res) => {
   }
 });
 
+
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        settings: true,
+        subscription: {
+          include: {
+            plan: true,
+            paymentMethod: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Remove sensitive information
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Get user profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+app.put('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, timezone, bio } = req.body;
+
+    // Check if email is already taken by another user
+    if (email) {
+      const existingUser = await prisma.user.findUnique({
+        where: { email }
+      });
+      if (existingUser && existingUser.id !== req.user.id) {
+        return res.status(400).json({ error: 'Email already in use' });
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        name,
+        email,
+        timezone,
+        bio
+      },
+      include: {
+        settings: true,
+        subscription: {
+          include: {
+            plan: true,
+            paymentMethod: true
+          }
+        }
+      }
+    });
+
+    // Remove sensitive information
+    const { password, ...userWithoutPassword } = updatedUser;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Update user profile error:', error);
+    res.status(500).json({ error: 'Failed to update user profile' });
+  }
+});
+
+app.put('/api/user/settings', authenticateToken, async (req, res) => {
+  try {
+    const {
+      emailNotifications,
+      pushNotifications,
+      smsNotifications,
+      language,
+      theme,
+      autoSchedule,
+      defaultVisibility
+    } = req.body;
+
+    const updatedSettings = await prisma.userSettings.upsert({
+      where: { userId: req.user.id },
+      update: {
+        emailNotifications,
+        pushNotifications,
+        smsNotifications,
+        language,
+        theme,
+        autoSchedule,
+        defaultVisibility
+      },
+      create: {
+        userId: req.user.id,
+        emailNotifications,
+        pushNotifications,
+        smsNotifications,
+        language,
+        theme,
+        autoSchedule,
+        defaultVisibility
+      }
+    });
+
+    res.json(updatedSettings);
+  } catch (error) {
+    console.error('Update user settings error:', error);
+    res.status(500).json({ error: 'Failed to update user settings' });
+  }
+});
+
+// Password update route
+app.post('/api/auth/password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify current password
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { password: hashedPassword }
+    });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Password update error:', error);
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+// Update the retry post endpoint
+app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the post with all related data
+    const post = await prisma.post.findUnique({
+      where: { id },
+      include: {
+        mediaFiles: true,
+        platforms: {
+          include: {
+            analytics: true
+          }
+        },
+        user: {
+          include: {
+            socialAccounts: true
+          }
+        }
+      }
+    });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Reset analytics for failed platforms
+    const failedPlatforms = post.platforms.filter(p => p.status === 'failed');
+
+    for (const platform of failedPlatforms) {
+      try {
+        // Delete existing analytics for this platform
+        await prisma.analytics.deleteMany({
+          where: {
+            postPlatformId: platform.id
+          }
+        });
+
+        const socialAccount = post.user.socialAccounts.find(
+          account => account.platform.toLowerCase() === platform.platform.toLowerCase()
+        );
+
+        if (!socialAccount) {
+          await prisma.postPlatform.update({
+            where: { id: platform.id },
+            data: {
+              status: 'failed',
+              error: `No connected ${platform.platform} account found`
+            }
+          });
+          continue;
+        }
+
+        // Initialize client for the platform
+        const client = await SocialMediaManager.initializeClient(platform.platform, {
+          accessToken: socialAccount.accessToken,
+          refreshToken: socialAccount.refreshToken,
+          username: socialAccount.username
+        });
+
+        // Publish the content
+        const result = await SocialMediaManager.publishContent(
+          platform.platform,
+          client,
+          {
+            caption: `${post.caption} ${post.hashtags}`.trim(),
+            mediaFiles: post.mediaFiles
+          }
+        );
+
+        // Update platform status
+        await prisma.postPlatform.update({
+          where: { id: platform.id },
+          data: {
+            status: 'published',
+            publishedAt: new Date(),
+            externalId: result.id,
+            error: null
+          }
+        });
+
+        // Create new analytics entry
+        await prisma.analytics.create({
+          data: {
+            userId: post.userId,
+            postPlatformId: platform.id,
+            platform: platform.platform.toLowerCase(),
+            date: new Date(),
+            reach: 0,
+            impressions: 0,
+            engagement: 0,
+            clicks: 0,
+            shares: 0,
+            saves: 0,
+            likes: 0,
+            comments: 0
+          }
+        });
+      } catch (error) {
+        await prisma.postPlatform.update({
+          where: { id: platform.id },
+          data: {
+            status: 'failed',
+            error: error.message
+          }
+        });
+      }
+    }
+
+    // Update main post status
+    const updatedPlatforms = await prisma.postPlatform.findMany({
+      where: { postId: post.id }
+    });
+
+    const allFailed = updatedPlatforms.every(p => p.status === 'failed');
+
+    await prisma.post.update({
+      where: { id: post.id },
+      data: {
+        error: allFailed ? 'Failed to publish to all platforms' : null
+      }
+    });
+
+    const updatedPost = await prisma.post.findUnique({
+      where: { id },
+      include: {
+        mediaFiles: true,
+        platforms: {
+          include: {
+            analytics: true
+          }
+        }
+      }
+    });
+
+    res.status(200).json(updatedPost);
+  } catch (error) {
+    console.error('Post retry error:', error);
+    res.status(500).json({ error: 'Failed to retry post' });
+  }
+});
+
+// Add user profile routes
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        settings: true,
+        subscription: {
+          include: {
+            plan: {
+              include: {
+                features: true,
+                limits: true
+              }
+            },
+            paymentMethod: true,
+            usageRecords: {
+              orderBy: {
+                recordedAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            platform: true,
+            username: true,
+            profileUrl: true,
+            followerCount: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Remove sensitive information
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Get user profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+app.put('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, timezone, bio } = req.body;
+
+    // Check if email is already taken by another user
+    if (email) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email,
+          NOT: {
+            id: req.user.id
+          }
+        }
+      });
+
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already in use' });
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        name,
+        email,
+        timezone,
+        bio,
+        updatedAt: new Date()
+      },
+      include: {
+        settings: true,
+        subscription: {
+          include: {
+            plan: {
+              include: {
+                features: true,
+                limits: true
+              }
+            },
+            paymentMethod: true
+          }
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            platform: true,
+            username: true,
+            profileUrl: true,
+            followerCount: true
+          }
+        }
+      }
+    });
+
+    // Remove sensitive information
+    const { password, ...userWithoutPassword } = updatedUser;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Update user profile error:', error);
+    res.status(500).json({ error: 'Failed to update user profile' });
+  }
+});
+app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete associated analytics first
+    await prisma.analytics.deleteMany({
+      where: { postId: id }
+    });
+
+    // Delete post platforms
+    await prisma.postPlatform.deleteMany({
+      where: { postId: id }
+    });
+
+    // Delete the post
+    await prisma.post.delete({
+      where: { id }
+    });
+
+    res.status(200).json({ message: 'Post deleted successfully' });
+  } catch (error) {
+    console.error('Post deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+
+
+
+
+app.get('/api/user/usage', authenticateToken, async (req, res) => {
+  try {
+    // Get user's subscription and plan limits
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        subscription: {
+          include: {
+            plan: {
+              include: {
+                limits: true
+              }
+            }
+          }
+        }
+      }
+    });
+    console.log(user);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get plan limits
+    const planLimits = user.subscription?.plan?.limits || [];
+    const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
+
+    // Count scheduled and published posts
+    const scheduledPosts = await prisma.post.count({
+      where: {
+        userId: req.user.id,
+        platforms: {
+          some: {
+            status: 'scheduled'
+          }
+        }
+      }
+    });
+
+    const publishedPosts = await prisma.post.count({
+      where: {
+        userId: req.user.id,
+        platforms: {
+          some: {
+            status: 'published'
+          }
+        }
+      }
+    });
+
+    const totalPosts = scheduledPosts + publishedPosts;
+
+    // Calculate days left in subscription
+    let daysLeft = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
+    if (user.subscription?.currentPeriodEnd) {
+      const endDate = new Date(user.subscription.currentPeriodEnd);
+      const now = new Date();
+      daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    res.json({
+      postsUsed: totalPosts,
+      postsLimit,
+      daysLeft: Math.max(0, daysLeft)
+    });
+  } catch (error) {
+    console.error('Usage stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch usage stats' });
+  }
+});

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Calendar,
   BarChart2,
@@ -11,7 +12,7 @@ import {
 import Sidebar from './dashboard/Sidebar';
 import CalendarView from './dashboard/CalendarView';
 import Analytics from './dashboard/Analytics';
-import TeamView from './dashboard/TeamView';
+import TeamView from './dashboard/context/TeamView';
 import SettingsView from './dashboard/SettingsView';
 import Overview from './dashboard/Overview';
 import HistoryView from './dashboard/HistoryView';
@@ -28,9 +29,20 @@ type View =
   | 'history';
 
 export default function Dashboard() {
-  const [currentView, setCurrentView] = useState<View>('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
+
+  // Get the current view from URL search params or default to 'overview'
+  const searchParams = new URLSearchParams(location.search);
+  const currentView = (searchParams.get('view') as View) || 'overview';
+
+  const setCurrentView = (view: View) => {
+    const params = new URLSearchParams(location.search);
+    params.set('view', view);
+    navigate({ search: params.toString() });
+  };
 
   useEffect(() => {
     fetchSocialAccounts();

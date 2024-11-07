@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Layout,
   Calendar,
@@ -7,10 +7,23 @@ import {
   Settings,
   Crown,
   History,
+  Clock,
+  FileText,
+  HelpCircle,
+  MessageSquare,
 } from 'lucide-react';
 import PricingModal from '../modals/PricingModal';
+import SupportModal from '../modals/SupportModal';
+import FeedbackModal from '../modals/FeedbackModal';
+import { useAuth } from '../../context/AuthContext';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
+type View =
+  | 'overview'
+  | 'calendar'
+  | 'analytics'
+  | 'team'
+  | 'settings'
+  | 'history';
 
 interface SidebarProps {
   currentView: View;
@@ -19,6 +32,57 @@ interface SidebarProps {
 
 export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [usageStats, setUsageStats] = useState<{
+    postsUsed: number;
+    postsLimit: number;
+    daysLeft: number;
+  } | null>(null);
+  const { user } = useAuth();
+
+  const isPremium = user?.subscription?.planId !== 'free';
+  const viewChange = false;
+
+  useEffect(() => {
+    fetchUsageStats();
+  }, []);
+
+  const fetchUsageStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:5000/api/user/usage', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch usage stats');
+
+      const data = await response.json();
+      setUsageStats(data);
+    } catch (error) {
+      console.error('Error fetching usage stats:', error);
+    }
+  };
+
+  const getDaysLeftColor = (days: number) => {
+    if (days <= 3) return 'text-red-600 bg-red-600';
+    if (days <= 7) return 'text-yellow-600 bg-yellow-600';
+    return 'text-blue-600 bg-blue-600';
+  };
+
+  const getUsageColor = (used: number, limit: number) => {
+    const percentage = (used / limit) * 100;
+    if (percentage >= 90) return 'text-red-600 bg-red-600';
+    if (percentage >= 75) return 'text-yellow-600 bg-yellow-600';
+    return 'text-blue-600 bg-blue-600';
+  };
+  const calculatePercentage = (value: number, max: number) => {
+    return Math.min(Math.max((value / max) * 100, 0), 100);
+  };
 
   const menuItems = [
     { icon: Layout, label: 'Overview', value: 'overview' as View },
@@ -28,18 +92,25 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
     { icon: Users2, label: 'Team', value: 'team' as View },
     { icon: Settings, label: 'Settings', value: 'settings' as View },
   ];
-
+  
   return (
-    <div className="w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col min-h-screen">
+    <div className="w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col h-screen">
+      {/* Header Section */}
       <div className="p-6">
         <div className="flex items-center mb-8">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            isPremium && viewChange
+              ? 'bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600'
+              : 'bg-blue-600'
+          }`}>
             <Layout className="w-5 h-5 text-white" />
           </div>
           <span className="ml-3 text-xl font-bold text-gray-900">
             SocialSync
           </span>
         </div>
+
+        {/* Navigation */}
         <nav className="space-y-2">
           {menuItems.map(({ icon: Icon, label, value }) => (
             <button
@@ -47,7 +118,9 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
               onClick={() => onViewChange(value)}
               className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
                 currentView === value
-                  ? 'bg-blue-50 text-blue-600 shadow-sm'
+                  ? `${isPremium && viewChange
+                    ? 'bg-gradient-to-r from-yellow-50 to-amber-50 text-yellow-700'
+                    : 'bg-blue-50 text-blue-600'} shadow-sm`
                   : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
@@ -58,27 +131,112 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
         </nav>
       </div>
 
-      <div className="mt-auto p-6 border-t border-gray-200">
-        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-4 text-white">
-          <div className="flex items-center mb-3">
-            <Crown className="h-5 w-5 mr-2" />
-            <span className="font-semibold">Free Plan</span>
+      {/* Usage Stats Section */}
+      <div className="flex-1 px-6 overflow-y-auto">
+        {user?.subscription && usageStats && (
+          <div className="space-y-3">
+            {/* Days Left */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center text-sm text-gray-600">
+                  <Clock className="w-4 h-4 mr-2" />
+                  <span>Days Left</span>
+                </div>
+                <span className={`text-sm font-medium ${getDaysLeftColor(usageStats.daysLeft).split(' ')[0]}`}>
+                  {usageStats.daysLeft}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${getDaysLeftColor(usageStats.daysLeft).split(' ')[1]}`}
+                  style={{
+                    width: `${calculatePercentage(usageStats.daysLeft, 30)}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Posts Usage */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center text-sm text-gray-600">
+                  <FileText className="w-4 h-4 mr-2" />
+                  <span>Posts</span>
+                </div>
+                <span className={`text-sm font-medium ${getUsageColor(usageStats.postsUsed, usageStats.postsLimit).split(' ')[0]}`}>
+                  {usageStats.postsUsed}/{usageStats.postsLimit}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${getUsageColor(usageStats.postsUsed, usageStats.postsLimit).split(' ')[1]}`}
+                  style={{
+                    width: `${calculatePercentage(usageStats.postsLimit-usageStats.postsUsed, usageStats.postsLimit)}%`,
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-blue-100 mb-3">
-            Upgrade to Pro for advanced features
-          </p>
+        )}
+      </div>
+      {/* Footer Section */}
+      <div className="p-6 border-t border-gray-200">
+        {/* Premium/Upgrade Banner */}
+        <div
+          className={`rounded-xl p-4 text-white mb-4 ${
+            isPremium
+              ? 'bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 shadow-lg'
+              : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+          }`}
+        >
+          <div className="flex items-center mb-3">
+            {isPremium && <Crown className="w-5 h-5 mr-2 text-yellow-200" />}
+            <p className={`text-sm ${isPremium ? 'text-yellow-100' : 'text-blue-100'}`}>
+              {isPremium
+                ? 'Enjoying Premium Features'
+                : 'Upgrade to Pro for advanced features'}
+            </p>
+          </div>
+          {!isPremium && (
+            <button
+              onClick={() => setIsPricingModalOpen(true)}
+              className="block w-full bg-white text-blue-600 text-center py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+            >
+              Upgrade Plan
+            </button>
+          )}
+        </div>
+
+        {/* Support & Feedback Section */}
+        <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => setIsPricingModalOpen(true)}
-            className="block w-full bg-white text-blue-600 text-center py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+            onClick={() => setIsSupportModalOpen(true)}
+            className="flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl"
           >
-            Upgrade Plan
+            <HelpCircle className="w-4 h-4 mr-2" />
+            Support
+          </button>
+          <button
+            onClick={() => setIsFeedbackModalOpen(true)}
+            className="flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl"
+          >
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Feedback
           </button>
         </div>
       </div>
 
-      <PricingModal 
+      <PricingModal
         isOpen={isPricingModalOpen}
         onClose={() => setIsPricingModalOpen(false)}
+      />
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
       />
     </div>
   );

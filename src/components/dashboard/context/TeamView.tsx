@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Mail, Shield, Trash2, Settings, Loader2 } from 'lucide-react';
-import { toRelative } from '../../utils/dateUtils';
-
+import { toRelative } from '../../../utils/dateUtils';
 interface TeamMember {
   id: string;
   name: string;

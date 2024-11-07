@@ -23,6 +23,7 @@ export default function MediaUploader({
   const [previewFiles, setPreviewFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<{ [key: string]: string }>({});
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setDragError(null);
@@ -54,10 +55,24 @@ export default function MediaUploader({
     }
 
     if (validFiles.length > 0) {
+      // Create object URLs for previews
+      const newPreviewUrls = validFiles.reduce((acc, file) => {
+        acc[file.name] = URL.createObjectURL(file);
+        return acc;
+      }, {} as { [key: string]: string });
+
+      setPreviewUrls(prev => ({ ...prev, ...newPreviewUrls }));
       setPreviewFiles(prev => [...prev, ...validFiles]);
       onUpload(validFiles);
     }
   }, [maxFiles, existingFiles.length, previewFiles.length, onUpload, acceptedFileTypes]);
+
+  // Cleanup object URLs when component unmounts
+  React.useEffect(() => {
+    return () => {
+      Object.values(previewUrls).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
@@ -74,45 +89,58 @@ export default function MediaUploader({
     } else {
       // It's a File
       setPreviewFiles(prev => prev.filter(f => f !== file));
+      if (previewUrls[file.name]) {
+        URL.revokeObjectURL(previewUrls[file.name]);
+        setPreviewUrls(prev => {
+          const newUrls = { ...prev };
+          delete newUrls[file.name];
+          return newUrls;
+        });
+      }
       onRemove(file);
     }
   };
 
   const renderPreview = (file: File | MediaFile) => {
-    const isVideo = file.type.startsWith('video/');
-    const url = 'url' in file ? file.url : URL.createObjectURL(file);
+    console.log("file",file);
+    const isVideo = file.type?.startsWith('video/');
+    const url = 'url' in file 
+      ? file.url 
+      : previewUrls[file.name] || '';
     const name = 'filename' in file ? file.filename : file.name;
 
     return (
-        <div key={'url' in file ? file.id : file.name} className="relative group">
-            <div className="aspect-square w-24 rounded-lg overflow-hidden border border-gray-200">
-                {isVideo ? (
-                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                        <Film className="w-8 h-8 text-gray-400" />
-                    </div>
-                ) : (
-                    <img
-                        src={url}
-                        alt={name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'fallback-image-url';
-                        }}
-                    />
-                )}
-                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity" />
+      <div key={'url' in file ? file.id : file.name} className="relative group">
+        <div className="aspect-square w-24 rounded-lg overflow-hidden border border-gray-200">
+          {isVideo ? (
+            <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+              <Film className="w-8 h-8 text-gray-400" />
             </div>
-            <button
-                onClick={() => handleRemove(file)}
-                className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
-                title="Remove file"
-            >
-                <X className="w-4 h-4" />
-            </button>
+          ) : (
+            <div className="w-full h-full bg-gray-100">
+              <img
+                src={url}
+                alt={name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = '/placeholder-image.png';
+                }}
+              />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity" />
         </div>
+        <button
+          onClick={() => handleRemove(file)}
+          className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
+          title="Remove file"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     );
-};
-
+  };
 
   return (
     <div className="space-y-4">
@@ -151,16 +179,15 @@ export default function MediaUploader({
       </div>
 
       {(error || dragError) && (
-  <div className="flex items-center space-x-2 text-red-600 text-sm">
-    <AlertCircle className="w-4 h-4" />
-    <span>{error || dragError}</span>
-  </div>
-)}
-
+        <div className="flex items-center space-x-2 text-red-600 text-sm">
+          <AlertCircle className="w-4 h-4" />
+          <span>{error || dragError}</span>
+        </div>
+      )}
 
       {(existingFiles.length > 0 || previewFiles.length > 0) && (
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
-          {existingFiles.map(renderPreview)}
+          
           {previewFiles.map(renderPreview)}
         </div>
       )}
@@ -173,3 +200,5 @@ export default function MediaUploader({
     </div>
   );
 }
+
+
