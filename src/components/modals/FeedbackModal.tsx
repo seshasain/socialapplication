@@ -22,7 +22,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
 
-      const response = await fetch('http://localhost:5000/api/feedback', {
+      const response = await fetch('http://localhost:5000/feedback', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

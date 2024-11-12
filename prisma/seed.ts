@@ -9,6 +9,8 @@ async function main() {
     await prisma.analytics.deleteMany();
     await prisma.usageRecord.deleteMany();
     await prisma.invoice.deleteMany();
+    await prisma.feedback.deleteMany();
+    await prisma.supportTicket.deleteMany();
     await prisma.paymentMethod.deleteMany();
     await prisma.subscription.deleteMany();
     await prisma.planFeature.deleteMany();
@@ -26,7 +28,7 @@ async function main() {
     const plans = await Promise.all([
       prisma.plan.create({
         data: {
-          name: 'Free',
+          name: 'free',
           description: 'Basic features for individuals',
           price: 0,
           interval: 'monthly',
@@ -44,13 +46,14 @@ async function main() {
               { name: 'social_accounts', value: 3 },
               { name: 'scheduled_posts', value: 10 },
               { name: 'team_members', value: 1 },
+              { name: 'days_limit', value: 7}
             ],
           },
         },
       }),
       prisma.plan.create({
         data: {
-          name: 'Pro',
+          name: 'pro',
           description: 'Advanced features for professionals',
           price: 29.99,
           interval: 'monthly',
@@ -68,8 +71,9 @@ async function main() {
           limits: {
             create: [
               { name: 'social_accounts', value: 10 },
-              { name: 'scheduled_posts', value: 100 },
+              { name: 'scheduled_posts', value: 1000 },
               { name: 'team_members', value: 5 },
+              { name: 'days_limit', value: 30}
             ],
           },
         },

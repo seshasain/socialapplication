@@ -2,7 +2,6 @@ import { TwitterApi } from 'twitter-api-v2';
 
 class SocialMediaManager {
     static async initializeClient(platform, { accessToken, accessSecret }) {
-        console.log("test", process.env.TWITTER_API_KEY);
         try {
             switch (platform.toLowerCase()) {
                 case 'twitter':

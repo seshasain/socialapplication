@@ -1,18 +1,20 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { Linkedin } from 'lucide-react';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-router.get('/linkedin', async (req, res) => {
+router.get('/api/auth/linkedin', async (req, res) => {
   try {
+    console.log(Linkedin);
     const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
     const scope = ['r_liteprofile', 'w_member_social'];
     
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
       process.env.LINKEDIN_CLIENT_ID
     }&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope.join('%20')}`;
-    
+    console.log(authUrl);
     res.json({ authUrl });
   } catch (error) {
     console.error('LinkedIn auth error:', error);

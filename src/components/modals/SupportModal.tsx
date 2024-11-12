@@ -22,7 +22,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
 
-      const response = await fetch('http://localhost:5000/api/support/ticket', {
+      const response = await fetch('http://localhost:5000/ticket', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

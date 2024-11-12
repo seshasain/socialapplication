@@ -102,7 +102,6 @@ export default function MediaUploader({
   };
 
   const renderPreview = (file: File | MediaFile) => {
-    console.log("file",file);
     const isVideo = file.type?.startsWith('video/');
     const url = 'url' in file 
       ? file.url 

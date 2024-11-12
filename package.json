@@ -41,7 +41,13 @@
     "@fullcalendar/interaction": "^6.1.10",
     "@fullcalendar/react": "^6.1.10",
     "@fullcalendar/timegrid": "^6.1.10",
-    "@fullcalendar/list": "^6.1.10"
+    "axios": "1.7.6",
+    "@fullcalendar/list": "^6.1.10",
+    "react-google-recaptcha": "^3.1.0",
+    "react-chartjs-2":"5.2.0",
+    "chart.js": "^4.4.2",
+    "zxcvbn": "^4.4.2"
+
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

@@ -14,10 +14,12 @@ import { scheduleJob } from 'node-schedule';
 import { createTwitterClient, postToTwitter } from './twitter.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
 import { uploadToS3, deleteFromS3, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
-
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 const app = express();
+
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -278,10 +280,39 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Signup endpoint
+
+
+
+app.set('trust proxy', true); // Trust proxy headers in production
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, redirectUrl, captchaToken } = req.body;
+
+    // Verify reCAPTCHA
+    if (!captchaToken) {
+      return res.status(400).json({ error: 'reCAPTCHA verification required' });
+    }
+
+    // Verify the captcha token with Google
+    try {
+      const recaptchaResponse = await axios.post(
+        'https://www.google.com/recaptcha/api/siteverify',
+        null,
+        {
+          params: {
+            secret: process.env.RECAPTCHA_SECRET_KEY,
+            response: captchaToken,
+          },
+        }
+      );
+
+      if (!recaptchaResponse.data.success) {
+        return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+      }
+    } catch (error) {
+      console.error('reCAPTCHA verification error:', error);
+      return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+    }
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
@@ -295,7 +326,19 @@ app.post('/api/auth/signup', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user with default settings
+    // Get the user's IP address from the request (using a proxy or middleware)
+    const userIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    
+    // Fetch location (country code) from IP
+    let countryCode = 'US'; // Default to 'US' if geolocation fails
+    try {
+      const geoResponse = await axios.get(`http://api.ipstack.com/${userIp}?access_key=${process.env.IPSTACK_API_KEY}`);
+      countryCode = geoResponse.data.country_code || 'US';  // Use the country code from API or default to 'US'
+    } catch (error) {
+      console.error('Geolocation fetch error:', error);
+    }
+
+    // Create user with default settings and the detected country
     const user = await prisma.user.create({
       data: {
         email,
@@ -313,18 +356,37 @@ app.post('/api/auth/signup', async (req, res) => {
             defaultVisibility: 'public',
           },
         },
+        timezone: 'UTC',
+        country: countryCode,
       },
       include: {
         settings: true,
-        subscription: {
-          include: {
-            plan: true,
-          },
-        },
+        subscription: true,
         socialAccounts: true,
       },
     });
 
+    // Check if 'free' plan exists
+    const freePlan = await prisma.plan.findUnique({
+      where: { name: 'free' },
+    });
+
+    if (!freePlan) {
+      return res.status(400).json({ error: 'Free plan not found' });
+    }
+
+    // Create subscription with the free plan
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        planId: freePlan.id,
+        status: 'active',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(new Date().setDate(new Date().getDate() + 7)),
+      },
+    });
+
+    // Generate JWT token
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
 
     // Format user data
@@ -339,6 +401,7 @@ app.post('/api/auth/signup', async (req, res) => {
       },
       settings: user.settings,
       timezone: 'UTC',
+      country: user.country,
       bio: '',
       avatar: null,
       socialAccounts: [],
@@ -346,13 +409,17 @@ app.post('/api/auth/signup', async (req, res) => {
       updatedAt: user.updatedAt,
     };
 
-    res.status(201).json({ token, user: userData });
+    // Respond with the token and user data, including redirect URL
+    res.status(201).json({
+      token,
+      user: userData,
+      redirectUrl: redirectUrl || '/pricing',
+    });
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ error: 'Signup failed' });
   }
 });
-
 // Settings endpoints
 app.get('/api/settings', authenticateToken, async (req, res) => {
   try {
@@ -466,61 +533,125 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
   }
 });
 // Overview endpoints
+// app.get('/api/user/usage', authenticateToken, async (req, res) => {
+//   try {
+//     // Get user's subscription and plan limits
+//     const user = await prisma.user.findUnique({
+//       where: { id: req.user.id },
+//       include: {
+//         subscription: {
+//           include: {
+//             plan: {
+//               include: {
+//                 limits: true
+//               }
+//             }
+//           }
+//         }
+//       }
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     if (!user.subscription) {
+//       return res.status(400).json({ error: 'User does not have an active subscription' });
+//     }
+
+//     // Get plan limits
+//     const planLimits = user.subscription.plan.limits;
+//     const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
+
+//     // Count scheduled platforms
+//     const scheduledPosts = await prisma.postPlatform.count({
+//       where: {
+//         post: {
+//           userId: req.user.id
+//         },
+//         status: 'scheduled'
+//       }
+//     });
+
+//     // Count published platforms
+//     const publishedPosts = await prisma.postPlatform.count({
+//       where: {
+//         post: {
+//           userId: req.user.id
+//         },
+//         status: 'published'
+//       }
+//     });
+
+//     const totalPosts = scheduledPosts + publishedPosts;
+
+//     // Calculate days left in subscription
+//     const daysLeft = user.subscription.currentPeriodEnd
+//       ? Math.max(0, Math.ceil(
+//           (new Date(user.subscription.currentPeriodEnd).getTime() - new Date().getTime()) 
+//           / (1000 * 60 * 60 * 24)
+//         ))
+//       : 0;
+
+//     const daysLimit = planLimits.find(limit => limit.name === 'days_limit')?.value || 7;
+
+//     res.json({
+//       postsUsed: totalPosts,
+//       postsLimit,
+//       daysLeft,
+//       daysLimit,
+//     });
+//   } catch (error) {
+//     console.error('Usage stats error:', error);
+//     res.status(500).json({ error: 'Failed to fetch usage stats' });
+//   }
+// });
+
 app.get('/api/overview/stats', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Get total posts (both published and scheduled)
-    const totalPosts = await prisma.post.count({
-      where: { userId }
-    });
-
-    // Get scheduled posts (only future posts with scheduled status)
-    const scheduledPosts = await prisma.post.count({
-      where: {
-        userId,
-        scheduledDate: {
-          gt: new Date()
-        },
-        platforms: {
-          some: {
-            status: 'scheduled'
-          }
+    // Get posts with proper relations
+    const [scheduledCount, publishedCount, socialAccounts] = await Promise.all([
+      // Count scheduled platforms
+      prisma.postPlatform.count({
+        where: {
+          post: {
+            userId
+          },
+          status: 'scheduled'
         }
-      }
-    });
-
-    // Calculate engagement rate from post platforms
-    const posts = await prisma.post.findMany({
-      where: {
-        userId,
-        platforms: {
-          some: {
-            status: 'published'
-          }
+      }),
+      // Count published platforms
+      prisma.postPlatform.count({
+        where: {
+          post: {
+            userId
+          },
+          status: 'published'
         }
-      },
-      include: {
-        platforms: true
-      }
-    });
+      }),
+      // Get social accounts
+      prisma.socialAccount.findMany({
+        where: { userId },
+        select: {
+          followerCount: true
+        }
+      })
+    ]);
 
-    // Get total followers from social accounts
-    const socialAccounts = await prisma.socialAccount.findMany({
-      where: { userId },
-      select: {
-        followerCount: true
-      }
-    });
-
+    const totalPosts = publishedCount + scheduledCount;
     const totalFollowers = socialAccounts.reduce((acc, account) => acc + (account.followerCount || 0), 0);
 
-    // Calculate engagement rate from analytics
+    // Get analytics for the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const analytics = await prisma.analytics.findMany({
       where: {
         userId,
         date: {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+          gte: thirtyDaysAgo
         }
       },
       select: {
@@ -537,7 +668,7 @@ app.get('/api/overview/stats', authenticateToken, async (req, res) => {
       totalPosts,
       engagementRate: avgEngagementRate,
       totalFollowers,
-      scheduledPosts
+      scheduledPosts: scheduledCount
     });
   } catch (error) {
     console.error('Stats error:', error);
@@ -987,7 +1118,6 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
     }
 
     const fileData = await saveFile(req.file);
-    console.log(fileData);
 
     const mediaFile = await prisma.mediaFile.create({
       data: {
@@ -1219,7 +1349,6 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
             caption: `${post.caption} ${post.hashtags}`.trim(),
             mediaFiles: post.mediaFiles
           });
-          console.log("result", result);
           // Update the platform status and add analytics
           await prisma.postPlatform.update({
             where: { id: platform.id },
@@ -1559,11 +1688,10 @@ app.post('/api/auth/password', authenticateToken, async (req, res) => {
   }
 });
 // Update the retry post endpoint
-app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
+app.post('/retry/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get the post with all related data
     const post = await prisma.post.findUnique({
       where: { id },
       include: {
@@ -1585,12 +1713,10 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Post not found' });
     }
 
-    // Reset analytics for failed platforms
     const failedPlatforms = post.platforms.filter(p => p.status === 'failed');
 
     for (const platform of failedPlatforms) {
       try {
-        // Delete existing analytics for this platform
         await prisma.analytics.deleteMany({
           where: {
             postPlatformId: platform.id
@@ -1612,14 +1738,12 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
           continue;
         }
 
-        // Initialize client for the platform
         const client = await SocialMediaManager.initializeClient(platform.platform, {
           accessToken: socialAccount.accessToken,
           refreshToken: socialAccount.refreshToken,
           username: socialAccount.username
         });
 
-        // Publish the content
         const result = await SocialMediaManager.publishContent(
           platform.platform,
           client,
@@ -1629,7 +1753,6 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
           }
         );
 
-        // Update platform status
         await prisma.postPlatform.update({
           where: { id: platform.id },
           data: {
@@ -1640,7 +1763,6 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
           }
         });
 
-        // Create new analytics entry
         await prisma.analytics.create({
           data: {
             userId: post.userId,
@@ -1668,7 +1790,6 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
       }
     }
 
-    // Update main post status
     const updatedPlatforms = await prisma.postPlatform.findMany({
       where: { postId: post.id }
     });
@@ -1700,6 +1821,7 @@ app.post('/api/posts/retry/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to retry post' });
   }
 });
+
 
 // Add user profile routes
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
@@ -1842,6 +1964,8 @@ app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
 
 
 
+
+
 app.get('/api/user/usage', authenticateToken, async (req, res) => {
   try {
     // Get user's subscription and plan limits
@@ -1859,17 +1983,20 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
         }
       }
     });
-    console.log(user);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    if (!user.subscription) {
+      return res.status(400).json({ error: 'User does not have an active subscription' });
+    }
+
     // Get plan limits
-    const planLimits = user.subscription?.plan?.limits || [];
+    const planLimits = user.subscription.plan.limits;
     const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
 
-    // Count scheduled and published posts
+    // Count scheduled posts using proper schema relations
     const scheduledPosts = await prisma.post.count({
       where: {
         userId: req.user.id,
@@ -1881,6 +2008,7 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
       }
     });
 
+    // Count published posts
     const publishedPosts = await prisma.post.count({
       where: {
         userId: req.user.id,
@@ -1895,20 +2023,187 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
     const totalPosts = scheduledPosts + publishedPosts;
 
     // Calculate days left in subscription
-    let daysLeft = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
-    if (user.subscription?.currentPeriodEnd) {
+    let daysLeft = 7;
+    if (user.subscription.currentPeriodEnd) {
       const endDate = new Date(user.subscription.currentPeriodEnd);
       const now = new Date();
-      daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      now.setDate(now.getDate());
+      daysLeft = Math.ceil( (new Date(user.subscription.currentPeriodEnd).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     }
+      const now = new Date();
+
+    const daysLimit = planLimits.find(limit => limit.name === 'days_limit')?.value || 7;
 
     res.json({
       postsUsed: totalPosts,
       postsLimit,
-      daysLeft: Math.max(0, daysLeft)
+      daysLeft,
+      daysLimit,
     });
   } catch (error) {
     console.error('Usage stats error:', error);
     res.status(500).json({ error: 'Failed to fetch usage stats' });
+  }
+});
+
+app.post('/ticket', authenticateToken, async (req, res) => {
+  try {
+    const { subject, message } = req.body;
+    const userId = req.user.id;
+
+    const ticket = await prisma.supportTicket.create({
+      data: {
+        userId,
+        subject,
+        message,
+        status: 'open',
+        priority: 'medium',
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json(ticket);
+  } catch (error) {
+    console.error('Support ticket creation error:', error);
+    res.status(500).json({ error: 'Failed to create support ticket' });
+  }
+});
+
+// Get user's support tickets
+app.get('/tickets', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const tickets = await prisma.supportTicket.findMany({
+      where: {
+        userId,
+      },
+      include: {
+        responses: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    res.json(tickets);
+  } catch (error) {
+    console.error('Support tickets fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch support tickets' });
+  }
+});
+
+// Add response to a ticket
+app.post('/ticket/:id/response', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const userId = req.user.id;
+
+    // Verify ticket belongs to user
+    const ticket = await prisma.supportTicket.findFirst({
+      where: {
+        id,
+        userId,
+      },
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    const response = await prisma.response.create({
+      data: {
+        supportTicketId: id,
+        message,
+        isStaff: false,
+      },
+    });
+
+    res.status(201).json(response);
+  } catch (error) {
+    console.error('Support ticket response error:', error);
+    res.status(500).json({ error: 'Failed to add response' });
+  }
+});
+
+// Get user's feedback history
+app.get('/history', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const feedbackHistory = await prisma.feedback.findMany({
+      where: {
+        userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    res.json(feedbackHistory);
+  } catch (error) {
+    console.error('Feedback history fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback history' });
+  }
+});
+app.post('/feedback', authenticateToken, async (req, res) => {
+  try {
+    const { rating, feedback } = req.body;
+    const userId = req.user.id;
+
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    const feedbackEntry = await prisma.feedback.create({
+      data: {
+        userId,
+        rating,
+        feedback,
+        status: 'new',
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json(feedbackEntry);
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    res.status(500).json({ error: 'Failed to submit feedback' });
+  }
+});
+
+app.get('/history', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const feedbackHistory = await prisma.feedback.findMany({
+      where: {
+        userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    res.json(feedbackHistory);
+  } catch (error) {
+    console.error('Feedback history fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback history' });
   }
 });

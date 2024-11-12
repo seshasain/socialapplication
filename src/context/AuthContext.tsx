@@ -6,11 +6,20 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  signup: (data: SignupData) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
 }
 
+interface SignupData {
+  email: string;
+  password: string;
+  name: string;
+  redirectUrl: string | null;
+  captchaToken: string;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -28,7 +37,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (response.ok) {
             const userData = await response.json();
-            // Ensure subscription data is properly structured
             const formattedUser: User = {
               ...userData,
               subscription: userData.subscription || {
@@ -41,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             localStorage.removeItem('token');
             setUser(null);
-            setIsAuthenticated(false)
+            setIsAuthenticated(false);
           }
         } catch (error) {
           console.error('Auth check failed:', error);
@@ -69,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = await response.json();
-    // Ensure subscription data is properly structured
     const formattedUser: User = {
       ...data.user,
       subscription: data.user.subscription || {
@@ -88,21 +95,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(false);
   };
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async ({ email, password, name, redirectUrl, captchaToken }: SignupData) => {
     const response = await fetch('http://localhost:5000/api/auth/signup', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ 
+        email, 
+        password, 
+        name,
+        redirectUrl,
+        captchaToken 
+      }),
     });
 
     if (!response.ok) {
-      throw new Error('Signup failed');
+      const error = await response.json();
+      throw new Error(error.message || 'Signup failed');
     }
 
     const data = await response.json();
-    // Ensure subscription data is properly structured
     const formattedUser: User = {
       ...data.user,
       subscription: data.user.subscription || {
