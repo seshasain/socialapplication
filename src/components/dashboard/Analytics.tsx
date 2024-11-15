@@ -17,6 +17,7 @@ import {
   Zap,
   Award,
   TrendingDown,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PricingModal from '../modals/PricingModal';
@@ -79,7 +80,7 @@ export default function Analytics() {
     } else {
       setLoading(false);
     }
-  }, [timeRange, platformFilter, performanceFilter, comparisonMetric]);
+  }, [timeRange, platformFilter, performanceFilter, isFreeTier]);
 
   const fetchAnalytics = async () => {
     try {
@@ -88,7 +89,7 @@ export default function Analytics() {
       if (!token) throw new Error('No authentication token');
 
       const response = await fetch(
-        `http://localhost:5000/api/analytics/overview?timeRange=${timeRange}&platform=${platformFilter}&performance=${performanceFilter}&metric=${comparisonMetric}`,
+        `http://localhost:5000/api/analytics/overview?timeRange=${timeRange}&platform=${platformFilter}&performance=${performanceFilter}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -113,11 +114,11 @@ export default function Analytics() {
   };
 
   const getChartData = () => {
-    if (!analyticsData) return null;
+    if (!analyticsData?.analytics) return null;
 
     const dates = [...new Set(analyticsData.analytics.map(item => 
       new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    ))].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    ))];
 
     const datasets = [];
     const metrics = ['engagement', 'reach', 'impressions'];
@@ -138,10 +139,9 @@ export default function Analytics() {
 
     metrics.forEach(metric => {
       const data = dates.map(date => {
-        const dayData = analyticsData.analytics.filter(item => {
-          const itemDate = new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          return itemDate === date && (platformFilter === 'all' || item.platform === platformFilter);
-        });
+        const dayData = analyticsData.analytics.filter(
+          item => new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) === date
+        );
         return dayData.reduce((sum, item) => sum + (item[metric as keyof typeof item] as number || 0), 0);
       });
 
@@ -159,18 +159,6 @@ export default function Analytics() {
       labels: dates,
       datasets
     };
-  };
-
-  const getFilteredPosts = () => {
-    if (!analyticsData?.posts) return [];
-
-    return analyticsData.posts
-      .filter(post => platformFilter === 'all' || post.platform === platformFilter)
-      .sort((a, b) => {
-        const metricA = a[comparisonMetric as keyof typeof a] as number;
-        const metricB = b[comparisonMetric as keyof typeof b] as number;
-        return metricB - metricA;
-      });
   };
 
   const renderPerformanceFilters = () => (
@@ -310,7 +298,7 @@ export default function Analytics() {
             </div>
 
             <PostsList
-              posts={getFilteredPosts()}
+              posts={analyticsData?.posts || []}
               metric={comparisonMetric}
             />
           </>

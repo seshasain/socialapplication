@@ -483,7 +483,7 @@ app.patch('/api/auth/update', authenticateToken, async (req, res) => {
 // Analytics endpoints
 app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
   try {
-    const { timeRange = '7d' } = req.query;
+    const { timeRange = '7d', platform = 'all', performance = 'overall' } = req.query;
     const userId = req.user.id;
 
     // Calculate date range
@@ -501,17 +501,91 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
         startDate.setDate(startDate.getDate() - 7);
     }
 
-    const analytics = await prisma.analytics.findMany({
+    // Fetch posts with their platforms and analytics
+    const posts = await prisma.post.findMany({
       where: {
-        userId: userId,
-        date: {
+        userId,
+        platforms: {
+          some: platform !== 'all' ? { platform } : {}
+        },
+        scheduledDate: {
           gte: startDate,
           lte: endDate
         }
       },
+      include: {
+        platforms: {
+          include: {
+            analytics: true
+          }
+        },
+        mediaFiles: true
+      },
+      orderBy: {
+        scheduledDate: 'desc'
+      }
+    });
+
+    // Fetch analytics data
+    const analytics = await prisma.analytics.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lte: endDate
+        },
+        ...(platform !== 'all' ? { platform } : {})
+      },
       orderBy: {
         date: 'asc'
       }
+    });
+
+    // Process posts data
+    const processedPosts = posts.map(post => {
+      // Calculate total engagement metrics across all platforms
+      const metrics = post.platforms.reduce((acc, platform) => {
+        const platformAnalytics = platform.analytics[0] || { 
+          reach: 0, 
+          impressions: 0, 
+          engagement: 0,
+          likes: 0,
+          comments: 0,
+          shares: 0
+        };
+        
+        return {
+          reach: acc.reach + platformAnalytics.reach,
+          impressions: acc.impressions + platformAnalytics.impressions,
+          engagement: acc.engagement + platformAnalytics.engagement,
+          likes: acc.likes + platformAnalytics.likes,
+          comments: acc.comments + platformAnalytics.comments,
+          shares: acc.shares + platformAnalytics.shares
+        };
+      }, { 
+        reach: 0, 
+        impressions: 0, 
+        engagement: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0
+      });
+
+      return {
+        id: post.id,
+        caption: post.caption,
+        platforms: post.platforms.map(p => ({
+          platform: p.platform,
+          status: p.status,
+          publishedAt: p.publishedAt
+        })),
+        mediaFiles: post.mediaFiles.map(file => ({
+          url: file.url,
+          type: file.type
+        })),
+        createdAt: post.createdAt.toISOString(),
+        ...metrics
+      };
     });
 
     // Calculate totals
@@ -522,9 +596,22 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
       shares: acc.shares + curr.shares
     }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
 
+    // Filter posts based on performance if needed
+    let filteredPosts = processedPosts;
+    if (performance === 'top') {
+      filteredPosts = processedPosts
+        .sort((a, b) => b.engagement - a.engagement)
+        .slice(0, 5);
+    } else if (performance === 'trending') {
+      filteredPosts = processedPosts
+        .sort((a, b) => b.reach - a.reach)
+        .slice(0, 5);
+    }
+
     res.json({
       timeRange,
       analytics,
+      posts: filteredPosts,
       totals
     });
   } catch (error) {
@@ -532,80 +619,7 @@ app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });
-// Overview endpoints
-// app.get('/api/user/usage', authenticateToken, async (req, res) => {
-//   try {
-//     // Get user's subscription and plan limits
-//     const user = await prisma.user.findUnique({
-//       where: { id: req.user.id },
-//       include: {
-//         subscription: {
-//           include: {
-//             plan: {
-//               include: {
-//                 limits: true
-//               }
-//             }
-//           }
-//         }
-//       }
-//     });
 
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-
-//     if (!user.subscription) {
-//       return res.status(400).json({ error: 'User does not have an active subscription' });
-//     }
-
-//     // Get plan limits
-//     const planLimits = user.subscription.plan.limits;
-//     const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
-
-//     // Count scheduled platforms
-//     const scheduledPosts = await prisma.postPlatform.count({
-//       where: {
-//         post: {
-//           userId: req.user.id
-//         },
-//         status: 'scheduled'
-//       }
-//     });
-
-//     // Count published platforms
-//     const publishedPosts = await prisma.postPlatform.count({
-//       where: {
-//         post: {
-//           userId: req.user.id
-//         },
-//         status: 'published'
-//       }
-//     });
-
-//     const totalPosts = scheduledPosts + publishedPosts;
-
-//     // Calculate days left in subscription
-//     const daysLeft = user.subscription.currentPeriodEnd
-//       ? Math.max(0, Math.ceil(
-//           (new Date(user.subscription.currentPeriodEnd).getTime() - new Date().getTime()) 
-//           / (1000 * 60 * 60 * 24)
-//         ))
-//       : 0;
-
-//     const daysLimit = planLimits.find(limit => limit.name === 'days_limit')?.value || 7;
-
-//     res.json({
-//       postsUsed: totalPosts,
-//       postsLimit,
-//       daysLeft,
-//       daysLimit,
-//     });
-//   } catch (error) {
-//     console.error('Usage stats error:', error);
-//     res.status(500).json({ error: 'Failed to fetch usage stats' });
-//   }
-// });
 
 app.get('/api/overview/stats', authenticateToken, async (req, res) => {
   try {
@@ -676,75 +690,77 @@ app.get('/api/overview/stats', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
-  try {
-    const { timeRange = '7d' } = req.query;
-    const userId = req.user.id;
+// app.get('/api/analytics/overview', authenticateToken, async (req, res) => {
+//   try {
+//     console.log("test");
+//     const { timeRange = '7d' } = req.query;
+//     const userId = req.user.id;
 
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
+//     // Calculate date range
+//     const endDate = new Date();
+//     const startDate = new Date();
 
-    switch (timeRange) {
-      case '30d':
-        startDate.setDate(startDate.getDate() - 30);
-        break;
-      case '90d':
-        startDate.setDate(startDate.getDate() - 90);
-        break;
-      default: // 7d
-        startDate.setDate(startDate.getDate() - 7);
-    }
+//     switch (timeRange) {
+//       case '30d':
+//         startDate.setDate(startDate.getDate() - 30);
+//         break;
+//       case '90d':
+//         startDate.setDate(startDate.getDate() - 90);
+//         break;
+//       default: // 7d
+//         startDate.setDate(startDate.getDate() - 7);
+//     }
 
-    // Get analytics through post platforms
-    const postPlatforms = await prisma.postPlatform.findMany({
-      where: {
-        post: {
-          userId
-        }
-      },
-      include: {
-        analytics: {
-          where: {
-            date: {
-              gte: startDate,
-              lte: endDate
-            }
-          }
-        }
-      }
-    });
+//     // Get analytics through post platforms
+//     const postPlatforms = await prisma.postPlatform.findMany({
+//       where: {
+//         post: {
+//           userId
+//         }
+//       },
+//       include: {
+//         analytics: {
+//           where: {
+//             date: {
+//               gte: startDate,
+//               lte: endDate
+//             }
+//           }
+//         }
+//       }
+//     });
 
-    // Transform the data to match the expected format
-    const analytics = postPlatforms.flatMap(platform =>
-      platform.analytics.map(analytic => ({
-        date: analytic.date,
-        platform: platform.platform,
-        reach: analytic.reach,
-        impressions: analytic.impressions,
-        engagement: analytic.engagement,
-        shares: analytic.shares
-      }))
-    );
+//     // Transform the data to match the expected format
+//     const analytics = postPlatforms.flatMap(platform =>
+//       platform.analytics.map(analytic => ({
+//         date: analytic.date,
+//         platform: platform.platform,
+//         reach: analytic.reach,
+//         impressions: analytic.impressions,
+//         engagement: analytic.engagement,
+//         shares: analytic.shares
+//       }))
+//     );
 
-    // Calculate totals
-    const totals = analytics.reduce((acc, curr) => ({
-      reach: acc.reach + curr.reach,
-      impressions: acc.impressions + curr.impressions,
-      engagement: acc.engagement + curr.engagement,
-      shares: acc.shares + curr.shares
-    }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
+//     // Calculate totals
+//     const totals = analytics.reduce((acc, curr) => ({
+//       reach: acc.reach + curr.reach,
+//       impressions: acc.impressions + curr.impressions,
+//       engagement: acc.engagement + curr.engagement,
+//       shares: acc.shares + curr.shares
+//     }), { reach: 0, impressions: 0, engagement: 0, shares: 0 });
 
-    res.json({
-      timeRange,
-      analytics,
-      totals
-    });
-  } catch (error) {
-    console.error('Analytics error:', error);
-    res.status(500).json({ error: 'Failed to fetch analytics' });
-  }
-});
+//     res.json({
+//       timeRange,
+//       analytics,
+//       totals
+//     });
+//     console.log("test",timeRange, analytics, totals);
+//   } catch (error) {
+//     console.error('Analytics error:', error);
+//     res.status(500).json({ error: 'Failed to fetch analytics' });
+//   }
+// });
 
 app.get('/api/posts/scheduled', authenticateToken, async (req, res) => {
   try {
