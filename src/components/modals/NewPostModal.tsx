@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { useState, useEffect } from 'react';
 import {
   X,
   Upload,
@@ -160,7 +162,7 @@ export default function NewPostModal({
 
   useEffect(() => {
     if (isOpen) {
-      setError(null);
+      toast.error(null);
       setUploadError(null);
     }
   }, [isOpen]);
@@ -229,11 +231,11 @@ export default function NewPostModal({
 
   const validateForm = () => {
     if (!postData.caption.trim()) {
-      setError('Caption is required');
+      toast.error('Caption is required');
       return false;
     }
     if (selectedPlatforms.length === 0) {
-      setError('Please select at least one platform');
+      toast.error('Please select at least one platform');
       return false;
     }
     if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
@@ -241,7 +243,7 @@ export default function NewPostModal({
         `${postData.scheduledDate}T${postData.scheduledTime}`
       );
       if (scheduledDateTime <= new Date()) {
-        setError('Scheduled date must be in the future');
+        toast.error('Scheduled date must be in the future');
         return false;
       }
     }
@@ -334,7 +336,7 @@ export default function NewPostModal({
 
     try {
       setLoading(true);
-      setError(null);
+      toast.error(null);
 
       const platformsToPost = getSelectedPlatformNames();
       let scheduledDateTime: Date;
@@ -398,7 +400,7 @@ export default function NewPostModal({
           }))
         );
       } else {
-        setError(err.message || 'Failed to create post');
+        toast.error(err.message || 'Failed to create post');
       }
     } finally {
       setLoading(false);
