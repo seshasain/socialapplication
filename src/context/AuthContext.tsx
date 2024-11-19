@@ -8,6 +8,7 @@ interface AuthContextType {
   logout: () => void;
   signup: (data: SignupData) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 interface SignupData {
@@ -24,33 +25,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  const fetchUserData = async (token: string) => {
+    const response = await fetch('http://localhost:5000/api/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch user data');
+    }
+
+    const userData = await response.json();
+    const formattedUser: User = {
+      ...userData,
+      subscription: userData.subscription || {
+        planId: 'free',
+        status: 'active'
+      }
+    };
+    return formattedUser;
+  };
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUser(null);
+      setIsAuthenticated(false);
+      return;
+    }
+
+    try {
+      const userData = await fetchUserData(token);
+      setUser(userData);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+      localStorage.removeItem('token');
+      setUser(null);
+      setIsAuthenticated(false);
+    }
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const response = await fetch('http://localhost:5000/api/auth/me', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (response.ok) {
-            const userData = await response.json();
-            const formattedUser: User = {
-              ...userData,
-              subscription: userData.subscription || {
-                planId: 'free',
-                status: 'active'
-              }
-            };
-            setUser(formattedUser);
-            setIsAuthenticated(true);
-          } else {
-            localStorage.removeItem('token');
-            setUser(null);
-            setIsAuthenticated(false);
-          }
+          const userData = await fetchUserData(token);
+          setUser(userData);
+          setIsAuthenticated(true);
         } catch (error) {
           console.error('Auth check failed:', error);
           localStorage.removeItem('token');
@@ -135,7 +159,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated, login, logout, signup, signInWithGoogle }}
+      value={{ 
+        user, 
+        isAuthenticated, 
+        login, 
+        logout, 
+        signup, 
+        signInWithGoogle,
+        refreshUser 
+      }}
     >
       {children}
     </AuthContext.Provider>

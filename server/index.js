@@ -95,7 +95,84 @@ app.get('/api/auth/twitter', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to initialize Twitter authentication' });
   }
 });
+// LinkedIn Routes
+app.get('/api/auth/linkedin', authenticateToken, async (req, res) => {
+  try {
+    if (!process.env.LINKEDIN_CLIENT_ID || !process.env.LINKEDIN_CLIENT_SECRET) {
+      throw new Error('LinkedIn API credentials not configured');
+    }
 
+    const state = Math.random().toString(36).substring(7);
+    const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
+    const scope = ['r_liteprofile', 'w_member_social'];
+
+    oauthTokens.set(state, {
+      userId: req.user.id
+    });
+
+    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
+      process.env.LINKEDIN_CLIENT_ID
+    }&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope.join('%20')}`;
+
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('LinkedIn auth error:', error);
+    res.status(500).json({ error: 'Failed to initialize LinkedIn authentication' });
+  }
+});
+
+app.get('/api/auth/linkedin/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    const storedData = oauthTokens.get(state);
+
+    if (!storedData) {
+      throw new Error('Invalid state parameter');
+    }
+
+    const { userId } = storedData;
+    const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
+
+    const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: process.env.LINKEDIN_CLIENT_ID,
+        client_secret: process.env.LINKEDIN_CLIENT_SECRET,
+      }),
+    });
+
+    const { access_token } = await tokenResponse.json();
+
+    const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+      },
+    });
+    const profile = await profileResponse.json();
+
+    await prisma.socialAccount.create({
+      data: {
+        platform: 'linkedin',
+        accessToken: access_token,
+        username: `${profile.localizedFirstName} ${profile.localizedLastName}`,
+        profileUrl: `https://linkedin.com/in/${profile.id}`,
+        userId
+      },
+    });
+
+    oauthTokens.delete(state);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?linkedin=connected`);
+  } catch (error) {
+    console.error('LinkedIn callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?linkedin=error`);
+  }
+});
 app.get('/api/auth/twitter/callback', async (req, res) => {
   try {
     const { oauth_token, oauth_verifier } = req.query;
@@ -139,6 +216,171 @@ app.get('/api/auth/twitter/callback', async (req, res) => {
     res.redirect(`http://localhost:5173/dashboard?twitter=error`);
   }
 })
+// Facebook Routes
+app.get('/api/auth/facebook', authenticateToken, async (req, res) => {
+  try {
+    if (!process.env.FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET) {
+      throw new Error('Facebook API credentials not configured');
+    }
+
+    const state = Math.random().toString(36).substring(7);
+    const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
+    const scope = [
+      'pages_manage_posts',
+      'pages_read_engagement',
+      'instagram_basic',
+      'instagram_content_publish',
+    ];
+
+    oauthTokens.set(state, {
+      userId: req.user.id
+    });
+
+    const authUrl = `https://www.facebook.com/v12.0/dialog/oauth?client_id=${
+      process.env.FACEBOOK_APP_ID
+    }&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope.join(',')}`;
+
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Facebook auth error:', error);
+    res.status(500).json({ error: 'Failed to initialize Facebook authentication' });
+  }
+});
+
+app.get('/api/auth/facebook/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    const storedData = oauthTokens.get(state);
+
+    if (!storedData) {
+      throw new Error('Invalid state parameter');
+    }
+
+    const { userId } = storedData;
+    const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
+
+    const tokenResponse = await fetch(
+      `https://graph.facebook.com/v12.0/oauth/access_token?client_id=${
+        process.env.FACEBOOK_APP_ID
+      }&client_secret=${
+        process.env.FACEBOOK_APP_SECRET
+      }&code=${code}&redirect_uri=${encodeURIComponent(redirectUri)}`
+    );
+
+    const { access_token } = await tokenResponse.json();
+
+    const profileResponse = await fetch(
+      `https://graph.facebook.com/me?fields=id,name&access_token=${access_token}`
+    );
+    const profile = await profileResponse.json();
+
+    await prisma.socialAccount.create({
+      data: {
+        platform: 'facebook',
+        accessToken: access_token,
+        username: profile.name,
+        profileUrl: `https://facebook.com/${profile.id}`,
+        userId
+      },
+    });
+
+    oauthTokens.delete(state);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?facebook=connected`);
+  } catch (error) {
+    console.error('Facebook callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?facebook=error`);
+  }
+});
+// Instagram Business API routes
+app.get('/api/auth/instagram', async (req, res) => {
+  try {
+    const redirectUri = `${process.env.APP_URL}/api/auth/instagram/callback`;
+    const scope = [
+      'instagram_basic',
+      'instagram_content_publish',
+      'instagram_manage_insights',
+      'pages_show_list',
+      'pages_read_engagement',
+      'business_management'
+    ];
+
+    const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${
+      process.env.FACEBOOK_APP_ID
+    }&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope.join(',')}&response_type=code`;
+
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Instagram auth error:', error);
+    res.status(500).json({ error: 'Failed to initialize Instagram authentication' });
+  }
+});
+
+app.get('/api/auth/instagram/callback', async (req, res) => {
+  try {
+    const { code } = req.query;
+    const redirectUri = `${process.env.APP_URL}/api/auth/instagram/callback`;
+
+    // Exchange code for access token
+    const tokenResponse = await fetch(
+      `https://graph.facebook.com/v18.0/oauth/access_token?client_id=${
+        process.env.FACEBOOK_APP_ID
+      }&client_secret=${
+        process.env.FACEBOOK_APP_SECRET
+      }&code=${code}&redirect_uri=${encodeURIComponent(redirectUri)}`
+    );
+
+    const { access_token } = await tokenResponse.json();
+
+    // Get Instagram Business Account ID
+    const accountsResponse = await fetch(
+      `https://graph.facebook.com/v18.0/me/accounts?access_token=${access_token}`
+    );
+    const accountsData = await accountsResponse.json();
+
+    if (!accountsData.data || accountsData.data.length === 0) {
+      throw new Error('No Facebook Pages found');
+    }
+
+    // Get Instagram Business Account connected to the Facebook Page
+    const pageId = accountsData.data[0].id;
+    const instagramResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${access_token}`
+    );
+    const instagramData = await instagramResponse.json();
+
+    if (!instagramData.instagram_business_account) {
+      throw new Error('No Instagram Business Account found');
+    }
+
+    const instagramAccountId = instagramData.instagram_business_account.id;
+
+    // Get Instagram Business Account details
+    const profileResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${instagramAccountId}?fields=username,profile_picture_url,followers_count&access_token=${access_token}`
+    );
+    const profile = await profileResponse.json();
+
+    // Save account
+    const socialAccount = await prisma.socialAccount.create({
+      data: {
+        platform: 'instagram',
+        accessToken: access_token,
+        username: profile.username,
+        profileUrl: `https://instagram.com/${profile.username}`,
+        userId: req.user.id,
+        followerCount: profile.followers_count || 0,
+        platformAccountId: instagramAccountId,
+        platformPageId: pageId
+      },
+    });
+
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?instagram=connected`);
+  } catch (error) {
+    console.error('Instagram callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?instagram=error`);
+  }
+});
+
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -806,21 +1048,7 @@ app.get('/api/social-accounts', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch social accounts' });
   }
 });
-// Social Accounts endpoints
-app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const account = await prisma.socialAccount.delete({
-      where: {
-        id: id, // Use the ID to find the account
-        userId: req.user.id, // Ensure it belongs to the user
-      },
-    }
-    )
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
 
 
 
@@ -1255,6 +1483,49 @@ app.post('/api/media/upload', authenticateToken, multer().single('file'), async 
     res.status(500).json({ error: 'Failed to upload media' });
   }
 });
+app.delete('/api/social-accounts/:accountId', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Unauthorized access',
+      });
+    }
+
+    const account = await prisma.socialAccount.findFirst({
+      where: {
+        id: accountId,
+        userId,
+      },
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Social account not found or unauthorized',
+      });
+    }
+
+    await prisma.socialAccount.delete({
+      where: { id: accountId },
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Social account successfully disconnected',
+    });
+  } catch (error) {
+    console.error('Error disconnecting social account:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to disconnect social account',
+    });
+  }
+});
+
 
 // Delete media endpoint
 app.delete('/api/media/:id', authenticateToken, async (req, res) => {
@@ -2013,26 +2284,22 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
     const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
 
     // Count scheduled posts using proper schema relations
-    const scheduledPosts = await prisma.post.count({
+    const scheduledPosts = await prisma.postPlatform.count({
       where: {
-        userId: req.user.id,
-        platforms: {
-          some: {
-            status: 'scheduled'
-          }
-        }
+        post: {
+          userId: req.user.id
+        },
+        status: 'scheduled'
       }
     });
 
     // Count published posts
-    const publishedPosts = await prisma.post.count({
+    const publishedPosts = await prisma.postPlatform.count({
       where: {
-        userId: req.user.id,
-        platforms: {
-          some: {
-            status: 'published'
-          }
-        }
+        post: {
+          userId: req.user.id
+        },
+        status: 'published'
       }
     });
 

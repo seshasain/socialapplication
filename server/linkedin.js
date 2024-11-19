@@ -3,7 +3,7 @@ import { Client } from 'linkedin-api-client';
 export const createLinkedInClient = (accessToken) => {
   return new Client({
     accessToken,
-    apiVersion: 'v2'
+    apiVersion: 'v2',
   });
 };
 
@@ -15,10 +15,10 @@ export const postToLinkedIn = async (client, { caption, mediaFiles = [] }) => {
     if (mediaFiles.length > 0) {
       mediaIds = await Promise.all(
         mediaFiles.map(async (file) => {
-          const mediaBuffer = await fetch(file.url).then(res => res.buffer());
+          const mediaBuffer = await fetch(file.url).then((res) => res.buffer());
           const uploadResponse = await client.upload.registerUpload({
             mediaType: file.type === 'image' ? 'IMAGE' : 'VIDEO',
-            media: mediaBuffer
+            media: mediaBuffer,
           });
           return uploadResponse.value.asset;
         })
@@ -32,17 +32,17 @@ export const postToLinkedIn = async (client, { caption, mediaFiles = [] }) => {
       specificContent: {
         'com.linkedin.ugc.ShareContent': {
           shareCommentary: {
-            text: caption
+            text: caption,
           },
-          media: mediaIds.map(mediaId => ({
+          media: mediaIds.map((mediaId) => ({
             status: 'READY',
-            media: mediaId
-          }))
-        }
+            media: mediaId,
+          })),
+        },
       },
       visibility: {
-        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
-      }
+        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+      },
     });
 
     return post;

@@ -239,7 +239,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
                       width:
                         usageStats.postsLimit === 1000
                           ? '100%'
-                          : `${calculatePercentage(
+                          : `${100-calculatePercentage(
                               usageStats.postsUsed,
                               usageStats.postsLimit
                             )}%`,

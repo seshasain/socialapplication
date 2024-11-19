@@ -29,7 +29,7 @@ async function main() {
           sortOrder: 1,
           features: {
             create: [
-              { name: 'Up to 3 social accounts', included: true },
+              { name: 'Up to 1 social accounts', included: true },
               { name: 'Basic analytics', included: true },
               { name: 'Manual post scheduling', included: true },
               { name: 'Single user', included: true },
@@ -37,9 +37,11 @@ async function main() {
           },
           limits: {
             create: [
-              { name: 'social_accounts', value: 3 },
+              { name: 'social_accounts', value: 1 },
               { name: 'scheduled_posts', value: 10 },
               { name: 'team_members', value: 1 },
+              { name: 'days_limit', value: 7},
+              { name: 'total_posts', value: 10},
             ],
           },
         },
@@ -61,9 +63,11 @@ async function main() {
           },
           limits: {
             create: [
-              { name: 'social_accounts', value: 10 },
+              { name: 'social_accounts', value: 3 },
               { name: 'scheduled_posts', value: 100 },
               { name: 'team_members', value: 5 },
+              { name: 'days_limit', value: 30},
+              { name: 'total_posts', value: 100},
             ],
           },
         },
@@ -100,6 +104,7 @@ async function main() {
         },
       }),
     ]);
+
 
     // Create social accounts
     const socialAccounts = await Promise.all([

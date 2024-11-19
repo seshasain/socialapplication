@@ -27,13 +27,13 @@ export default function MediaUploader({
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setDragError(null);
-    
+
     if (rejectedFiles.length > 0) {
       setDragError('Some files were rejected. Please check file types and sizes.');
       return;
     }
 
-    const remainingSlots = maxFiles - (existingFiles.length + previewFiles.length);
+    const remainingSlots = Math.max(0, maxFiles - (existingFiles.length + previewFiles.length));
     if (acceptedFiles.length > remainingSlots) {
       setDragError(`You can only upload ${remainingSlots} more file(s)`);
       acceptedFiles = acceptedFiles.slice(0, remainingSlots);
@@ -55,7 +55,6 @@ export default function MediaUploader({
     }
 
     if (validFiles.length > 0) {
-      // Create object URLs for previews
       const newPreviewUrls = validFiles.reduce((acc, file) => {
         acc[file.name] = URL.createObjectURL(file);
         return acc;
@@ -67,7 +66,6 @@ export default function MediaUploader({
     }
   }, [maxFiles, existingFiles.length, previewFiles.length, onUpload, acceptedFileTypes]);
 
-  // Cleanup object URLs when component unmounts
   React.useEffect(() => {
     return () => {
       Object.values(previewUrls).forEach(url => URL.revokeObjectURL(url));
@@ -84,10 +82,8 @@ export default function MediaUploader({
 
   const handleRemove = (file: File | MediaFile) => {
     if ('url' in file) {
-      // It's a MediaFile
       onRemove(file);
     } else {
-      // It's a File
       setPreviewFiles(prev => prev.filter(f => f !== file));
       if (previewUrls[file.name]) {
         URL.revokeObjectURL(previewUrls[file.name]);
@@ -103,10 +99,8 @@ export default function MediaUploader({
 
   const renderPreview = (file: File | MediaFile) => {
     const isVideo = file.type?.startsWith('video/');
-    const url = 'url' in file 
-      ? file.url 
-      : previewUrls[file.name] || '';
-    const name = 'filename' in file ? file.filename : file.name;
+    const url = 'url' in file ? file.url : previewUrls[file.name] || '';
+    const name = 'filename' in file ? file.filename : file.name ?? 'Unknown';
 
     return (
       <div key={'url' in file ? file.id : file.name} className="relative group">
@@ -186,7 +180,7 @@ export default function MediaUploader({
 
       {(existingFiles.length > 0 || previewFiles.length > 0) && (
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
-          
+          {existingFiles.map(renderPreview)}
           {previewFiles.map(renderPreview)}
         </div>
       )}
@@ -199,5 +193,3 @@ export default function MediaUploader({
     </div>
   );
 }
-
-

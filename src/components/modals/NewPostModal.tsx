@@ -27,6 +27,50 @@ interface NewPostModalProps {
   connectedAccounts: Array<{ platform: string; id: string }>;
 }
 
+// Platform-specific limits and validations
+const PLATFORM_LIMITS = {
+  twitter: {
+    maxCharacters: 280,
+    maxVideoLength: 140,
+    maxVideoSize: 512,
+    maxImages: 4,
+    maxVideos: 1,
+    supportedMediaTypes: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'],
+  },
+  instagram: {
+    maxCharacters: 2200,
+    maxVideoLength: 60,
+    maxVideoSize: 100,
+    maxImages: 10,
+    maxVideos: 1,
+    supportedMediaTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+  },
+  facebook: {
+    maxCharacters: 63206,
+    maxVideoLength: 240,
+    maxVideoSize: 4096,
+    maxImages: 10,
+    maxVideos: 1,
+    supportedMediaTypes: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'],
+  },
+  linkedin: {
+    maxCharacters: 3000,
+    maxVideoLength: 600,
+    maxVideoSize: 5120,
+    maxImages: 9,
+    maxVideos: 1,
+    supportedMediaTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+  },
+  youtube: {
+    maxCharacters: 5000,
+    maxVideoLength: 43200,
+    maxVideoSize: 128000,
+    maxImages: 1,
+    maxVideos: 1,
+    supportedMediaTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+  },
+};
+
 export default function NewPostModal({
   isOpen,
   onClose,
@@ -36,9 +80,11 @@ export default function NewPostModal({
 }: NewPostModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Array<{ platform: string; message: string }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [publishNow, setPublishNow] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [postSuccess, setPostSuccess] = useState<{ [key: string]: boolean }>({});
   
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
@@ -97,7 +143,6 @@ export default function NewPostModal({
         setSelectedPlatforms(initialSelectedPlatforms);
       }
     } else {
-      // Reset form when opening for new post
       setPostData({
         caption: '',
         scheduledDate: defaultDate.toISOString().split('T')[0],
@@ -119,6 +164,103 @@ export default function NewPostModal({
       setUploadError(null);
     }
   }, [isOpen]);
+
+  const validatePlatformContent = (platform: string, fullText: string, mediaFiles: MediaFile[]) => {
+    const errors: Array<{ platform: string; message: string }> = [];
+    const limits = PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS];
+    
+    if (!limits) return errors;
+
+    // Text length validation
+    if (fullText.length > limits.maxCharacters) {
+      errors.push({
+        platform,
+        message: `Text exceeds ${limits.maxCharacters} characters limit for ${platform}`,
+      });
+    }
+
+    // Media validations
+    const images = mediaFiles.filter(file => file.type.startsWith('image/'));
+    const videos = mediaFiles.filter(file => file.type.startsWith('video/'));
+
+    if (images.length > limits.maxImages) {
+      errors.push({
+        platform,
+        message: `Maximum ${limits.maxImages} images allowed for ${platform}`,
+      });
+    }
+
+    if (videos.length > limits.maxVideos) {
+      errors.push({
+        platform,
+        message: `Maximum ${limits.maxVideos} videos allowed for ${platform}`,
+      });
+    }
+
+    // Media type support
+    mediaFiles.forEach(file => {
+      if (!limits.supportedMediaTypes.includes(file.type)) {
+        errors.push({
+          platform,
+          message: `${file.type} is not supported on ${platform}`,
+        });
+      }
+    });
+
+    // Video constraints
+    videos.forEach(video => {
+      if (video.size > limits.maxVideoSize * 1024 * 1024) {
+        errors.push({
+          platform,
+          message: `Video exceeds ${limits.maxVideoSize}MB limit for ${platform}`,
+        });
+      }
+
+      if (video.duration && video.duration > limits.maxVideoLength) {
+        errors.push({
+          platform,
+          message: `Video exceeds ${limits.maxVideoLength} seconds limit for ${platform}`,
+        });
+      }
+    });
+
+    return errors;
+  };
+
+  const validateForm = () => {
+    if (!postData.caption.trim()) {
+      setError('Caption is required');
+      return false;
+    }
+    if (selectedPlatforms.length === 0) {
+      setError('Please select at least one platform');
+      return false;
+    }
+    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
+      const scheduledDateTime = new Date(
+        `${postData.scheduledDate}T${postData.scheduledTime}`
+      );
+      if (scheduledDateTime <= new Date()) {
+        setError('Scheduled date must be in the future');
+        return false;
+      }
+    }
+
+    const platformsToValidate = getSelectedPlatformNames();
+    const fullText = `${postData.caption} ${postData.hashtags}`;
+    
+    const allErrors = platformsToValidate.flatMap(platform => 
+      validatePlatformContent(platform, fullText, uploadedFiles)
+    );
+
+    if (allErrors.length > 0) {
+      setValidationErrors(allErrors);
+      return false;
+    }
+
+    setValidationErrors([]);
+    return true;
+  };
 
   const handlePlatformSelect = (platformId: string) => {
     if (platformId === 'all') {
@@ -154,7 +296,6 @@ export default function NewPostModal({
   };
 
   const handleMediaUpload = async (files: File[]) => {
-    
     try {
       setLoading(true);
       setUploadError(null);
@@ -183,47 +324,25 @@ export default function NewPostModal({
     }
   };
 
-  const validateForm = () => {
-    if (!postData.caption.trim()) {
-      setError('Caption is required');
-      return false;
-    }
-    if (selectedPlatforms.length === 0) {
-      setError('Please select at least one platform');
-      return false;
-    }
-    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
-      const scheduledDateTime = new Date(
-        `${postData.scheduledDate}T${postData.scheduledTime}`
-      );
-      if (scheduledDateTime <= new Date()) {
-        setError('Scheduled date must be in the future');
-        return false;
-      }
-    }
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationErrors([]);
+    setPostSuccess({});
 
-    if (!validateForm()) return;
+    const isValid = validateForm();
+    if (!isValid) return;
 
     try {
       setLoading(true);
       setError(null);
 
       const platformsToPost = getSelectedPlatformNames();
-
-      // Create a proper date object by combining date and time
       let scheduledDateTime: Date;
       
       if (publishNow) {
-        // Set scheduled date to 1 minute from now for immediate publishing
         scheduledDateTime = new Date();
         scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
       } else {
-        // Parse the date and time inputs
         const [year, month, day] = postData.scheduledDate!.split('-').map(Number);
         const [hours, minutes] = postData.scheduledTime!.split(':').map(Number);
         scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
@@ -242,11 +361,45 @@ export default function NewPostModal({
       };
 
       const post = await createPost(requestBody);
-      onSave(post);
-      onClose();
-    } catch (err) {
+      
+      // Update success status for each platform
+      const newPostSuccess = platformsToPost.reduce((acc, platform) => {
+        acc[platform] = true;
+        return acc;
+      }, {} as { [key: string]: boolean });
+      
+      setPostSuccess(newPostSuccess);
+      
+      // Show success message for 2 seconds before closing
+      setTimeout(() => {
+        onSave(post);
+        onClose();
+      }, 20000);
+    } catch (err: any) {
       console.error('Post creation error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create post');
+      if (err.platformErrors) {
+        // Handle platform-specific errors
+        const failedPlatforms = Object.keys(err.platformErrors);
+        const successfulPlatforms = getSelectedPlatformNames().filter(
+          platform => !failedPlatforms.includes(platform)
+        );
+        
+        // Update success/failure status
+        const newPostSuccess = [...successfulPlatforms].reduce((acc, platform) => {
+          acc[platform] = true;
+          return acc;
+        }, {} as { [key: string]: boolean });
+        
+        setPostSuccess(newPostSuccess);
+        setValidationErrors(
+          failedPlatforms.map(platform => ({
+            platform,
+            message: err.platformErrors[platform]
+          }))
+        );
+      } else {
+        setError(err.message || 'Failed to create post');
+      }
     } finally {
       setLoading(false);
     }
@@ -275,6 +428,33 @@ export default function NewPostModal({
             <div className="mb-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center">
               <AlertCircle className="w-5 h-5 mr-2" />
               {error}
+            </div>
+          )}
+
+          {validationErrors.length > 0 && (
+            <div className="mb-6 p-3 bg-yellow-100 border border-yellow-200 text-yellow-800 rounded-lg">
+              <h3 className="font-semibold mb-2">Platform Validation Issues:</h3>
+              <ul className="list-disc pl-5">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>
+                    {error.platform}: {error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {Object.keys(postSuccess).length > 0 && (
+            <div className="mb-6 p-3 bg-green-100 border border-green-200 text-green-800 rounded-lg">
+              <h3 className="font-semibold mb-2">Post Status:</h3>
+              <ul className="space-y-1">
+                {Object.entries(postSuccess).map(([platform, success]) => (
+                  <li key={platform} className="flex items-center">
+                    <Check className="w-4 h-4 mr-2 text-green-600" />
+                    {platform}: Successfully posted
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
