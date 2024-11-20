@@ -31,53 +31,39 @@ export const getFileInfo = async (filename) => {
     throw new Error('Failed to get file info');
   }
 };
-export const saveFile = async (file) => {
+export async function saveFile(file) {
   try {
     const uniqueId = uuidv4();
     const fileExtension = path.extname(file.originalname);
     const filename = `${uniqueId}${fileExtension}`;
-    const filepath = path.join(uploadsDir, filename);
-    
-    if (file.mimetype.startsWith('image/')) {
-      // Process image with sharp
-      await sharp(file.buffer)
-        .resize(2000, 2000, {
-          fit: 'inside',
-          withoutEnlargement: true
-        })
-        .jpeg({ quality: 80 })
-        .toFile(filepath);
-    } else if (file.mimetype.startsWith('video/')) {
-      // Save video file directly
-      await fs.promises.writeFile(filepath, file.buffer);
-    } else {
-      throw new Error('Unsupported file type');
-    }
-    
+    const filepath = path.join(UPLOAD_DIR, filename);
+
+    // Write file to disk
+    await fs.promises.writeFile(filepath, file.buffer);
+
     return {
       id: uniqueId,
-      url: `/uploads/${filename}`, // Return relative URL
+      url: `/uploads/${filename}`,
       filename,
-      size: file.size,
-      type: file.mimetype,
-      originalName: file.originalname
+      filepath,
+      mimetype: file.mimetype,
+      size: file.size
     };
   } catch (error) {
-    console.error('File save error:', error);
-    throw new Error('Failed to save file');
+    console.error('Local file save error:', error);
+    throw new Error('Failed to save file locally');
   }
-};
+}
 
-export const deleteFile = async (filename) => {
+export async function deleteFile(filename) {
+  if (!filename) return;
+  
   try {
-    const filepath = path.join(uploadsDir, filename);
+    const filepath = path.join(UPLOAD_DIR, filename);
     if (fs.existsSync(filepath)) {
       await fs.promises.unlink(filepath);
-      return true;
     }
-    return false;
   } catch (error) {
     console.error('File deletion error:', error);
-    throw new Error('Failed to delete file');
   }
-};
+}

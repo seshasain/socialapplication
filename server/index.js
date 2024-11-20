@@ -16,6 +16,7 @@ import { schedulePost, cancelScheduledPost } from './schedular.js';
 import { uploadToS3, deleteFromS3, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 const prisma = new PrismaClient();
 const app = express();
 
@@ -40,13 +41,32 @@ app.use(express.urlencoded({ extended: true }));
 //     }
 //   }
 // });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// const upload = multer({
+//   storage: multer.diskStorage({
+//     destination: function (req, file, cb) {
+//       const uploadsDir = path.join(__dirname, '..', 'uploads');
+//       if (!fs.existsSync(uploadsDir)) {
+//         fs.mkdirSync(uploadsDir, { recursive: true });
+//       }
+//       cb(null, uploadsDir);
+//     },
+//     filename: function (req, file, cb) {
+//       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+//       cb(null, `${uniqueSuffix}-${file.originalname}`);
+//     }
+//   }),
+//   limits: {
+//     fileSize: 100 * 1024 * 1024 // 100MB
+//   }
+// });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 100 * 1024 * 1024 // 100MB
   }
 });
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Configure Twitter OAuth client
 const twitterClient = new TwitterApi({
@@ -1360,38 +1380,6 @@ const s3 = new AWS.S3({
 // Store scheduled jobs in memory
 const scheduledJobs = new Map();
 
-// Media upload endpoint
-app.post('/api/media/upload', authenticateToken, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const fileData = await saveFile(req.file);
-
-    const mediaFile = await prisma.mediaFile.create({
-      data: {
-        userId: req.user.id,
-        url: fileData.filepath,
-        type: fileData.mimetype.startsWith('image/') ? 'image' : 'video',
-        filename: fileData.filename,
-        size: fileData.size,
-        s3Key: fileData.filename,
-      }
-    });
-
-    res.json(mediaFile);
-  } catch (error) {
-    console.error('Media upload error:', error);
-    await deleteFile(req.file?.filename).catch(console.error);
-    res.status(500).json({ error: 'Failed to upload media' });
-  }
-});
-
-
-
-
-
 app.get('/api/posts/history', authenticateToken, async (req, res) => {
   try {
     const { filter = 'all', sortBy = 'date', order = 'desc' } = req.query;
@@ -1451,86 +1439,6 @@ app.get('/api/posts/history', authenticateToken, async (req, res) => {
   }
 });
 
-
-
-
-
-// Media upload endpoint
-app.post('/api/media/upload', authenticateToken, multer().single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    // Upload file to S3
-    const { url, s3Key } = await uploadToS3(req.file, req.user.id);
-
-    // Create media file record in database
-    const mediaFile = await prisma.mediaFile.create({
-      data: {
-        userId: req.user.id,
-        url,
-        type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
-        filename: req.file.originalname,
-        size: req.file.size,
-        s3Key
-      }
-    });
-
-    res.status(201).json(mediaFile);
-  } catch (error) {
-    console.error('Media upload error:', error);
-
-    // If there was an error and we uploaded to S3, clean up
-    if (error.s3Key) {
-      await deleteFromS3(error.s3Key).catch(console.error);
-    }
-
-    res.status(500).json({ error: 'Failed to upload media' });
-  }
-});
-app.delete('/api/social-accounts/:accountId', authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Unauthorized access',
-      });
-    }
-
-    const account = await prisma.socialAccount.findFirst({
-      where: {
-        id: accountId,
-        userId,
-      },
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Social account not found or unauthorized',
-      });
-    }
-
-    await prisma.socialAccount.delete({
-      where: { id: accountId },
-    });
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'Social account successfully disconnected',
-    });
-  } catch (error) {
-    console.error('Error disconnecting social account:', error);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to disconnect social account',
-    });
-  }
-});
 
 
 // Delete media endpoint
@@ -1722,6 +1630,7 @@ app.post('/api/media/upload', authenticateToken, multer().single('file'), async 
         s3Key
       }
     });
+    console.log(mediaFile);
 
     res.status(201).json(mediaFile);
   } catch (error) {
@@ -2423,22 +2332,6 @@ app.post('/ticket/:id/response', authenticateToken, async (req, res) => {
   }
 });
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-
-// Media upload endpoint
-app.post('/api/media/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const savedFile = await saveFile(req.file);
-    res.json(savedFile);
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 // Get user's feedback history
 app.get('/history', authenticateToken, async (req, res) => {
   try {
@@ -2512,3 +2405,7 @@ app.get('/history', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch feedback history' });
   }
 });
+
+
+// Add static file serving
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));

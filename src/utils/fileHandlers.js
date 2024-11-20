@@ -86,13 +86,15 @@ export const saveFile = async (file) => {
 /**
  * Delete file locally
  */
-export const deleteFile = async (filepath) => {
+export async function deleteFile(filename) {
+  if (!filename) return;
+  
   try {
+    const filepath = path.join(UPLOAD_DIR, filename);
     if (fs.existsSync(filepath)) {
       await fs.promises.unlink(filepath);
     }
   } catch (error) {
-    console.error('Local file delete error:', error);
-    throw new Error('Failed to delete local file');
+    console.error('File deletion error:', error);
   }
-};
+}

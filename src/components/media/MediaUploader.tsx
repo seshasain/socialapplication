@@ -1,9 +1,7 @@
-// src/components/media/MediaUploader.tsx
-import React, { useCallback, useState, useEffect } from 'react';
-import { Upload, X, Image as ImageIcon, Film, Loader2, AlertCircle } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { Upload, X, Film, Loader2, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { MediaFile } from '../../types/posts';
-import { APP_URL } from '../../config/api';
 
 interface MediaUploaderProps {
   onUpload: (files: File[]) => void;
@@ -22,18 +20,9 @@ export default function MediaUploader({
   acceptedFileTypes = ['image/*', 'video/*'],
   error
 }: MediaUploaderProps) {
-  const [previewFiles, setPreviewFiles] = useState<{ file: File; previewUrl: string }[]>([]);
+  const [previewFiles, setPreviewFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
-
-  // Cleanup preview URLs on unmount
-  useEffect(() => {
-    return () => {
-      previewFiles.forEach(({ previewUrl }) => {
-        URL.revokeObjectURL(previewUrl);
-      });
-    };
-  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setDragError(null);
@@ -65,11 +54,7 @@ export default function MediaUploader({
     }
 
     if (validFiles.length > 0) {
-      const newPreviewFiles = validFiles.map(file => ({
-        file,
-        previewUrl: URL.createObjectURL(file)
-      }));
-      setPreviewFiles(prev => [...prev, ...newPreviewFiles]);
+      setPreviewFiles(prev => [...prev, ...validFiles]);
       onUpload(validFiles);
     }
   }, [maxFiles, existingFiles.length, previewFiles.length, onUpload, acceptedFileTypes]);
@@ -86,47 +71,52 @@ export default function MediaUploader({
     if ('url' in fileToRemove) {
       onRemove(fileToRemove);
     } else {
-      const previewFile = previewFiles.find(pf => pf.file === fileToRemove);
-      if (previewFile) {
-        URL.revokeObjectURL(previewFile.previewUrl);
-        setPreviewFiles(prev => prev.filter(pf => pf.file !== fileToRemove));
-      }
+      setPreviewFiles(prev => prev.filter(f => f !== fileToRemove));
       onRemove(fileToRemove);
     }
   };
 
-  const renderPreview = (item: MediaFile | { file: File; previewUrl: string }) => {
-    const isExistingFile = 'url' in item;
-    const file = isExistingFile ? item : item.file;
-    const previewUrl = isExistingFile ? `${APP_URL}${item.url}` : item.previewUrl;
-    const isVideo = file.type?.startsWith('video/');
-    const name = isExistingFile ? (item as MediaFile).filename : file.name;
+  // src/components/media/MediaUploader.tsx
+// Update the renderPreview function
+const renderPreview = (file: File | MediaFile) => {
+  const isExistingFile = 'url' in file;
+  const previewUrl = isExistingFile 
+    ? `${window.location.origin}${file.url}`
+    : URL.createObjectURL(file);
+  const isVideo = file.type?.startsWith('video/');
+  const name = isExistingFile ? file.filename : file.name;
 
-    return (
-      <div key={isExistingFile ? (item as MediaFile).id : file.name} className="relative group">
-        <div className="aspect-square w-24 rounded-lg overflow-hidden border border-gray-200">
-          {isVideo ? (
-            <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-              <Film className="w-8 h-8 text-gray-400" />
-            </div>
-          ) : (
-            <img
-              src={previewUrl}
-              alt={name}
-              className="w-full h-full object-cover"
-            />
-          )}
-        </div>
-        <button
-          onClick={() => handleRemove(isExistingFile ? item as MediaFile : file)}
-          className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
-          title="Remove file"
-        >
-          <X className="w-4 h-4" />
-        </button>
+  return (
+    <div key={isExistingFile ? file.id : file.name} className="relative group">
+      <div className="aspect-square w-24 rounded-lg overflow-hidden border border-gray-200">
+        {isVideo ? (
+          <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+            <Film className="w-8 h-8 text-gray-400" />
+          </div>
+        ) : (
+          <img
+            src={previewUrl}
+            alt={name}
+            className="w-full h-full object-cover"
+            onLoad={() => {
+              if (!isExistingFile) {
+                URL.revokeObjectURL(previewUrl);
+              }
+            }}
+          />
+        )}
       </div>
-    );
-  };
+      <button
+        onClick={() => handleRemove(file)}
+        className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
+        title="Remove file"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
 
   return (
     <div className="space-y-4">
