@@ -15,7 +15,7 @@ import { createTwitterClient, postToTwitter } from './twitter.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
 import { uploadToS3, deleteFromS3, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
 import axios from 'axios';
-
+import { fileURLToPath } from 'url';
 const prisma = new PrismaClient();
 const app = express();
 
@@ -26,21 +26,27 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Configure multer for memory storage
+// const upload = multer({
+//   storage: multer.memoryStorage(),
+//   limits: {
+//     fileSize: 10 * 1024 * 1024, // 10MB limit
+//   },
+//   fileFilter: (req, file, cb) => {
+//     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
+//     if (allowedTypes.includes(file.mimetype)) {
+//       cb(null, true);
+//     } else {
+//       cb(new Error('Invalid file type'));
+//     }
+//   }
+// });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type'));
-    }
+    fileSize: 100 * 1024 * 1024 // 100MB
   }
 });
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Configure Twitter OAuth client
 const twitterClient = new TwitterApi({
@@ -2417,6 +2423,22 @@ app.post('/ticket/:id/response', authenticateToken, async (req, res) => {
   }
 });
 
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Media upload endpoint
+app.post('/api/media/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const savedFile = await saveFile(req.file);
+    res.json(savedFile);
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 // Get user's feedback history
 app.get('/history', authenticateToken, async (req, res) => {
   try {

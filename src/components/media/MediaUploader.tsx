@@ -1,7 +1,9 @@
-import React, { useCallback, useState } from 'react';
+// src/components/media/MediaUploader.tsx
+import React, { useCallback, useState, useEffect } from 'react';
 import { Upload, X, Image as ImageIcon, Film, Loader2, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { MediaFile } from '../../types/posts';
+import { APP_URL } from '../../config/api';
 
 interface MediaUploaderProps {
   onUpload: (files: File[]) => void;
@@ -20,10 +22,18 @@ export default function MediaUploader({
   acceptedFileTypes = ['image/*', 'video/*'],
   error
 }: MediaUploaderProps) {
-  const [previewFiles, setPreviewFiles] = useState<File[]>([]);
+  const [previewFiles, setPreviewFiles] = useState<{ file: File; previewUrl: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
-  const [previewUrls, setPreviewUrls] = useState<{ [key: string]: string }>({});
+
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      previewFiles.forEach(({ previewUrl }) => {
+        URL.revokeObjectURL(previewUrl);
+      });
+    };
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     setDragError(null);
@@ -55,77 +65,60 @@ export default function MediaUploader({
     }
 
     if (validFiles.length > 0) {
-      const newPreviewUrls = validFiles.reduce((acc, file) => {
-        acc[file.name] = URL.createObjectURL(file);
-        return acc;
-      }, {} as { [key: string]: string });
-
-      setPreviewUrls(prev => ({ ...prev, ...newPreviewUrls }));
-      setPreviewFiles(prev => [...prev, ...validFiles]);
+      const newPreviewFiles = validFiles.map(file => ({
+        file,
+        previewUrl: URL.createObjectURL(file)
+      }));
+      setPreviewFiles(prev => [...prev, ...newPreviewFiles]);
       onUpload(validFiles);
     }
   }, [maxFiles, existingFiles.length, previewFiles.length, onUpload, acceptedFileTypes]);
-
-  React.useEffect(() => {
-    return () => {
-      Object.values(previewUrls).forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [previewUrls]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: acceptedFileTypes.reduce((acc, type) => ({ ...acc, [type]: [] }), {}),
     maxFiles: maxFiles - (existingFiles.length + previewFiles.length),
-    maxSize: 100 * 1024 * 1024, // 100MB
+    maxSize: 100 * 1024 * 1024,
     disabled: uploading
   });
 
-  const handleRemove = (file: File | MediaFile) => {
-    if ('url' in file) {
-      onRemove(file);
+  const handleRemove = (fileToRemove: File | MediaFile) => {
+    if ('url' in fileToRemove) {
+      onRemove(fileToRemove);
     } else {
-      setPreviewFiles(prev => prev.filter(f => f !== file));
-      if (previewUrls[file.name]) {
-        URL.revokeObjectURL(previewUrls[file.name]);
-        setPreviewUrls(prev => {
-          const newUrls = { ...prev };
-          delete newUrls[file.name];
-          return newUrls;
-        });
+      const previewFile = previewFiles.find(pf => pf.file === fileToRemove);
+      if (previewFile) {
+        URL.revokeObjectURL(previewFile.previewUrl);
+        setPreviewFiles(prev => prev.filter(pf => pf.file !== fileToRemove));
       }
-      onRemove(file);
+      onRemove(fileToRemove);
     }
   };
 
-  const renderPreview = (file: File | MediaFile) => {
+  const renderPreview = (item: MediaFile | { file: File; previewUrl: string }) => {
+    const isExistingFile = 'url' in item;
+    const file = isExistingFile ? item : item.file;
+    const previewUrl = isExistingFile ? `${APP_URL}${item.url}` : item.previewUrl;
     const isVideo = file.type?.startsWith('video/');
-    const url = 'url' in file ? file.url : previewUrls[file.name] || '';
-    const name = 'filename' in file ? file.filename : file.name ?? 'Unknown';
+    const name = isExistingFile ? (item as MediaFile).filename : file.name;
 
     return (
-      <div key={'url' in file ? file.id : file.name} className="relative group">
+      <div key={isExistingFile ? (item as MediaFile).id : file.name} className="relative group">
         <div className="aspect-square w-24 rounded-lg overflow-hidden border border-gray-200">
           {isVideo ? (
             <div className="w-full h-full bg-gray-100 flex items-center justify-center">
               <Film className="w-8 h-8 text-gray-400" />
             </div>
           ) : (
-            <div className="w-full h-full bg-gray-100">
-              <img
-                src={url}
-                alt={name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = '/placeholder-image.png';
-                }}
-              />
-            </div>
+            <img
+              src={previewUrl}
+              alt={name}
+              className="w-full h-full object-cover"
+            />
           )}
-          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity" />
         </div>
         <button
-          onClick={() => handleRemove(file)}
+          onClick={() => handleRemove(isExistingFile ? item as MediaFile : file)}
           className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
           title="Remove file"
         >

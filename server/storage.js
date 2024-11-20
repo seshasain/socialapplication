@@ -12,6 +12,25 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+export const getFileInfo = async (filename) => {
+  try {
+    const filepath = path.join(uploadsDir, filename);
+    if (!fs.existsSync(filepath)) {
+      throw new Error('File not found');
+    }
+
+    const stats = await fs.promises.stat(filepath);
+    return {
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime,
+      filepath
+    };
+  } catch (error) {
+    console.error('File info error:', error);
+    throw new Error('Failed to get file info');
+  }
+};
 export const saveFile = async (file) => {
   try {
     const uniqueId = uuidv4();
@@ -36,7 +55,8 @@ export const saveFile = async (file) => {
     }
     
     return {
-      url: `/uploads/${filename}`,
+      id: uniqueId,
+      url: `/uploads/${filename}`, // Return relative URL
       filename,
       size: file.size,
       type: file.mimetype,
@@ -59,25 +79,5 @@ export const deleteFile = async (filename) => {
   } catch (error) {
     console.error('File deletion error:', error);
     throw new Error('Failed to delete file');
-  }
-};
-
-export const getFileInfo = async (filename) => {
-  try {
-    const filepath = path.join(uploadsDir, filename);
-    if (!fs.existsSync(filepath)) {
-      throw new Error('File not found');
-    }
-
-    const stats = await fs.promises.stat(filepath);
-    return {
-      size: stats.size,
-      created: stats.birthtime,
-      modified: stats.mtime,
-      filepath
-    };
-  } catch (error) {
-    console.error('File info error:', error);
-    throw new Error('Failed to get file info');
   }
 };

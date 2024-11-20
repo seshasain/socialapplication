@@ -9,58 +9,30 @@ export interface MediaFile {
   createdAt: string;
   updatedAt: string;
 }
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  subscription: {
-    planId: string;
-    status: string;
-    plan: {
-      name: string;
-      price: number;
-      interval: string;
-    };
-  };
-  timezone?: string;
-  bio?: string;
-  avatar?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-export interface PostPlatform {
-  id: string;
-  postId: string;
-  platform: string;
-  status: string;
-  error?: string;
-  externalId?: string;
-  settings: Record<string, any>;
-  publishedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+
 export interface Post {
   id: string;
-  userId: string;
   caption: string;
   scheduledDate: string;
-  hashtags?: string;
-  visibility: string;
-  error?: string;
+  platform: string;
+  hashtags: string;
+  visibility: 'public' | 'private' | 'draft';
+  status: 'scheduled' | 'published' | 'failed';
   mediaFiles: MediaFile[];
-  platforms: PostPlatform[];
-  externalPostId?: string;
+  engagementRate?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
   createdAt: string;
   updatedAt: string;
 }
+
 export interface PostFormData {
   caption: string;
   scheduledDate: string;
-  selectedPlatforms?: string[];
-  hashtags?: string;
+  scheduledTime: string;
+  platform: string;
+  hashtags: string;
   visibility: string;
-  mediaFiles?: MediaFile[];
-  publishNow?: boolean;
+  mediaFiles: File[];
 }

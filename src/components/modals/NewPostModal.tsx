@@ -263,7 +263,28 @@ export default function NewPostModal({
     setValidationErrors([]);
     return true;
   };
-
+  const handleMediaUpload = async (files: File[]) => {
+    try {
+      setLoading(true);
+      setUploadError(null);
+  
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return uploadMedia(formData);
+      });
+  
+      const uploadedMediaFiles = await Promise.all(uploadPromises);
+      setUploadedFiles((prev) => [...prev, ...uploadedMediaFiles]);
+    } catch (err) {
+      console.error('Upload error:', err);
+      setUploadError(
+        err instanceof Error ? err.message : 'Failed to upload media'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
   const handlePlatformSelect = (platformId: string) => {
     if (platformId === 'all') {
       if (selectedPlatforms.includes('all')) {
@@ -295,29 +316,6 @@ export default function NewPostModal({
       return connectedAccounts.map(account => account.platform.toLowerCase());
     }
     return selectedPlatforms.map(platform => platform.toLowerCase());
-  };
-
-  const handleMediaUpload = async (files: File[]) => {
-    try {
-      setLoading(true);
-      setUploadError(null);
-
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        return uploadMedia(formData);
-      });
-
-      const uploadedMediaFiles = await Promise.all(uploadPromises);
-      setUploadedFiles((prev) => [...prev, ...uploadedMediaFiles]);
-    } catch (err) {
-      console.error('Upload error:', err);
-      setUploadError(
-        err instanceof Error ? err.message : 'Failed to upload media'
-      );
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleRemoveMedia = (file: File | MediaFile) => {
