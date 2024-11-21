@@ -13,10 +13,11 @@ import path from 'path';
 import { scheduleJob } from 'node-schedule';
 import { createTwitterClient, postToTwitter } from './twitter.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
-import { uploadToS3, deleteFromS3, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
+import { uploadToB2, deleteFromB2, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 const prisma = new PrismaClient();
 const app = express();
 
@@ -1457,7 +1458,7 @@ app.delete('/api/media/:id', authenticateToken, async (req, res) => {
     }
 
     // Delete from S3
-    await deleteFromS3(mediaFile.s3Key);
+    await deleteFromB2(mediaFile.s3Key);
 
     // Delete from database
     await prisma.mediaFile.delete({
@@ -1616,29 +1617,38 @@ app.post('/api/media/upload', authenticateToken, multer().single('file'), async 
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Upload file to S3
-    const { url, s3Key } = await uploadToS3(req.file, req.user.id);
+    // Generate unique filename
+    const uniqueId = uuidv4();
+    const fileExtension = path.extname(req.file.originalname);
+    const filename = `${uniqueId}${fileExtension}`;
+    const b2Key = `uploads/${filename}`;
+
+    // Upload file to B2
+    const b2Url = await uploadToB2(
+      req.file.buffer,
+      req.file.mimetype,
+      filename
+    );
 
     // Create media file record in database
     const mediaFile = await prisma.mediaFile.create({
       data: {
         userId: req.user.id,
-        url,
+        url: b2Url,
         type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
-        filename: req.file.originalname,
+        filename: filename,
         size: req.file.size,
-        s3Key
+        s3Key: b2Key // We'll keep the column name as s3Key for now to avoid migration
       }
     });
-    console.log(mediaFile);
 
     res.status(201).json(mediaFile);
   } catch (error) {
     console.error('Media upload error:', error);
 
-    // If there was an error and we uploaded to S3, clean up
-    if (error.s3Key) {
-      await deleteFromS3(error.s3Key).catch(console.error);
+    // If there was an error and we uploaded to B2, clean up
+    if (error.b2Key) {
+      await deleteFromB2(error.b2Key).catch(console.error);
     }
 
     res.status(500).json({ error: 'Failed to upload media' });
@@ -1661,7 +1671,7 @@ app.delete('/api/media/:id', authenticateToken, async (req, res) => {
     }
 
     // Delete from S3
-    await deleteFromS3(mediaFile.s3Key);
+    await deleteFromB2(mediaFile.s3Key);
 
     // Delete from database
     await prisma.mediaFile.delete({
