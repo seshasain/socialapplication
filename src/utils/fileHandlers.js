@@ -1,13 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import B2 from 'backblaze-b2';
+import { fileURLToPath } from 'url';
+import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
-import dotenv from 'dotenv';
+import B2 from 'backblaze-b2';
 
-// Load environment variables
-dotenv.config();
-
-export const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -17,11 +16,16 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 // Initialize B2 client
 const b2 = new B2({
   applicationKeyId: process.env.VITE_B2_APPLICATION_KEY_ID,
-  applicationKey: process.env.VITE_B2_APPLICATION_KEY
+  applicationKey: process.env.VITE_B2_APPLICATION_KEY,
+  retry: {
+    retries: 3
+  }
 });
 
-// Authorize B2 client
 let authorized = false;
+let uploadUrl = null;
+let uploadAuthToken = null;
+
 async function ensureAuthorized() {
   if (!authorized) {
     await b2.authorize();
@@ -29,9 +33,17 @@ async function ensureAuthorized() {
   }
 }
 
-/**
- * Upload file to Backblaze B2
- */
+async function getUploadUrl() {
+  if (!uploadUrl || !uploadAuthToken) {
+    const response = await b2.getUploadUrl({
+      bucketId: process.env.VITE_B2_BUCKET_ID
+    });
+    uploadUrl = response.data.uploadUrl;
+    uploadAuthToken = response.data.authorizationToken;
+  }
+  return { uploadUrl, uploadAuthToken };
+}
+
 export const uploadToB2 = async (fileBuffer, contentType, filename) => {
   try {
     if (!fileBuffer || !contentType || !filename) {
@@ -39,16 +51,15 @@ export const uploadToB2 = async (fileBuffer, contentType, filename) => {
     }
 
     await ensureAuthorized();
+    const { uploadUrl: url, uploadAuthToken: token } = await getUploadUrl();
 
-    // Get upload URL
-    const { uploadUrl, authorizationToken } = await b2.getUploadUrl({
-      bucketId: process.env.VITE_B2_BUCKET_ID
-    });
+    if (!url || !token) {
+      throw new Error('Failed to get B2 upload URL');
+    }
 
-    // Upload file
-    const response = await b2.uploadFile({
-      uploadUrl: uploadUrl,
-      uploadAuthToken: authorizationToken,
+    const uploadResponse = await b2.uploadFile({
+      uploadUrl: url,
+      uploadAuthToken: token,
       fileName: `uploads/${filename}`,
       data: fileBuffer,
       contentType: contentType,
@@ -60,16 +71,22 @@ export const uploadToB2 = async (fileBuffer, contentType, filename) => {
       }
     });
 
-    return `${process.env.VITE_B2_PUBLIC_URL}/file/${process.env.VITE_B2_BUCKET_NAME}/${response.fileName}`;
+    // Reset upload URL after use (B2 best practice)
+    uploadUrl = null;
+    uploadAuthToken = null;
+
+    if (!uploadResponse || !uploadResponse.data) {
+      throw new Error('Invalid upload response from B2');
+    }
+
+    const fileUrl = `${process.env.VITE_B2_PUBLIC_URL}/file/${process.env.VITE_B2_BUCKET_NAME}/${uploadResponse.data.fileName}`;
+    return fileUrl;
   } catch (error) {
     console.error('B2 upload error:', error);
     throw new Error(`Failed to upload file to B2: ${error.message}`);
   }
 };
 
-/**
- * Delete file from Backblaze B2
- */
 export const deleteFromB2 = async (fileName) => {
   try {
     if (!fileName) {
@@ -78,8 +95,7 @@ export const deleteFromB2 = async (fileName) => {
 
     await ensureAuthorized();
 
-    // List file versions to get fileId
-    const response = await b2.listFileNames({
+    const response = await VITE_B2.listFileNames({
       bucketId: process.env.VITE_B2_BUCKET_ID,
       startFileName: fileName,
       maxFileCount: 1
@@ -98,9 +114,6 @@ export const deleteFromB2 = async (fileName) => {
   }
 };
 
-/**
- * Save file to B2 and return file info
- */
 export async function saveFile(file) {
   try {
     if (!file || !file.buffer || !file.originalname || !file.mimetype) {
@@ -113,6 +126,10 @@ export async function saveFile(file) {
 
     // Upload to B2
     const b2Url = await uploadToB2(file.buffer, file.mimetype, filename);
+
+    if (!b2Url) {
+      throw new Error('Failed to get B2 file URL');
+    }
 
     return {
       id: uniqueId,
@@ -127,9 +144,7 @@ export async function saveFile(file) {
     throw new Error(`Failed to save file: ${error.message}`);
   }
 }
-/**
- * Delete file from B2 and local storage
- */
+
 export async function deleteFile(filename, b2Key) {
   try {
     // Delete from B2 if key exists

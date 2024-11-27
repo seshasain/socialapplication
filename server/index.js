@@ -13,7 +13,7 @@ import path from 'path';
 import { scheduleJob } from 'node-schedule';
 import { createTwitterClient, postToTwitter } from './twitter.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
-import { uploadToB2, deleteFromB2, saveFile, deleteFile, UPLOAD_DIR } from '../src/utils/fileHandlers.js';
+import { uploadToB2, deleteFromB2, saveFile, deleteFile } from '../src/utils/fileHandlers.js';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
