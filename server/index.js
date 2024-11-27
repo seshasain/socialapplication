@@ -18,8 +18,9 @@ import axios from 'axios';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import mediaRoutes from './routes/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import B2 from 'backblaze-b2';
 const prisma = new PrismaClient();
 const app = express();
 
@@ -2415,37 +2416,43 @@ app.get('/history', authenticateToken, async (req, res) => {
 // Add static file serving
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Initialize S3 client
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
+// Media routes
+const b2 = new B2({
+  applicationKeyId: process.env.VITE_B2_APPLICATION_KEY_ID,
+  applicationKey: process.env.VITE_B2_APPLICATION_KEY
 });
 
-const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
+let authorized = false;
+async function ensureAuthorized() {
+  if (!authorized) {
+    await b2.authorize();
+    authorized = true;
+  }
+}
 
-// Media Routes
 app.post('/api/media/presigned-url', authenticateToken, async (req, res) => {
   try {
     const { filename, contentType } = req.body;
-    const key = `uploads/${uuidv4()}-${filename}`;
+    if (!filename || !contentType) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
 
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: contentType,
+    await ensureAuthorized();
+
+    // Get upload URL and auth token
+    const { uploadUrl, authorizationToken } = await b2.getUploadUrl({
+      bucketId: process.env.VITE_B2_BUCKET_ID
     });
 
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-    const getCommand = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
+    // Generate unique file key
+    const fileId = uuidv4();
+    const key = `uploads/${fileId}-${filename}`;
+    res.json({
+      uploadUrl,
+      authorizationToken,
+      fileId,
+      key
     });
-    const fileUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 * 24 });
-
-    res.json({ uploadUrl, fileUrl, key });
   } catch (error) {
     console.error('Presigned URL error:', error);
     res.status(500).json({ error: 'Failed to generate upload URL' });
@@ -2454,8 +2461,15 @@ app.post('/api/media/presigned-url', authenticateToken, async (req, res) => {
 
 app.post('/api/media/register', authenticateToken, async (req, res) => {
   try {
-    const { filename, type, size, url, s3Key } = req.body;
+    const { filename, type, size, b2Key } = req.body;
     const userId = req.user.id;
+
+    if (!filename || !type || !size || !b2Key) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Construct the public URL
+    const url = `${process.env.VITE_B2_PUBLIC_URL}/file/${process.env.VITE_B2_BUCKET_NAME}/${b2Key}`;
 
     const mediaFile = await prisma.mediaFile.create({
       data: {
@@ -2464,7 +2478,7 @@ app.post('/api/media/register', authenticateToken, async (req, res) => {
         type,
         filename,
         size,
-        s3Key,
+        s3Key: b2Key, // Using s3Key field for B2 key for now
       },
     });
 
@@ -2491,13 +2505,22 @@ app.delete('/api/media/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Delete from S3
-    await s3Client.send(
-      new DeleteObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: mediaFile.s3Key,
-      })
-    );
+    await ensureAuthorized();
+
+    // List file versions to get fileId
+    const response = await b2.listFileNames({
+      bucketId: process.env.VITE_B2_BUCKET_ID,
+      startFileName: mediaFile.s3Key,
+      maxFileCount: 1
+    });
+
+    if (response.data.files.length > 0) {
+      const file = response.data.files[0];
+      await b2.deleteFileVersion({
+        fileId: file.fileId,
+        fileName: file.fileName
+      });
+    }
 
     // Delete from database
     await prisma.mediaFile.delete({
