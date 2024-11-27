@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { B2 } from '@backblazeb2/b2-sdk-js';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 
@@ -15,13 +15,9 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 
 // Initialize B2 client with environment variables
-const b2Client = new S3Client({
-  region: process.env.VITE_B2_REGION,
-  endpoint: process.env.VITE_B2_ENDPOINT_URL,
-  credentials: {
-    accessKeyId: process.env.VITE_B2_APPLICATION_KEY_ID,
-    secretAccessKey: process.env.VITE_B2_APPLICATION_KEY,
-  }
+const b2 = new B2({
+  applicationKeyId: process.env.VITE_B2_APPLICATION_KEY_ID,
+  applicationKey: process.env.VITE_B2_APPLICATION_KEY
 });
 
 const B2_BUCKET_NAME = process.env.VITE_B2_BUCKET_NAME;
@@ -36,19 +32,24 @@ export const uploadToB2 = async (fileBuffer, contentType, filename) => {
       throw new Error('Missing required parameters for B2 upload');
     }
 
-    const key = `uploads/${filename}`;
-    
-    const uploadParams = {
-      Bucket: B2_BUCKET_NAME,
-      Key: key,
-      Body: fileBuffer,
-      ContentType: contentType,
-    };
+    // Authorize with B2
+    await b2.authorize();
 
-    const command = new PutObjectCommand(uploadParams);
-    await b2Client.send(command);
+    // Get upload URL
+    const { uploadUrl, authorizationToken } = await b2.getUploadUrl({
+      bucketId: process.env.VITE_B2_BUCKET_ID
+    });
 
-    return `${B2_PUBLIC_URL}/${B2_BUCKET_NAME}/${key}`;
+    // Upload file
+    const response = await b2.uploadFile({
+      uploadUrl: uploadUrl,
+      uploadAuthToken: authorizationToken,
+      fileName: `uploads/${filename}`,
+      data: fileBuffer,
+      contentType: contentType,
+    });
+
+    return `${B2_PUBLIC_URL}/${B2_BUCKET_NAME}/${response.fileName}`;
   } catch (error) {
     console.error('B2 upload error:', error);
     throw new Error(`Failed to upload file to B2: ${error.message}`);
@@ -64,13 +65,22 @@ export const deleteFromB2 = async (key) => {
       throw new Error('No key provided for B2 deletion');
     }
 
-    const deleteParams = {
-      Bucket: B2_BUCKET_NAME,
-      Key: key,
-    };
+    // Authorize with B2
+    await b2.authorize();
 
-    const command = new DeleteObjectCommand(deleteParams);
-    await b2Client.send(command);
+    // Get file info to get fileId
+    const { files } = await b2.listFileNames({
+      bucketId: process.env.VITE_B2_BUCKET_ID,
+      prefix: key,
+      maxFileCount: 1
+    });
+
+    if (files.length > 0) {
+      await b2.deleteFileVersion({
+        fileId: files[0].fileId,
+        fileName: files[0].fileName
+      });
+    }
   } catch (error) {
     console.error('B2 delete error:', error);
     throw new Error(`Failed to delete file from B2: ${error.message}`);

@@ -50,7 +50,8 @@
     "react-toastify": "^9.1.1",
     "@aws-sdk/client-s3": "^3.525.0",
     "@aws-sdk/s3-request-presigner": "^3.525.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "@backblazeb2/b2-sdk-js": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
