@@ -268,19 +268,23 @@ export default function NewPostModal({
       setLoading(true);
       setUploadError(null);
   
+      // Upload each file individually
       const uploadPromises = files.map(async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        return uploadMedia(formData);
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          return await uploadMedia(file);
+        } catch (err) {
+          console.error(`Failed to upload ${file.name}:`, err);
+          throw err;
+        }
       });
   
-      const uploadedMediaFiles = await Promise.all(uploadPromises);
-      setUploadedFiles((prev) => [...prev, ...uploadedMediaFiles]);
+      const uploadedFiles = await Promise.all(uploadPromises);
+      setUploadedFiles((prev) => [...prev, ...uploadedFiles]);
     } catch (err) {
       console.error('Upload error:', err);
-      setUploadError(
-        err instanceof Error ? err.message : 'Failed to upload media'
-      );
+      setUploadError(err instanceof Error ? err.message : 'Failed to upload media');
     } finally {
       setLoading(false);
     }

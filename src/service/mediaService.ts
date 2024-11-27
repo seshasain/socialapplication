@@ -1,10 +1,12 @@
 import { APP_URL } from '../config/api';
+
 export interface UploadProgress {
   id: string;
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
 }
+
 export interface UploadResponse {
   id: string;
   url: string;
@@ -13,54 +15,24 @@ export interface UploadResponse {
   size: number;
   b2Key: string;
 }
-export interface PresignedUrlResponse {
-  uploadUrl: string;
-  authorizationToken: string;
-  fileId: string;
-}
+
 class UploadService {
-  private async getPresignedUrl(file: File): Promise<PresignedUrlResponse> {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch(`${APP_URL}/api/media/presigned-url`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to get presigned URL');
-      }
-
-      return response.json();
-    } catch (error) {
-      console.error('Presigned URL error:', error);
-      throw error;
-    }
-  }
   async uploadFile(
     file: File,
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
+    return new Promise((resolve, reject) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
 
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No authentication token');
+        }
 
-      const xhr = new XMLHttpRequest();
-      
-      const uploadPromise = new Promise<UploadResponse>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const progress = Math.round((event.loaded / event.total) * 100);
@@ -68,34 +40,47 @@ class UploadService {
           }
         });
 
-        xhr.addEventListener('load', async () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
             try {
               const response = JSON.parse(xhr.responseText);
+              if (!response.url || !response.id) {
+                throw new Error('Invalid upload response format');
+              }
               resolve(response);
             } catch (error) {
-              reject(new Error('Invalid response format'));
+              reject(new Error('Failed to parse upload response'));
             }
           } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
+            let errorMessage = 'Upload failed';
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              errorMessage = errorResponse.error || errorMessage;
+            } catch (e) {
+              // If response isn't JSON, use status text
+              errorMessage = xhr.statusText || errorMessage;
+            }
+            reject(new Error(errorMessage));
           }
         });
 
         xhr.addEventListener('error', () => {
-          reject(new Error('Upload failed'));
+          reject(new Error('Network error occurred during upload'));
         });
-      });
 
-      xhr.open('POST', `${APP_URL}/api/media/upload`);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.send(formData);
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload was aborted'));
+        });
 
-      return uploadPromise;
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
-    }
+        xhr.open('POST', `${APP_URL}/api/media/upload`);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.send(formData);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
+
   async uploadMultipleFiles(
     files: File[],
     onProgress?: (fileId: string, progress: number) => void,
@@ -106,9 +91,16 @@ class UploadService {
       try {
         const result = await this.uploadFile(
           file,
-          (progress) => onProgress?.(file.name, progress)
+          (progress) => {
+            onProgress?.(file.name, progress);
+            // Only mark as complete if we actually get a successful response
+            if (progress === 100) {
+              setTimeout(() => {
+                onComplete?.(file.name);
+              }, 500); // Small delay to ensure final progress is shown
+            }
+          }
         );
-        onComplete?.(file.name);
         return result;
       } catch (error) {
         onError?.(file.name, error as Error);
@@ -118,26 +110,6 @@ class UploadService {
 
     return Promise.all(uploads);
   }
-  async deleteFile(fileId: string): Promise<void> {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch(`${APP_URL}/api/media/${fileId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to delete file');
-      }
-    } catch (error) {
-      console.error('Delete error:', error);
-      throw error;
-    }
-  }
 }
+
 export const uploadService = new UploadService();

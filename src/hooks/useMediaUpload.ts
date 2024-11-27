@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { uploadService, UploadProgress, UploadResponse } from '../service/mediaService';
 
-
 interface UseFileUploadReturn {
   uploadFiles: (files: File[]) => Promise<UploadResponse[]>;
   uploadProgress: Record<string, UploadProgress>;
@@ -15,13 +14,14 @@ export function useFileUpload(): UseFileUploadReturn {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const updateProgress = useCallback((fileId: string, progress: number) => {
+  const updateProgress = useCallback((fileId: string, progress: number, status: UploadProgress['status'] = 'uploading', error?: string) => {
     setUploadProgress(prev => ({
       ...prev,
       [fileId]: {
         id: fileId,
         progress,
-        status: progress === 100 ? 'success' : 'uploading'
+        status,
+        ...(error && { error })
       }
     }));
   }, []);
@@ -50,32 +50,20 @@ export function useFileUpload(): UseFileUploadReturn {
         },
         // Complete callback
         (fileId) => {
-          setUploadProgress(prev => ({
-            ...prev,
-            [fileId]: {
-              ...prev[fileId],
-              progress: 100,
-              status: 'success'
-            }
-          }));
+          updateProgress(fileId, 100, 'success');
         },
         // Error callback
         (fileId, error) => {
-          setUploadProgress(prev => ({
-            ...prev,
-            [fileId]: {
-              ...prev[fileId],
-              status: 'error',
-              error: error.message
-            }
-          }));
+          updateProgress(fileId, 0, 'error', error.message);
+          setError(error);
         }
       );
 
       return results;
     } catch (err) {
-      setError(err as Error);
-      throw err;
+      const error = err as Error;
+      setError(error);
+      throw error;
     } finally {
       setIsUploading(false);
     }

@@ -48,12 +48,13 @@ export async function createPost(data: PostFormData): Promise<Post> {
   try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No authentication token');
+
     const requestBody = {
       caption: data.caption,
       scheduledDate: data.scheduledDate && data.scheduledTime
         ? new Date(`${data.scheduledDate}T${data.scheduledTime}`).toISOString()
         : new Date().toISOString(),
-      platforms: JSON.stringify(data.selectedPlatforms || []), // Correctly pass selectedPlatforms
+      platforms: JSON.stringify(data.selectedPlatforms || []),
       hashtags: data.hashtags || '',
       visibility: data.visibility || 'public',
       mediaFiles: data.mediaFiles?.length
@@ -83,10 +84,13 @@ export async function createPost(data: PostFormData): Promise<Post> {
   }
 }
 
-export const uploadMedia = async (formData: FormData): Promise<MediaFile> => {
+export const uploadMedia = async (file: File): Promise<MediaFile> => {
   try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No authentication token');
+
+    const formData = new FormData();
+    formData.append('file', file);
 
     const response = await fetch(`${APP_URL}/api/media/upload`, {
       method: 'POST',
@@ -97,21 +101,25 @@ export const uploadMedia = async (formData: FormData): Promise<MediaFile> => {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to upload media');
+      const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(typeof errorData.error === 'string' ? errorData.error : 'Upload failed');
     }
 
     const data = await response.json();
-    // Ensure we return a relative URL that matches our static file serving
+    if (!data.url || !data.id) {
+      throw new Error('Invalid response from server');
+    }
+
     return {
       ...data,
-      url: `/uploads/${data.filename}`
+      url: data.url.startsWith('http') ? data.url : `/uploads/${data.filename}`
     };
   } catch (error) {
     console.error('Upload error:', error);
     throw error;
   }
 };
+
 export async function deletePost(postId: string): Promise<void> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
