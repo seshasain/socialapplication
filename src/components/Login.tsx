@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
+  const style = document.createElement('style');
+  style.innerHTML = '.grecaptcha-badge { visibility: hidden !important; }';
+  document.head.appendChild(style);
+
   const [formData, setFormData] = useState({
     email: '',
     password: '',

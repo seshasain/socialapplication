@@ -1,60 +1,26 @@
-import { Post, MediaFile } from '../types/posts';
+import { Post, MediaFile, PostFormData } from '../types/posts';
+import { APP_URL } from '../config/api';
 
-const API_BASE_URL = 'http://localhost:5000/api';
-
-export async function createPost(formData: FormData): Promise<Post> {
+export async function getPostHistory(
+  filter = 'all',
+  sortBy = 'date',
+  order = 'desc'
+): Promise<Post[]> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
 
-  // Convert FormData to JSON for proper API handling
-  const jsonData = {
-    caption: formData.get('caption'),
-    scheduledDate: formData.get('scheduledDate'),
-    platform: formData.get('platform'),
-    hashtags: formData.get('hashtags'),
-    visibility: formData.get('visibility'),
-    mediaFiles: formData.get('mediaFiles'),
-    publishNow: formData.get('publishNow') === 'true'
-  };
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/posts`, {
-      method: 'POST',
+  const response = await fetch(
+    `${APP_URL}/posts/history?filter=${filter}&sortBy=${sortBy}&order=${order}`,
+    {
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(jsonData)
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to create post');
     }
-
-    return data;
-  } catch (error) {
-    console.error('Create post error:', error);
-    throw error instanceof Error ? error : new Error('Failed to create post');
-  }
-}
-
-export async function uploadMedia(file: FormData): Promise<MediaFile> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
-
-  const response = await fetch(`${API_BASE_URL}/media/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    },
-    body: file
-  });
+  );
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to upload media');
+    const error = await response.text();
+    throw new Error(error || 'Failed to fetch post history');
   }
 
   return response.json();
@@ -64,51 +30,124 @@ export async function getScheduledPosts(): Promise<Post[]> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
 
-  const response = await fetch(`${API_BASE_URL}/posts/scheduled`, {
+  const response = await fetch(`${APP_URL}/posts/scheduled`, {
     headers: {
-      'Authorization': `Bearer ${token}`
-    }
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch scheduled posts');
+    const error = await response.text();
+    throw new Error(error || 'Failed to fetch scheduled posts');
   }
 
   return response.json();
 }
 
+export async function createPost(data: PostFormData): Promise<Post> {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+    const requestBody = {
+      caption: data.caption,
+      scheduledDate: data.scheduledDate && data.scheduledTime
+        ? new Date(`${data.scheduledDate}T${data.scheduledTime}`).toISOString()
+        : new Date().toISOString(),
+      platforms: JSON.stringify(data.selectedPlatforms || []), // Correctly pass selectedPlatforms
+      hashtags: data.hashtags || '',
+      visibility: data.visibility || 'public',
+      mediaFiles: data.mediaFiles?.length
+        ? JSON.stringify(data.mediaFiles.map(file => file.id))
+        : null,
+      publishNow: data.publishNow || false
+    };
+
+    const response = await fetch(`${APP_URL}/posts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.error || 'Failed to create post');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Create post error:', error);
+    throw error;
+  }
+}
+
+export const uploadMedia = async (formData: FormData): Promise<MediaFile> => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`${APP_URL}/api/media/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to upload media');
+    }
+
+    const data = await response.json();
+    // Ensure we return a relative URL that matches our static file serving
+    return {
+      ...data,
+      url: `/uploads/${data.filename}`
+    };
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
+  }
+};
 export async function deletePost(postId: string): Promise<void> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
 
-  const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
+  const response = await fetch(`${APP_URL}/posts/${postId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${token}`
-    }
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   if (!response.ok) {
-    throw new Error('Failed to delete post');
+    const error = await response.text();
+    throw new Error(error || 'Failed to delete post');
   }
 }
 
-export async function updatePost(postId: string, postData: FormData): Promise<Post> {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
+export async function getPosts() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
 
-  const response = await fetch(`${API_BASE_URL}/posts/${postId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    },
-    body: postData
-  });
+    const response = await fetch(`${APP_URL}/posts`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update post');
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to fetch posts');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch posts error:', error);
+    throw error;
   }
-
-  return response.json();
 }

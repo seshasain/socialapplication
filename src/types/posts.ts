@@ -1,10 +1,13 @@
 export interface MediaFile {
   id: string;
+  userId: string;
   url: string;
-  type: 'image' | 'video';
+  type: string;
   filename: string;
   size: number;
+  s3Key: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Post {

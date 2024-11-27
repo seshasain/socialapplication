@@ -4,6 +4,8 @@ import { Instagram, Facebook, Twitter, Linkedin, Youtube } from 'lucide-react';
 interface SocialAccount {
   id: string;
   platform?: string;
+  username?: string;
+  profileUrl?: string;
 }
 
 interface SocialConnectBannerProps {
@@ -11,7 +13,10 @@ interface SocialConnectBannerProps {
   socialAccounts: SocialAccount[];
 }
 
-export default function SocialConnectBanner({ onConnect, socialAccounts = [] }: SocialConnectBannerProps) {
+export default function SocialConnectBanner({
+  onConnect,
+  socialAccounts = [],
+}: SocialConnectBannerProps) {
   const platforms = [
     { name: 'Instagram', icon: Instagram },
     { name: 'Facebook', icon: Facebook },
@@ -22,19 +27,22 @@ export default function SocialConnectBanner({ onConnect, socialAccounts = [] }: 
       name: 'TikTok',
       icon: () => (
         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0011.14-4.02v-6.3a8.16 8.16 0 004.65 1.49v-3.39a4.85 4.85 0 01-1.2-1.19z"/>
+          <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0011.14-4.02v-6.3a8.16 8.16 0 004.65 1.49v-3.39a4.85 4.85 0 01-1.2-1.19z" />
         </svg>
-      )
-    }
+      ),
+    },
   ];
 
   return (
     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-6 text-white">
       <div className="flex flex-col md:flex-row items-center justify-between mb-6">
         <div className="mb-4 md:mb-0">
-          <h2 className="text-2xl font-bold mb-2">Connect Your Social Media Accounts</h2>
+          <h2 className="text-2xl font-bold mb-2">
+            Connect Your Social Media Accounts
+          </h2>
           <p className="text-blue-100">
-            Link your social media accounts to start scheduling posts and tracking analytics
+            Link your social media accounts to start scheduling posts and
+            tracking analytics
           </p>
         </div>
         <button
@@ -44,20 +52,40 @@ export default function SocialConnectBanner({ onConnect, socialAccounts = [] }: 
           Connect Accounts
         </button>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {platforms.map((platform) => {
           const account = socialAccounts.find(
-            acc => acc.platform && acc.platform.toLowerCase() === platform.name.toLowerCase()
+            (acc) =>
+              acc.platform &&
+              acc.platform.toLowerCase() === platform.name.toLowerCase()
           );
           const Icon = platform.icon;
           return (
             <div
               key={platform.name}
-              className="flex items-center space-x-3 bg-white bg-opacity-10 rounded-lg p-3 backdrop-blur-sm"
+              className="flex items-center space-x-3 bg-white bg-opacity-10 rounded-lg p-4 backdrop-blur-sm"
             >
-              <Icon className="w-5 h-5" />
-              <span className="font-medium flex-1">{platform.name}</span>
-              <div className={`w-2 h-2 rounded-full ${account ? 'bg-green-400' : 'bg-gray-300'}`} />
+              <div className="flex items-center space-x-3 flex-1">
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{platform.name}</p>
+                  {account?.username && (
+                    <p className="text-sm text-blue-100 truncate">
+                      @{account.username}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    account ? 'bg-green-400' : 'bg-gray-300'
+                  }`}
+                />
+                <span className="text-sm">
+                  {account ? 'Connected' : 'Not Connected'}
+                </span>
+              </div>
             </div>
           );
         })}

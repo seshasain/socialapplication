@@ -1,10 +1,12 @@
 import React from 'react';
-import { Plus, Instagram, Facebook } from 'lucide-react';
+import { Plus, Instagram, Facebook, Youtube, Linkedin, TwitterIcon } from 'lucide-react';
+import Twitter from '@auth/core/providers/twitter';
+import LinkedIn from '@auth/core/providers/linkedin';
 
 interface Post {
   id: string;
-  title: string;
-  platform: string;
+  caption: string;
+  platforms: { platform: string; status: string; publishedAt: string | null }[]; // Adjusted platform structure
   scheduledDate: string;
 }
 
@@ -37,14 +39,21 @@ export default function UpcomingPosts({ posts, onNewPost }: UpcomingPostsProps) 
               <div key={post.id} className="flex bg-gray-50 rounded-xl overflow-hidden">
                 <div className="p-4 flex-1">
                   <div className="flex items-center mb-2">
-                    {post.platform === "instagram" ? (
+                    {/* Check for the first platform */}
+                    {post.platforms[0].platform === "instagram" ? (
                       <Instagram className="h-5 w-5 text-pink-600 mr-2" />
-                    ) : (
+                    ) : post.platforms[0].platform === "facebook" ? (
                       <Facebook className="h-5 w-5 text-blue-600 mr-2" />
-                    )}
-                    <span className="text-sm font-medium text-gray-600">{post.platform}</span>
+                    ) :post.platforms[0].platform === "twitter" ? (
+                      <TwitterIcon className="h-5 w-5 text-pink-600 mr-2" />
+                    ) :post.platforms[0].platform === "linkedin" ? (
+                      <Linkedin className="h-5 w-5 text-pink-600 mr-2" />
+                    ) :post.platforms[0].platform === "youtube" ? (
+                      <Youtube className="h-5 w-5 text-pink-600 mr-2" />
+                    ) : null}
+                    <span className="text-sm font-medium text-gray-600">{post.platforms[0].platform}</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">{post.title}</h3>
+                  <h3 className="font-semibold text-gray-900 mb-1">{post.caption}</h3>
                   <p className="text-sm text-gray-600">
                     {new Date(post.scheduledDate).toLocaleString()}
                   </p>
@@ -57,3 +66,4 @@ export default function UpcomingPosts({ posts, onNewPost }: UpcomingPostsProps) 
     </div>
   );
 }
+

@@ -1,126 +1,174 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  settings?: any;
-}
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { User } from '../types/user';
 
 interface AuthContextType {
-  isAuthenticated: boolean;
   user: User | null;
+  isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
   logout: () => void;
+  signup: (data: SignupData) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
-const API_BASE_URL = 'http://localhost:5000/api';
+interface SignupData {
+  email: string;
+  password: string;
+  name: string;
+  redirectUrl: string | null;
+  captchaToken: string;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    // Check for existing session
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsAuthenticated(true);
-      // Fetch user data
-      fetchUserData(token);
-    }
-  }, []);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const fetchUserData = async (token: string) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch user data');
+    const response = await fetch('http://localhost:5000/api/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch user data');
+    }
+
+    const userData = await response.json();
+    const formattedUser: User = {
+      ...userData,
+      subscription: userData.subscription || {
+        planId: 'free',
+        status: 'active'
       }
-      
-      const userData = await response.json();
+    };
+    return formattedUser;
+  };
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUser(null);
+      setIsAuthenticated(false);
+      return;
+    }
+
+    try {
+      const userData = await fetchUserData(token);
       setUser(userData);
+      setIsAuthenticated(true);
     } catch (error) {
-      console.error('Failed to fetch user data:', error);
-      // If token is invalid, logout the user
-      logout();
+      console.error('Failed to refresh user data:', error);
+      localStorage.removeItem('token');
+      setUser(null);
+      setIsAuthenticated(false);
     }
   };
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const userData = await fetchUserData(token);
+          setUser(userData);
+          setIsAuthenticated(true);
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          localStorage.removeItem('token');
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+    const response = await fetch('http://localhost:5000/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Invalid credentials');
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+
+    const data = await response.json();
+    const formattedUser: User = {
+      ...data.user,
+      subscription: data.user.subscription || {
+        planId: 'free',
+        status: 'active'
       }
-
-      const { token, user } = await response.json();
-      localStorage.setItem('token', token);
-      setIsAuthenticated(true);
-      setUser(user);
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
-    }
-  };
-
-  const signup = async (email: string, password: string, name: string) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, name }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create account');
-      }
-
-      const { token, user } = await response.json();
-      localStorage.setItem('token', token);
-      setIsAuthenticated(true);
-      setUser(user);
-    } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    try {
-      window.location.href = `${API_BASE_URL}/auth/google`;
-    } catch (error) {
-      throw new Error('Failed to sign in with Google');
-    }
+    };
+    localStorage.setItem('token', data.token);
+    setUser(formattedUser);
+    setIsAuthenticated(true);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    setIsAuthenticated(false);
     setUser(null);
+    setIsAuthenticated(false);
+  };
+
+  const signup = async ({ email, password, name, redirectUrl, captchaToken }: SignupData) => {
+    const response = await fetch('http://localhost:5000/api/auth/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        email, 
+        password, 
+        name,
+        redirectUrl,
+        captchaToken 
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Signup failed');
+    }
+
+    const data = await response.json();
+    const formattedUser: User = {
+      ...data.user,
+      subscription: data.user.subscription || {
+        planId: 'free',
+        status: 'active'
+      }
+    };
+    localStorage.setItem('token', data.token);
+    setUser(formattedUser);
+    setIsAuthenticated(true);
+  };
+
+  const signInWithGoogle = async () => {
+    // Implement Google Sign-in logic
+    throw new Error('Not implemented');
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, signup, signInWithGoogle, logout }}>
+    <AuthContext.Provider
+      value={{ 
+        user, 
+        isAuthenticated, 
+        login, 
+        logout, 
+        signup, 
+        signInWithGoogle,
+        refreshUser 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

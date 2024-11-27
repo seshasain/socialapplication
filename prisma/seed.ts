@@ -5,199 +5,202 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // Clean existing data
+    // Clear existing data
     await prisma.analytics.deleteMany();
-    await prisma.mediaFile.deleteMany();
+    await prisma.postPlatform.deleteMany();
     await prisma.post.deleteMany();
+    await prisma.mediaFile.deleteMany();
     await prisma.socialAccount.deleteMany();
-    await prisma.teamMember.deleteMany();
     await prisma.userSettings.deleteMany();
+    await prisma.subscription.deleteMany();
+    await prisma.planFeature.deleteMany();
+    await prisma.planLimit.deleteMany();
+    await prisma.plan.deleteMany();
     await prisma.user.deleteMany();
 
-    // Create password hash
-    const passwordHash = await bcrypt.hash('123456', 10);
-
-    // Create main user (admin)
-    const adminUser = await prisma.user.create({
-      data: {
-        email: 'admin@example.com',
-        password: passwordHash,
-        name: 'John Doe',
-        subscription: 'gold',
-        role: 'ADMIN',
-        timezone: 'UTC',
-        bio: 'Social media expert and digital marketing specialist',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop'
-      }
-    });
-
-    // Create user settings
-    await prisma.userSettings.create({
-      data: {
-        userId: adminUser.id,
-        emailNotifications: true,
-        pushNotifications: true,
-        smsNotifications: false,
-        language: 'en',
-        theme: 'light',
-        autoSchedule: true,
-        defaultVisibility: 'public'
-      }
-    });
-
-    // Create team members
-    const teamMembers = await Promise.all([
-      prisma.teamMember.create({
+    // Create plans
+    const plans = await Promise.all([
+      prisma.plan.create({
         data: {
-          userId: adminUser.id,
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          role: 'EDITOR',
-          avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop',
-          lastActive: new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
-        }
+          name: 'free',
+          description: 'Basic features for individuals',
+          price: 0,
+          interval: 'monthly',
+          sortOrder: 1,
+          features: {
+            create: [
+              { name: 'Up to 1 social accounts', included: true },
+              { name: 'Basic analytics', included: true },
+              { name: 'Manual post scheduling', included: true },
+              { name: 'Single user', included: true },
+            ],
+          },
+          limits: {
+            create: [
+              { name: 'social_accounts', value: 1 },
+              { name: 'scheduled_posts', value: 10 },
+              { name: 'team_members', value: 1 },
+              { name: 'days_limit', value: 7},
+              { name: 'total_posts', value: 10},
+            ],
+          },
+        },
       }),
-      prisma.teamMember.create({
+      prisma.plan.create({
         data: {
-          userId: adminUser.id,
-          name: 'Mike Johnson',
-          email: 'mike@example.com',
-          role: 'VIEWER',
-          avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop',
-          lastActive: new Date()
-        }
-      })
+          name: 'pro',
+          description: 'Advanced features for professionals',
+          price: 29.99,
+          interval: 'monthly',
+          sortOrder: 2,
+          features: {
+            create: [
+              { name: 'Up to 10 social accounts', included: true },
+              { name: 'Advanced analytics', included: true },
+              { name: 'Auto post scheduling', included: true },
+              { name: 'Team collaboration', included: true },
+            ],
+          },
+          limits: {
+            create: [
+              { name: 'social_accounts', value: 3 },
+              { name: 'scheduled_posts', value: 100 },
+              { name: 'team_members', value: 5 },
+              { name: 'days_limit', value: 30},
+              { name: 'total_posts', value: 100},
+            ],
+          },
+        },
+      }),
     ]);
+
+    // Create users
+    const users = await Promise.all([
+      prisma.user.create({
+        data: {
+          email: 'admin@example.com',
+          password: await bcrypt.hash('password123', 10),
+          name: 'John Doe',
+          role: 'ADMIN',
+          subscription: {
+            create: {
+              planId: plans[1].id,
+              status: 'active',
+              currentPeriodStart: new Date(),
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          },
+          settings: {
+            create: {
+              emailNotifications: true,
+              pushNotifications: true,
+              smsNotifications: false,
+              language: 'en',
+              theme: 'light',
+              autoSchedule: true,
+              defaultVisibility: 'public',
+            },
+          },
+        },
+      }),
+    ]);
+
 
     // Create social accounts
     const socialAccounts = await Promise.all([
       prisma.socialAccount.create({
         data: {
-          userId: adminUser.id,
+          userId: users[0].id,
           platform: 'instagram',
-          username: 'demo_instagram',
-          profileUrl: 'https://instagram.com/demo',
+          username: 'johndoe',
+          profileUrl: 'https://instagram.com/johndoe',
           accessToken: 'mock-token',
-          refreshToken: 'mock-refresh',
-          followerCount: 12500
-        }
+          refreshToken: 'mock-refresh-token',
+          followerCount: 1500,
+        },
       }),
       prisma.socialAccount.create({
         data: {
-          userId: adminUser.id,
+          userId: users[0].id,
           platform: 'facebook',
-          username: 'demo_facebook',
-          profileUrl: 'https://facebook.com/demo',
+          username: 'johndoe',
+          profileUrl: 'https://facebook.com/johndoe',
           accessToken: 'mock-token',
-          refreshToken: 'mock-refresh',
-          followerCount: 25000
-        }
-      })
-    ]);
-
-    // Create media files
-    const mediaFiles = await Promise.all([
-      prisma.mediaFile.create({
-        data: {
-          userId: adminUser.id,
-          url: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b',
-          type: 'image',
-          filename: 'summer_collection.jpg',
-          size: 1024000,
-          s3Key: 'uploads/summer_collection.jpg'
-        }
+          refreshToken: 'mock-refresh-token',
+          followerCount: 2500,
+        },
       }),
-      prisma.mediaFile.create({
-        data: {
-          userId: adminUser.id,
-          url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff',
-          type: 'image',
-          filename: 'product_launch.jpg',
-          size: 2048000,
-          s3Key: 'uploads/product_launch.jpg'
-        }
-      })
     ]);
 
-    // Create posts
-    const posts = await Promise.all([
-      prisma.post.create({
-        data: {
-          userId: adminUser.id,
-          caption: 'Summer Collection Launch! 🌞 #SummerFashion',
-          scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-          platform: 'instagram',
-          hashtags: '#summer #fashion #newcollection',
-          visibility: 'public',
-          status: 'scheduled',
-          engagementRate: 4.2,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          mediaFiles: {
-            connect: [{ id: mediaFiles[0].id }]
-          }
-        }
-      }),
-      prisma.post.create({
-        data: {
-          userId: adminUser.id,
-          caption: 'New Product Launch! 🎉 #ProductLaunch',
-          scheduledDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-          platform: 'facebook',
-          hashtags: '#launch #newproduct #exciting',
-          visibility: 'public',
-          status: 'scheduled',
-          engagementRate: 3.8,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          mediaFiles: {
-            connect: [{ id: mediaFiles[1].id }]
-          }
-        }
-      })
-    ]);
-
-    // Create analytics data
-    const analyticsData = [];
-    const platforms = ['instagram', 'facebook'];
+    // Create posts with platforms and analytics
     const now = new Date();
+    const posts = [];
+    const platforms = ['instagram', 'facebook'];
+    const captions = [
+      'Exciting new product launch! 🚀 #innovation',
+      'Behind the scenes at our office 📸 #workplace',
+      'Meet our amazing team! 👥 #teamwork',
+      'Customer success story 🌟 #testimonial',
+      'Tips and tricks for success 💡 #tips',
+    ];
 
-    for (let i = 30; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
+    // Create posts for the last 7 days
+    for (let i = 0; i < 7; i++) {
+      const postDate = new Date(now);
+      postDate.setDate(postDate.getDate() - i);
 
-      for (const platform of platforms) {
-        analyticsData.push({
-          userId: adminUser.id,
-          date,
-          platform,
-          reach: Math.floor(Math.random() * 10000) + 5000,
-          impressions: Math.floor(Math.random() * 15000) + 7000,
-          engagement: Math.floor(Math.random() * 1000) + 500,
-          clicks: Math.floor(Math.random() * 500) + 100,
-          shares: Math.floor(Math.random() * 200) + 50,
-          saves: Math.floor(Math.random() * 100) + 25
+      const post = await prisma.post.create({
+        data: {
+          userId: users[0].id,
+          caption: captions[Math.floor(Math.random() * captions.length)],
+          scheduledDate: postDate,
+          hashtags: '#social #marketing #business',
+          visibility: 'public',
+          platforms: {
+            create: platforms.map(platform => ({
+              platform,
+              status: 'published',
+              publishedAt: postDate,
+            })),
+          },
+        },
+        include: {
+          platforms: true,
+        },
+      });
+
+      // Create analytics for each platform of the post
+      for (const platform of post.platforms) {
+        await prisma.analytics.create({
+          data: {
+            userId: users[0].id,
+            postPlatformId: platform.id,
+            platform: platform.platform,
+            date: postDate,
+            reach: Math.floor(Math.random() * 1000) + 500,
+            impressions: Math.floor(Math.random() * 2000) + 1000,
+            engagement: Math.floor(Math.random() * 500) + 100,
+            clicks: Math.floor(Math.random() * 300) + 50,
+            shares: Math.floor(Math.random() * 100) + 10,
+            saves: Math.floor(Math.random() * 50) + 5,
+            likes: Math.floor(Math.random() * 800) + 200,
+            comments: Math.floor(Math.random() * 100) + 20,
+          },
         });
       }
+
+      posts.push(post);
     }
 
-    await prisma.analytics.createMany({
-      data: analyticsData
-    });
-
-    console.log('Seed data created successfully:', {
-      user: { id: adminUser.id, email: adminUser.email },
-      teamMembers: teamMembers.length,
-      socialAccounts: socialAccounts.length,
-      mediaFiles: mediaFiles.length,
+    console.log({
+      users: users.length,
+      plans: plans.length,
       posts: posts.length,
-      analyticsRecords: analyticsData.length
+      socialAccounts: socialAccounts.length,
     });
 
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('Seeding error:', error);
     throw error;
   }
 }

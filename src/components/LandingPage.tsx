@@ -24,6 +24,8 @@ import {
   MessageSquare,
   BarChart,
   Hash,
+  Twitter,
+  Linkedin
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -44,16 +46,13 @@ export default function LandingPage() {
                   </span>
                 </div>
                 <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-                  <span className="block xl:inline">Transform Your</span>{' '}
+                  <span className="block xl:inline">One Post,</span>{' '}
                   <span className="block text-blue-600 xl:inline">
-                    Social Media Strategy
+                  All Social Platforms
                   </span>
                 </h1>
                 <p className="mt-3 text-base text-gray-600 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
-                  Elevate your brand's social presence with AI-powered
-                  scheduling, real-time analytics, and content optimization.
-                  Trusted by over 10,000+ businesses to drive engagement and
-                  grow their audience.
+                Publish to all social platforms with one click. Schedule posts, track performance, and optimize content with AI. Used by 10,000+ businesses to grow their reach.
                 </p>
                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
                   <div className="rounded-md shadow">
@@ -89,6 +88,25 @@ export default function LandingPage() {
                     <span className="text-gray-600">Cancel anytime</span>
                   </div>
                 </div>
+                <div className="mt-8">
+              <p className="text-sm text-gray-500 mb-3">Publish seamlessly to:</p>
+                <div className="flex space-x-4 items-center">
+                {[
+                  { Icon: Instagram, color: 'bg-gradient-to-br from-purple-600 to-pink-500' },
+                  { Icon: Facebook, color: 'bg-blue-600' },
+                  { Icon: Twitter, color: 'bg-sky-500' },
+                  { Icon: Linkedin, color: 'bg-blue-700' }
+                ].map(({ Icon, color }, index) => (
+                  <div
+                    key={index}
+                    className={`p-2 ${color} rounded-lg transform hover:scale-110 transition-transform duration-200 cursor-pointer`}
+                  >
+                    <Icon className="h-6 w-6 text-white" />
+                  </div>
+                ))}
+              </div>
+            </div>
+                
               </div>
             </main>
           </div>
@@ -96,10 +114,10 @@ export default function LandingPage() {
 
         {/* Demo Window */}
         <div className="hidden lg:block lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
-          <div className="h-full w-full bg-gradient-to-br from-blue-600 to-indigo-600 p-8 flex items-center justify-center">
-            <div className="bg-white w-[800px] h-[600px] rounded-xl shadow-2xl overflow-hidden relative transform rotate-2 hover:rotate-0 transition-all duration-300">
+          <div className="h-full w-full   to-indigo-600 p-8 flex items-center justify-center">
+            <div className="bg-white w-[800px] h-[600px] rounded-xl shadow-2xl overflow-hidden relative transform rotate-0 hover:rotate-0 transition-all duration-300">
               {/* Window Controls */}
-              <div className="absolute top-0 left-0 right-0 h-12 bg-gray-50 border-b flex items-center px-4">
+              <div className="absolute top-0 left-0 right-0 h-100 bg-gray-50 border-b flex items-center px-4">
                 <div className="flex space-x-2">
                   <div className="w-3 h-3 rounded-full bg-red-400"></div>
                   <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
@@ -192,7 +210,7 @@ export default function LandingPage() {
                         <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
                         <span className="text-sm text-gray-600">Reach</span>
                       </div>
-                      <select className="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-gray-50">
+                      <select className="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-gray-50" disabled>
                         <option>Last 7 days</option>
                         <option>Last 30 days</option>
                         <option>Last 90 days</option>
@@ -200,89 +218,80 @@ export default function LandingPage() {
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <div className="absolute -left-4 top-0 bottom-0 flex flex-col justify-between text-xs text-gray-500">
-                      <span>100K</span>
-                      <span>75K</span>
-                      <span>50K</span>
-                      <span>25K</span>
-                      <span>0</span>
-                    </div>
+                  <div className="relative h-40 w-full">
+  {/* Y-axis labels */}
+  <div className="absolute -left-4 top-0 bottom-0 flex flex-col justify-between text-xs text-gray-500">
+    <span>100K</span>
+    <span>75K</span>
+    <span>50K</span>
+    <span>25K</span>
+    <span>0</span>
+  </div>
 
-                    <div className="ml-8 h-40 flex items-end space-x-2">
-                      {[
-                        { engagement: 65, reach: 72 },
-                        { engagement: 85, reach: 92 },
-                        { engagement: 55, reach: 48 },
-                        { engagement: 98, reach: 88 },
-                        { engagement: 75, reach: 82 },
-                        { engagement: 92, reach: 96 },
-                        { engagement: 70, reach: 75 },
-                      ].map((day, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 flex items-end space-x-1"
-                        >
-                          <div
-                            style={{ height: `${day.engagement}%` }}
-                            className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg relative group"
-                          >
-                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                              <div className="font-medium">
-                                {day.engagement}K engagements
-                              </div>
-                              <div className="text-blue-300 text-[10px]">
-                                {
-                                  [
-                                    'Mon',
-                                    'Tue',
-                                    'Wed',
-                                    'Thu',
-                                    'Fri',
-                                    'Sat',
-                                    'Sun',
-                                  ][i]
-                                }
-                              </div>
-                            </div>
-                          </div>
-                          <div
-                            style={{ height: `${day.reach}%` }}
-                            className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-lg relative group"
-                          >
-                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                              <div className="font-medium">
-                                {day.reach}K reach
-                              </div>
-                              <div className="text-blue-300 text-[10px]">
-                                {
-                                  [
-                                    'Mon',
-                                    'Tue',
-                                    'Wed',
-                                    'Thu',
-                                    'Fri',
-                                    'Sat',
-                                    'Sun',
-                                  ][i]
-                                }
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+  {/* Graph bars */}
+  <div className="ml-8 h-40 flex items-end space-x-2">
+    {[
+      { engagement: 65, reach: 72 },
+      { engagement: 85, reach: 92 },
+      { engagement: 55, reach: 48 },
+      { engagement: 98, reach: 88 },
+      { engagement: 75, reach: 82 },
+      { engagement: 92, reach: 96 },
+      { engagement: 70, reach: 75 },
+    ].map((day, i) => (
+      <div
+        key={i}
+        className="flex-1 flex items-end space-x-1"
+      >
+        {/* Engagement bar */}
+        <div
+          style={{ height: `${Math.max((day.engagement / 100) * 160, 10)}px` }}  // Calculate height in pixels, with a minimum of 10px
+          className="w-6 bg-gradient-to-t from-blue-600 to-blue-400 rounded-t relative group"
+        >
+          {/* Tooltip for engagement */}
+          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div className="font-medium">
+              {day.engagement}K engagements
+            </div>
+            <div className="text-blue-300 text-[10px]">
+              {
+                ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]
+              }
+            </div>
+          </div>
+        </div>
 
-                    <div className="ml-8 mt-2 grid grid-cols-7 text-xs text-gray-500">
-                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(
-                        (day) => (
-                          <div key={day} className="text-center">
-                            {day}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
+        {/* Reach bar */}
+        <div
+          style={{ height: `${Math.max((day.reach / 100) * 160, 10)}px` }}  // Calculate height in pixels, with a minimum of 10px
+          className="w-6 bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t relative group"
+        >
+          {/* Tooltip for reach */}
+          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div className="font-medium">
+              {day.reach}K reach
+            </div>
+            <div className="text-blue-300 text-[10px]">
+              {
+                ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+
+  {/* X-axis labels */}
+  <div className="ml-8 mt-2 grid grid-cols-7 text-xs text-gray-500">
+    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+      <div key={day} className="text-center">
+        {day}
+      </div>
+    ))}
+  </div>
+</div>
+
 
                   <div className="mt-4 grid grid-cols-3 gap-4">
                     {[
@@ -386,9 +395,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
             {[
-              { value: '10K+', label: 'Active Users', color: 'blue' },
+              { value: '6K+', label: 'Active Users', color: 'blue' },
               { value: '98%', label: 'Customer Satisfaction', color: 'green' },
-              { value: '5M+', label: 'Posts Published', color: 'purple' },
+              { value: '1.4M+', label: 'Posts Published', color: 'purple' },
               { value: '150%', label: 'Avg. ROI Increase', color: 'indigo' },
             ].map((stat) => (
               <div
@@ -607,27 +616,94 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
-      <div className="hidden">
-        <h1>SocialSync - AI-Powered Social Media Management Platform</h1>
-        <h2>
-          Automate Your Social Media Marketing | Analytics & Scheduling Tools
-        </h2>
-        <p>
-          SocialSync is the leading social media management platform for
-          businesses and marketers. Schedule posts, analyze performance, and
-          grow your social media presence across Instagram, Facebook, Twitter,
-          and LinkedIn. Features include AI-powered scheduling, advanced
-          analytics, team collaboration, and automated publishing.
-        </p>
-        <p>
-          Keywords: social media management software, social media scheduler,
-          social media analytics, social media marketing tools, Instagram
-          management, Facebook management, Twitter management, LinkedIn
-          management, social media automation, content calendar, team
-          collaboration, social media ROI, social media metrics, social media
-          strategy, digital marketing tools
-        </p>
-      </div>
+      <div className="hidden" aria-hidden="true">
+  <h1>SocialSync - All-in-One Social Media Management & Publishing Platform</h1>
+  <h2>
+    Smart Social Media Publishing, Scheduling, Analytics & Team Collaboration Platform for Business Growth
+  </h2>
+  
+  {/* Primary Description */}
+  <p>
+    SocialSync is an enterprise-grade social media management platform that unifies content publishing, 
+    analytics, and team collaboration. Schedule and auto-publish content across Instagram, Facebook, 
+    Twitter, and LinkedIn from a single dashboard. Leverage AI-powered scheduling, real-time analytics, 
+    and streamlined approval workflows to maximize your social media impact.
+  </p>
+
+  {/* Feature Highlights for SEO */}
+  <div>
+    <h3>Comprehensive Social Media Management Solution</h3>
+    <ul>
+      <li>Multi-platform Social Media Publisher with simultaneous posting to Instagram, Facebook, Twitter, and LinkedIn</li>
+      <li>AI-Optimized Post Scheduling based on audience engagement patterns</li>
+      <li>Real-time Social Media Analytics and Performance Tracking</li>
+      <li>Team Collaboration Tools with Role-based Access Control</li>
+      <li>Visual Content Calendar for Strategic Planning</li>
+      <li>Automated Cross-platform Publishing Workflows</li>
+    </ul>
+  </div>
+
+  {/* Business Benefits */}
+  <div>
+    <h3>Transform Your Social Media Strategy</h3>
+    <ul>
+      <li>Increase Social Media ROI with data-driven insights</li>
+      <li>Save time with bulk scheduling and auto-publishing</li>
+      <li>Improve team productivity with streamlined workflows</li>
+      <li>Enhance content quality with approval processes</li>
+      <li>Track social media metrics across all platforms</li>
+      <li>Optimize posting times for maximum engagement</li>
+    </ul>
+  </div>
+
+  {/* Extended Keywords Section */}
+  <p>
+    Related Terms: social media management platform, social media scheduler, social media analytics 
+    dashboard, social media content calendar, team collaboration software, social media marketing 
+    automation, Instagram post scheduler, Facebook content manager, Twitter analytics tool, LinkedIn 
+    post automation, social media ROI tracking, engagement analytics, social media metrics dashboard, 
+    content approval workflow, multi-platform social media publisher, social media team management, 
+    enterprise social media tools, social media content strategy, automated social posting, social 
+    media performance tracking
+  </p>
+
+  {/* Location and Industry Targeting */}
+  <p>
+    Perfect for: Digital Marketing Agencies, Social Media Managers, Content Marketing Teams, Brand 
+    Managers, Marketing Departments, E-commerce Businesses, Enterprise Marketing Teams, Small Business 
+    Owners, Influencer Management, Global Marketing Teams
+  </p>
+
+  {/* Rich Snippets Support */}
+  <script type="application/ld+json">
+    {`
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "SocialSync",
+        "applicationCategory": "Social Media Management Platform",
+        "operatingSystem": "Web-based",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "featureList": [
+          "Multi-platform Social Media Publishing",
+          "AI-powered Scheduling",
+          "Real-time Analytics",
+          "Team Collaboration",
+          "Content Calendar",
+          "Automated Workflows"
+        ]
+      }
+    `}
+  </script>
+</div>
     </div>
   );
 }
+
+
+

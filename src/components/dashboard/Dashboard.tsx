@@ -6,15 +6,23 @@ import {
   Settings,
   Plus,
   Layout,
+  History,
 } from 'lucide-react';
-import Sidebar from './dashboard/Sidebar';
-import CalendarView from './dashboard/CalendarView';
-import Analytics from './dashboard/Analytics';
-import TeamView from './dashboard/TeamView';
-import SettingsView from './dashboard/SettingsView';
-import Overview from './dashboard/Overview';
+import Sidebar from '../dashboard/Sidebar';
+import CalendarView from '../dashboard/CalendarView';
+import Analytics from '../dashboard/Analytics';
+import TeamView from './context/TeamView';
+import SettingsView from '../dashboard/SettingsView';
+import Overview from '../dashboard/Overview';
+import HistoryView from '../dashboard/HistoryView';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings';
+type View =
+  | 'overview'
+  | 'calendar'
+  | 'analytics'
+  | 'team'
+  | 'settings'
+  | 'history';
 
 export default function Dashboard() {
   const [currentView, setCurrentView] = useState<View>('overview');
@@ -56,6 +64,7 @@ export default function Dashboard() {
           {currentView === 'analytics' && <Analytics />}
           {currentView === 'team' && <TeamView />}
           {currentView === 'settings' && <SettingsView />}
+          {currentView === 'history' && <HistoryView />}
         </div>
       </main>
     </div>
