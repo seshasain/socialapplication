@@ -2419,3 +2419,158 @@ app.get('/history', authenticateToken, async (req, res) => {
 
 // Add static file serving
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+
+import express from 'express';
+import cors from 'cors';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { v4 as uuidv4 } from 'uuid';
+import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+
+dotenv.config();
+
+// S3 Client Configuration
+const s3Client = new S3Client({
+  region: process.env.B2_REGION,
+  endpoint: process.env.B2_ENDPOINT_URL,
+  credentials: {
+    accessKeyId: process.env.B2_APPLICATION_KEY_ID,
+    secretAccessKey: process.env.B2_APPLICATION_KEY,
+  }
+});
+
+const BUCKET_NAME = process.env.B2_BUCKET_NAME;
+const PUBLIC_URL = process.env.B2_PUBLIC_URL;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Authentication Middleware
+const authenticate = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      include: {
+        subscription: true,
+        settings: true,
+        socialAccounts: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Media Upload Routes
+app.post('/api/media/presigned-url', authenticate, async (req, res) => {
+  try {
+    console.log("working");
+    const { filename, contentType } = req.body;
+    const key = `uploads/${uuidv4()}-${filename}`;
+
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      ContentType: contentType
+    });
+
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+    const fileUrl = `${PUBLIC_URL}/${BUCKET_NAME}/${key}`;
+
+    res.json({
+      uploadUrl,
+      fileUrl,
+      key
+    });
+  } catch (error) {
+    console.error('Presigned URL error:', error);
+    res.status(500).json({ error: 'Failed to generate presigned URL' });
+  }
+});
+
+app.post('/api/media/register', authenticate, async (req, res) => {
+  try {
+    const { filename, type, size, url, s3Key } = req.body;
+    const userId = req.user.id;
+
+    const mediaFile = await prisma.mediaFile.create({
+      data: {
+        userId,
+        filename,
+        type,
+        size,
+        url,
+        s3Key
+      }
+    });
+
+    res.json(mediaFile);
+  } catch (error) {
+    console.error('Register upload error:', error);
+    res.status(500).json({ error: 'Failed to register upload' });
+  }
+});
+
+app.delete('/api/media/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const mediaFile = await prisma.mediaFile.findFirst({
+      where: {
+        id,
+        userId
+      }
+    });
+
+    if (!mediaFile) {
+      return res.status(404).json({ error: 'Media file not found' });
+    }
+
+    // Delete from B2
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: mediaFile.s3Key
+    });
+
+    await s3Client.send(command);
+
+    // Delete from database
+    await prisma.mediaFile.delete({
+      where: { id }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete media error:', error);
+    res.status(500).json({ error: 'Failed to delete media file' });
+  }
+});
+
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+export default app;
