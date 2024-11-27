@@ -13,13 +13,13 @@ export interface UploadResponse {
   filename: string;
   type: string;
   size: number;
-  s3Key: string;
+  b2Key: string;
 }
 
 export interface PresignedUrlResponse {
   uploadUrl: string;
-  fileUrl: string;
-  key: string;
+  authorizationToken: string;
+  fileId: string;
 }
 
 class UploadService {
@@ -57,10 +57,10 @@ class UploadService {
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> {
     try {
-      // Get presigned URL
-      const { uploadUrl, fileUrl, key } = await this.getPresignedUrl(file);
+      // Get presigned URL for B2
+      const { uploadUrl, authorizationToken } = await this.getPresignedUrl(file);
 
-      // Upload to S3 with progress tracking
+      // Upload to B2 with progress tracking
       const xhr = new XMLHttpRequest();
       
       const uploadPromise = new Promise<void>((resolve, reject) => {
@@ -84,8 +84,10 @@ class UploadService {
         });
       });
 
-      xhr.open('PUT', uploadUrl);
+      xhr.open('POST', uploadUrl);
+      xhr.setRequestHeader('Authorization', authorizationToken);
       xhr.setRequestHeader('Content-Type', file.type);
+      xhr.setRequestHeader('X-Bz-File-Name', encodeURIComponent(file.name));
       xhr.send(file);
 
       await uploadPromise;
@@ -102,8 +104,7 @@ class UploadService {
           filename: file.name,
           type: file.type,
           size: file.size,
-          url: fileUrl,
-          s3Key: key
+          b2Key: `uploads/${file.name}`
         })
       });
 
@@ -163,4 +164,5 @@ class UploadService {
     }
   }
 }
+
 export const uploadService = new UploadService();
