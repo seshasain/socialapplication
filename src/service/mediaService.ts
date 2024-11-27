@@ -1,12 +1,10 @@
 import { APP_URL } from '../config/api';
-
 export interface UploadProgress {
   id: string;
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
 }
-
 export interface UploadResponse {
   id: string;
   url: string;
@@ -15,13 +13,11 @@ export interface UploadResponse {
   size: number;
   b2Key: string;
 }
-
 export interface PresignedUrlResponse {
   uploadUrl: string;
   authorizationToken: string;
   fileId: string;
 }
-
 class UploadService {
   private async getPresignedUrl(file: File): Promise<PresignedUrlResponse> {
     try {
@@ -51,19 +47,20 @@ class UploadService {
       throw error;
     }
   }
-
   async uploadFile(
     file: File,
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> {
     try {
-      // Get presigned URL for B2
-      const { uploadUrl, authorizationToken } = await this.getPresignedUrl(file);
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Upload to B2 with progress tracking
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token');
+
       const xhr = new XMLHttpRequest();
       
-      const uploadPromise = new Promise<void>((resolve, reject) => {
+      const uploadPromise = new Promise<UploadResponse>((resolve, reject) => {
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const progress = Math.round((event.loaded / event.total) * 100);
@@ -71,9 +68,14 @@ class UploadService {
           }
         });
 
-        xhr.addEventListener('load', () => {
+        xhr.addEventListener('load', async () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (error) {
+              reject(new Error('Invalid response format'));
+            }
           } else {
             reject(new Error(`Upload failed with status ${xhr.status}`));
           }
@@ -84,41 +86,16 @@ class UploadService {
         });
       });
 
-      xhr.open('POST', uploadUrl);
-      xhr.setRequestHeader('Authorization', authorizationToken);
-      xhr.setRequestHeader('Content-Type', file.type);
-      xhr.setRequestHeader('X-Bz-File-Name', encodeURIComponent(file.name));
-      xhr.send(file);
+      xhr.open('POST', `${APP_URL}/api/media/upload`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(formData);
 
-      await uploadPromise;
-
-      // Register upload with our backend
-      const token = localStorage.getItem('token');
-      const registerResponse = await fetch(`${APP_URL}/api/media/register`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          type: file.type,
-          size: file.size,
-          b2Key: `uploads/${file.name}`
-        })
-      });
-
-      if (!registerResponse.ok) {
-        throw new Error('Failed to register upload');
-      }
-
-      return registerResponse.json();
+      return uploadPromise;
     } catch (error) {
       console.error('Upload error:', error);
       throw error;
     }
   }
-
   async uploadMultipleFiles(
     files: File[],
     onProgress?: (fileId: string, progress: number) => void,
@@ -141,7 +118,6 @@ class UploadService {
 
     return Promise.all(uploads);
   }
-
   async deleteFile(fileId: string): Promise<void> {
     try {
       const token = localStorage.getItem('token');
@@ -164,5 +140,4 @@ class UploadService {
     }
   }
 }
-
 export const uploadService = new UploadService();
