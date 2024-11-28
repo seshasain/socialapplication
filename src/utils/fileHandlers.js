@@ -44,6 +44,37 @@ async function getUploadUrl() {
   return { uploadUrl, uploadAuthToken };
 }
 
+async function getDownloadUrl(fileName) {
+  await ensureAuthorized();
+  
+  try {
+    // Get file info first
+    const response = await b2.listFileNames({
+      bucketId: process.env.VITE_B2_BUCKET_ID,
+      startFileName: fileName,
+      maxFileCount: 1
+    });
+
+    if (!response.data.files.length) {
+      throw new Error('File not found');
+    }
+
+    const file = response.data.files[0];
+    
+    // Generate authorized download URL
+    const downloadUrl = await b2.getDownloadAuthorization({
+      bucketId: process.env.VITE_B2_BUCKET_ID,
+      fileNamePrefix: fileName,
+      validDurationInSeconds: 604800, // 7 days
+    });
+
+    return `${b2.downloadUrl}/file/${process.env.VITE_B2_BUCKET_NAME}/${fileName}?Authorization=${downloadUrl.data.authorizationToken}`;
+  } catch (error) {
+    console.error('Error generating download URL:', error);
+    throw new Error('Failed to generate download URL');
+  }
+}
+
 export const uploadToB2 = async (fileBuffer, contentType, filename) => {
   try {
     if (!fileBuffer || !contentType || !filename) {
@@ -79,8 +110,9 @@ export const uploadToB2 = async (fileBuffer, contentType, filename) => {
       throw new Error('Invalid upload response from B2');
     }
 
-    const fileUrl = `${process.env.VITE_B2_PUBLIC_URL}/file/${process.env.VITE_B2_BUCKET_NAME}/${uploadResponse.data.fileName}`;
-    return fileUrl;
+    // Generate authorized download URL for the uploaded file
+    const downloadUrl = await getDownloadUrl(`uploads/${filename}`);
+    return downloadUrl;
   } catch (error) {
     console.error('B2 upload error:', error);
     throw new Error(`Failed to upload file to B2: ${error.message}`);
@@ -95,7 +127,7 @@ export const deleteFromB2 = async (fileName) => {
 
     await ensureAuthorized();
 
-    const response = await VITE_B2.listFileNames({
+    const response = await b2.listFileNames({
       bucketId: process.env.VITE_B2_BUCKET_ID,
       startFileName: fileName,
       maxFileCount: 1
@@ -124,16 +156,15 @@ export async function saveFile(file) {
     const fileExtension = path.extname(file.originalname);
     const filename = `${uniqueId}${fileExtension}`;
 
-    // Upload to B2
-    const b2Url = await uploadToB2(file.buffer, file.mimetype, filename);
+    // Upload to B2 and get authorized download URL
+    const fileUrl = await uploadToB2(file.buffer, file.mimetype, filename);
 
-    if (!b2Url) {
+    if (!fileUrl) {
       throw new Error('Failed to get B2 file URL');
     }
-
     return {
       id: uniqueId,
-      url: b2Url,
+      url: fileUrl,
       filename,
       mimetype: file.mimetype,
       size: file.size,
@@ -144,7 +175,6 @@ export async function saveFile(file) {
     throw new Error(`Failed to save file: ${error.message}`);
   }
 }
-
 export async function deleteFile(filename, b2Key) {
   try {
     // Delete from B2 if key exists
