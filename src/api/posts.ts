@@ -1,5 +1,6 @@
 import { Post, MediaFile, PostFormData } from '../types/posts';
 import { APP_URL } from '../config/api';
+import { validateFile } from '../utils/fileValidation';
 
 export async function getPostHistory(
   filter = 'all',
@@ -44,50 +45,31 @@ export async function getScheduledPosts(): Promise<Post[]> {
   return response.json();
 }
 
-export async function createPost(data: PostFormData): Promise<Post> {
+export const uploadMedia = async (file: File | MediaFile): Promise<MediaFile> => {
+  if (!file) {
+    throw new Error('No file provided');
+  }
+
   try {
-    const token = localStorage.getItem('token');
-    if (!token) throw new Error('No authentication token');
-
-    const requestBody = {
-      caption: data.caption,
-      scheduledDate: data.scheduledDate && data.scheduledTime
-        ? new Date(`${data.scheduledDate}T${data.scheduledTime}`).toISOString()
-        : new Date().toISOString(),
-      platforms: JSON.stringify(data.selectedPlatforms || []),
-      hashtags: data.hashtags || '',
-      visibility: data.visibility || 'public',
-      mediaFiles: data.mediaFiles?.length
-        ? JSON.stringify(data.mediaFiles.map(file => file.id))
-        : null,
-      publishNow: data.publishNow || false
-    };
-
-    const response = await fetch(`${APP_URL}/posts`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(errorData?.error || 'Failed to create post');
+    // If it's already a MediaFile, return it directly
+    if ('url' in file) {
+      return file;
     }
 
-    return response.json();
-  } catch (error) {
-    console.error('Create post error:', error);
-    throw error;
-  }
-}
+    console.log('Starting file upload:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      lastModified: file.lastModified
+    });
 
-export const uploadMedia = async (file: File): Promise<MediaFile> => {
-  try {
+    // Validate file before upload
+    validateFile(file);
+
     const token = localStorage.getItem('token');
-    if (!token) throw new Error('No authentication token');
+    if (!token) {
+      throw new Error('No authentication token');
+    }
 
     const formData = new FormData();
     formData.append('file', file);
@@ -95,31 +77,73 @@ export const uploadMedia = async (file: File): Promise<MediaFile> => {
     const response = await fetch(`${APP_URL}/api/media/upload`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: formData,
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-      throw new Error(typeof errorData.error === 'string' ? errorData.error : 'Upload failed');
+      throw new Error(errorData.error || `Upload failed with status: ${response.status}`);
     }
 
     const data = await response.json();
-    if (!data.url || !data.id) {
+    console.log('Upload response:', data);
+
+    if (!data || !data.url || !data.id) {
+      console.error('Invalid server response:', data);
       throw new Error('Invalid response from server');
     }
 
-    return {
-      ...data,
-      url: data.url.startsWith('http') ? data.url : `/uploads/${data.filename}`
+    // Ensure the response matches the MediaFile type
+    const mediaFile: MediaFile = {
+      id: data.id,
+      userId: data.userId,
+      url: data.url.startsWith('http') ? data.url : `${APP_URL}/uploads/${data.filename}`,
+      type: data.type || file.type, // Use original file type if server doesn't provide one
+      filename: data.filename,
+      size: data.size || file.size,
+      s3Key: data.s3Key,
+      createdAt: data.createdAt || new Date().toISOString(),
+      updatedAt: data.updatedAt || new Date().toISOString()
     };
+
+    console.log('Processed media file:', mediaFile);
+    return mediaFile;
+
   } catch (error) {
     console.error('Upload error:', error);
     throw error;
   }
 };
 
+export const createPost = async (postData: any): Promise<any> => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+
+    const response = await fetch(`${APP_URL}/api/posts`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(postData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create post');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Create post error:', error);
+    throw error;
+  }
+};
 export async function deletePost(postId: string): Promise<void> {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');

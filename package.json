@@ -44,14 +44,15 @@
     "axios": "1.7.6",
     "@fullcalendar/list": "^6.1.10",
     "react-google-recaptcha": "^3.1.0",
-    "react-chartjs-2":"5.2.0",
+    "react-chartjs-2": "5.2.0",
     "chart.js": "^4.4.2",
     "zxcvbn": "^4.4.2",
     "react-toastify": "^9.1.1",
     "@aws-sdk/client-s3": "^3.525.0",
     "@aws-sdk/s3-request-presigner": "^3.525.0",
     "uuid": "^9.0.0",
-    "backblaze-b2": "^1.7.0"
+    "backblaze-b2": "^1.7.0",
+    "@types/backblaze-b2": "^1.5.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
@@ -59,7 +60,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/react-datepicker": "^6.0.1",
     "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.18", 
+    "autoprefixer": "^10.4.18",
     "concurrently": "^8.2.2",
     "nodemon": "^3.1.0",
     "eslint": "^9.9.1",
@@ -77,4 +78,3 @@
     "@types/node": "^20.0.0"
   }
 }
-

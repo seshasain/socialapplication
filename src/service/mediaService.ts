@@ -1,114 +1,119 @@
+import { v4 as uuidv4 } from 'uuid';
+import type { 
+  UploadProgress, 
+  UploadResponse, 
+  UploadCallbacks,
+  MediaFile 
+} from '../types/media';
 import { APP_URL } from '../config/api';
-
-export interface UploadProgress {
-  id: string;
-  progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error';
-  error?: string;
-}
-
-export interface UploadResponse {
-  id: string;
-  url: string;
-  filename: string;
-  type: string;
-  size: number;
-  b2Key: string;
-}
+import { validateFile } from '../utils/fileValidation';
 
 class UploadService {
-  async uploadFile(
-    file: File,
-    onProgress?: (progress: number) => void
-  ): Promise<UploadResponse> {
-    return new Promise((resolve, reject) => {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
+  private pendingUploads = new Map<string, XMLHttpRequest>();
 
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('No authentication token');
+  async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> {
+    const fileId = uuidv4();
+    console.log(`Starting upload for file: ${file.name}, ID: ${fileId}`);
+
+    try {
+      validateFile(file);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${APP_URL}/api/media/upload`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          console.log(`Upload progress: ${progress}%`);
+          onProgress?.(progress);
         }
+      };
 
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            onProgress?.(progress);
-          }
-        });
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+      const uploadPromise = new Promise<UploadResponse>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) {
             try {
               const response = JSON.parse(xhr.responseText);
-              if (!response.url || !response.id) {
-                throw new Error('Invalid upload response format');
-              }
+              console.log('Upload successful:', response);
               resolve(response);
             } catch (error) {
-              reject(new Error('Failed to parse upload response'));
+              console.error('Failed to parse response:', error);
+              reject(new Error('Invalid response format'));
             }
           } else {
-            let errorMessage = 'Upload failed';
-            try {
-              const errorResponse = JSON.parse(xhr.responseText);
-              errorMessage = errorResponse.error || errorMessage;
-            } catch (e) {
-              // If response isn't JSON, use status text
-              errorMessage = xhr.statusText || errorMessage;
-            }
-            reject(new Error(errorMessage));
+            console.error('Upload failed:', xhr.responseText);
+            reject(new Error(`Upload failed: ${xhr.statusText}`));
           }
-        });
+        };
 
-        xhr.addEventListener('error', () => {
-          reject(new Error('Network error occurred during upload'));
-        });
+        xhr.onerror = () => {
+          console.error('Network error during upload');
+          reject(new Error('Network error during upload'));
+        };
 
-        xhr.addEventListener('abort', () => {
-          reject(new Error('Upload was aborted'));
-        });
+        xhr.ontimeout = () => {
+          console.error('Upload timed out');
+          reject(new Error('Upload timed out'));
+        };
+      });
 
-        xhr.open('POST', `${APP_URL}/api/media/upload`);
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        xhr.send(formData);
-      } catch (error) {
-        reject(error);
-      }
-    });
+      this.pendingUploads.set(fileId, xhr);
+      xhr.send(formData);
+      return await uploadPromise;
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+      throw error;
+    } finally {
+      this.pendingUploads.delete(fileId);
+    }
   }
 
-  async uploadMultipleFiles(
-    files: File[],
-    onProgress?: (fileId: string, progress: number) => void,
-    onComplete?: (fileId: string) => void,
-    onError?: (fileId: string, error: Error) => void
-  ): Promise<UploadResponse[]> {
+  async uploadMultipleFiles(files: File[], callbacks?: UploadCallbacks): Promise<MediaFile[]> {
+    console.log(`Starting upload for ${files.length} files`);
+    
     const uploads = files.map(async (file) => {
       try {
+        console.log(`Processing file: ${file.name}`);
         const result = await this.uploadFile(
           file,
           (progress) => {
-            onProgress?.(file.name, progress);
-            // Only mark as complete if we actually get a successful response
+            callbacks?.onProgress?.(file.name, progress);
             if (progress === 100) {
               setTimeout(() => {
-                onComplete?.(file.name);
-              }, 500); // Small delay to ensure final progress is shown
+                console.log(`Upload completed for ${file.name}`);
+                callbacks?.onComplete?.(file.name);
+              }, 500);
             }
           }
         );
         return result;
       } catch (error) {
-        onError?.(file.name, error as Error);
+        console.error(`Upload failed for ${file.name}:`, error);
+        callbacks?.onError?.(file.name, error as Error);
         throw error;
       }
     });
 
     return Promise.all(uploads);
+  }
+
+  async cleanupPendingUploads(): Promise<void> {
+    console.log('Cleaning up pending uploads');
+    this.pendingUploads.forEach((xhr, fileId) => {
+      xhr.abort();
+      this.pendingUploads.delete(fileId);
+    });
+    console.log('Cleanup completed');
   }
 }
 
