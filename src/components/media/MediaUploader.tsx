@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Upload, X, Film, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { MediaFile } from '../../types/media';
@@ -24,14 +24,24 @@ export default function MediaUploader({
   error: propError
 }: MediaUploaderProps) {
   const [dragError, setDragError] = useState<string | null>(null);
-  const { uploadFiles, uploadProgress, isUploading, error: uploadError } = useMediaUpload();
+  const { uploadFiles, isUploading, error: uploadError } = useMediaUpload();
+  const [uploadProgress, setUploadProgress] = useState({
+    totalFiles: 0,
+    completedFiles: 0,
+    totalProgress: 0,
+    status: 'idle' as 'idle' | 'uploading' | 'complete' | 'error'
+  });
+
+  useEffect(() => {
+    if (uploadProgress.status === 'complete') {
+      const timer = setTimeout(() => {
+        setUploadProgress(prev => ({ ...prev, status: 'idle' }));
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [uploadProgress.status]);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: any[]) => {
-    console.log('Dropped files:', {
-      accepted: acceptedFiles,
-      rejected: rejectedFiles
-    });
-
     if (!acceptedFiles?.length) {
       setDragError('No valid files were provided');
       return;
@@ -51,14 +61,37 @@ export default function MediaUploader({
     }
 
     try {
-      // Validate all files before upload
       acceptedFiles.forEach(validateFile);
       
-      console.log('Starting file upload process');
-      const uploadedFiles = await uploadFiles(acceptedFiles);
-      console.log('Files uploaded successfully:', uploadedFiles);
-      
-      // Only call onUpload if we have valid files
+      setUploadProgress({
+        totalFiles: acceptedFiles.length,
+        completedFiles: 0,
+        totalProgress: 0,
+        status: 'uploading'
+      });
+
+      const uploadedFiles = await uploadFiles(acceptedFiles, {
+        onProgress: (completed, total, progress) => {
+          setUploadProgress(prev => ({
+            ...prev,
+            completedFiles: completed,
+            totalProgress: progress
+          }));
+        },
+        onComplete: () => {
+          setUploadProgress(prev => ({
+            ...prev,
+            status: 'complete'
+          }));
+        },
+        onError: () => {
+          setUploadProgress(prev => ({
+            ...prev,
+            status: 'error'
+          }));
+        }
+      });
+
       if (uploadedFiles && uploadedFiles.length > 0) {
         onUpload(uploadedFiles);
       }
@@ -73,18 +106,7 @@ export default function MediaUploader({
     accept: acceptedFileTypes.reduce((acc, type) => ({ ...acc, [type]: [] }), {}),
     maxFiles: maxFiles - existingFiles.length,
     maxSize: 100 * 1024 * 1024, // 100MB
-    disabled: isUploading,
-    validator: (file) => {
-      try {
-        validateFile(file);
-        return null;
-      } catch (error) {
-        return {
-          code: 'invalid-file',
-          message: error instanceof Error ? error.message : 'Invalid file'
-        };
-      }
-    }
+    disabled: isUploading
   });
 
   return (
@@ -123,16 +145,17 @@ export default function MediaUploader({
         </div>
       )}
 
-      {Object.keys(uploadProgress).length > 0 && (
-        <div className="space-y-2">
-          {Object.entries(uploadProgress).map(([fileId, progress]) => (
-            <FileUploadProgress
-              key={fileId}
-              file={new File([], fileId)}
-              progress={progress}
-            />
-          ))}
-        </div>
+      {uploadProgress.status !== 'idle' && (
+        <FileUploadProgress
+          totalFiles={uploadProgress.totalFiles}
+          completedFiles={uploadProgress.completedFiles}
+          totalProgress={uploadProgress.totalProgress}
+          status={uploadProgress.status}
+          error={uploadError?.message}
+          onCancel={() => {
+            // Implement cancel logic if needed
+          }}
+        />
       )}
 
       {existingFiles.length > 0 && (

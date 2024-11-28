@@ -1,119 +1,73 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { uploadService } from '../service/mediaService';
-import type { 
-  UploadProgress, 
-  UploadResponse, 
-  MediaFile 
-} from '../types/media';
+import type { MediaFile } from '../types/media';
 
 interface UseMediaUploadReturn {
-  uploadFiles: (files: File[]) => Promise<MediaFile[]>;
-  uploadProgress: Record<string, UploadProgress>;
+  uploadFiles: (
+    files: File[],
+    callbacks?: {
+      onProgress?: (completed: number, total: number, progress: number) => void;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+    }
+  ) => Promise<MediaFile[]>;
   isUploading: boolean;
   error: Error | null;
-  reset: () => void;
-  cleanup: () => Promise<void>;
 }
 
 export function useMediaUpload(): UseMediaUploadReturn {
-  const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgress>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  console.log('useFileUpload hook initialized');
-
-  const updateProgress = useCallback((fileId: string, progress: number, status: UploadProgress['status'] = 'uploading', error?: string) => {
-    console.log(`Updating progress for ${fileId}: ${progress}%, status: ${status}`);
-    setUploadProgress(prev => ({
-      ...prev,
-      [fileId]: {
-        id: fileId,
-        progress,
-        status,
-        ...(error && { error })
-      }
-    }));
-  }, []);
-
-  const uploadFiles = useCallback(async (files: File[]): Promise<MediaFile[]> => {
+  const uploadFiles = useCallback(async (
+    files: File[],
+    callbacks?: {
+      onProgress?: (completed: number, total: number, progress: number) => void;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+    }
+  ): Promise<MediaFile[]> => {
     console.log(`Starting upload for ${files.length} files`);
     setIsUploading(true);
     setError(null);
 
     try {
-      const initialProgress = files.reduce((acc, file) => ({
-        ...acc,
-        [file.name]: {
-          id: file.name,
-          progress: 0,
-          status: 'pending' as const
-        }
-      }), {});
-      setUploadProgress(initialProgress);
+      let completedFiles = 0;
+      const totalFiles = files.length;
 
-      const results = await uploadService.uploadMultipleFiles(
-        files,
-        {
-          onProgress: (fileId, progress) => {
-            console.log(`Progress update for ${fileId}: ${progress}%`);
-            updateProgress(fileId, progress);
-          },
-          onComplete: (fileId) => {
-            console.log(`Upload completed for ${fileId}`);
-            updateProgress(fileId, 100, 'success');
-          },
-          onError: (fileId, error) => {
-            console.error(`Upload error for ${fileId}:`, error);
-            updateProgress(fileId, 0, 'error', error.message);
-            setError(error);
-          }
+      const uploads = files.map(async (file) => {
+        try {
+          const result = await uploadService.uploadFile(file, (progress) => {
+            completedFiles = progress === 100 ? completedFiles + 1 : completedFiles;
+            const totalProgress = ((completedFiles / totalFiles) * 100) + 
+              ((progress / 100) * (100 / totalFiles));
+            
+            callbacks?.onProgress?.(completedFiles, totalFiles, totalProgress);
+          });
+          return result;
+        } catch (error) {
+          console.error(`Upload failed for ${file.name}:`, error);
+          throw error;
         }
-      );
+      });
 
-      console.log('All files uploaded successfully');
+      const results = await Promise.all(uploads);
+      callbacks?.onComplete?.();
       return results;
     } catch (err) {
       const error = err as Error;
       console.error('Upload failed:', error);
       setError(error);
+      callbacks?.onError?.(error);
       throw error;
     } finally {
       setIsUploading(false);
     }
-  }, [updateProgress]);
-
-  const reset = useCallback(() => {
-    console.log('Resetting upload state');
-    setUploadProgress({});
-    setIsUploading(false);
-    setError(null);
   }, []);
-
-  const cleanup = useCallback(async () => {
-    console.log('Starting cleanup of pending uploads');
-    try {
-      await uploadService.cleanupPendingUploads();
-      console.log('Cleanup completed successfully');
-    } catch (error) {
-      console.error('Cleanup failed:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      console.log('useFileUpload hook cleanup');
-      cleanup().catch(error => {
-        console.error('Cleanup on unmount failed:', error);
-      });
-    };
-  }, [cleanup]);
 
   return {
     uploadFiles,
-    uploadProgress,
     isUploading,
-    error,
-    reset,
-    cleanup
+    error
   };
 }
