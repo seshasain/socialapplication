@@ -10,6 +10,18 @@ export interface MediaFile {
   updatedAt?: string;
 }
 
+export interface DeleteFileResponse {
+  success: boolean;
+  message?: string;
+  fileId?: string;
+}
+
+export interface DeleteFilesResponse {
+  success: boolean;
+  message?: string;
+  deletedFiles?: string[];
+}
+
 export interface UploadProgress {
   id: string;
   progress: number;
