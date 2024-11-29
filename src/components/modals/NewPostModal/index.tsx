@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import type { Post, MediaFile } from '../../../types/posts';
@@ -9,6 +9,8 @@ import PostContent from './PostContent';
 import ValidationErrors from './ValidationErrors';
 import SuccessStatus from './SuccessStatus';
 import { validatePlatformContent } from '../../../utils/platformValidation';
+import { useFileCleanup } from '../../../hooks/useFileCleanup';
+import { deleteFile, deleteFiles } from '../../../service/fileCleanupService';
 
 interface NewPostModalProps {
   isOpen: boolean;
@@ -33,6 +35,7 @@ export default function NewPostModal({
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [postSuccess, setPostSuccess] = useState<{ [key: string]: boolean }>({});
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
@@ -46,6 +49,70 @@ export default function NewPostModal({
     visibility: 'public',
   });
   const [uploadedFiles, setUploadedFiles] = useState<MediaFile[]>([]);
+
+  // Initialize file cleanup hook
+  const { cleanupFiles } = useFileCleanup({
+    files: uploadedFiles,
+    onCleanup: deleteFiles
+  });
+
+  // Handle modal close
+  const handleClose = useCallback(async () => {
+    if (isClosing) return;
+    setIsClosing(true);
+
+    try {
+      if (uploadedFiles.length > 0) {
+        await cleanupFiles(uploadedFiles.map(file => file.id));
+        setUploadedFiles([]);
+      }
+    } catch (error) {
+      console.error('Failed to cleanup files on modal close:', error);
+      toast.error('Failed to cleanup some uploaded files');
+    } finally {
+      setIsClosing(false);
+      onClose();
+    }
+  }, [uploadedFiles, cleanupFiles, onClose, isClosing]);
+
+  // Handle individual file removal
+  const handleFileRemove = async (file: MediaFile) => {
+    try {
+      await deleteFile(file.id);
+      setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
+      toast.success('File removed successfully');
+    } catch (error) {
+      console.error('Failed to remove file:', error);
+      toast.error('Failed to remove file. Please try again.');
+    }
+  };
+
+  // Handle successful post cleanup
+  const handleSuccessfulPost = async () => {
+    try {
+      if (uploadedFiles.length > 0) {
+        await cleanupFiles(uploadedFiles.map(file => file.id));
+        setUploadedFiles([]);
+      }
+    } catch (error) {
+      console.error('Failed to cleanup files after successful post:', error);
+      toast.error('Some uploaded files could not be cleaned up');
+    }
+  };
+
+  // Handle escape key press
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen && !loading && !uploadingFiles) {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, loading, uploadingFiles, handleClose]);
 
   const platforms = [
     { id: 'all', name: 'All Platforms' },
@@ -143,7 +210,7 @@ export default function NewPostModal({
       const uploadedMediaFiles = await Promise.all(uploadPromises);
 
       setUploadedFiles(prev => [...prev, ...uploadedMediaFiles]);
-      console.log('Files uploaded successfully:', uploadedMediaFiles);
+      toast.success('Files uploaded successfully');
     } catch (err) {
       console.error('Upload error:', err);
       setUploadError(err instanceof Error ? err.message : 'Failed to upload media');
@@ -151,10 +218,6 @@ export default function NewPostModal({
     } finally {
       setUploadingFiles(false);
     }
-  };
-
-  const handleMediaRemove = (file: MediaFile) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
   };
 
   const validateForm = () => {
@@ -235,6 +298,13 @@ export default function NewPostModal({
       }, {} as { [key: string]: boolean });
       
       setPostSuccess(newPostSuccess);
+
+      // If all platforms were successful, clean up the files
+      const allSuccessful = Object.values(newPostSuccess).every(success => success);
+      if (allSuccessful) {
+        await handleSuccessfulPost();
+        toast.success('Post published successfully');
+      }
       
       setTimeout(() => {
         onClose();
@@ -259,8 +329,11 @@ export default function NewPostModal({
             message: err.platformErrors[platform]
           }))
         );
+
+        toast.error('Failed to publish to some platforms');
       } else {
         setError(err.message || 'Failed to create post');
+        toast.error('Failed to create post');
       }
     } finally {
       setLoading(false);
@@ -278,9 +351,9 @@ export default function NewPostModal({
               {initialData ? 'Edit Post' : 'Create New Post'}
             </h2>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="text-gray-500 hover:text-gray-700 transition-colors"
-              disabled={loading || uploadingFiles}
+              disabled={loading || uploadingFiles || isClosing}
             >
               <X className="w-6 h-6" />
             </button>
@@ -322,23 +395,23 @@ export default function NewPostModal({
               onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
               uploadedFiles={uploadedFiles}
               onMediaUpload={handleMediaUpload}
-              onMediaRemove={handleMediaRemove}
+              onMediaRemove={handleFileRemove}
               uploadError={uploadError}
             />
 
             <div className="flex justify-end space-x-4">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
-                disabled={loading || uploadingFiles}
+                disabled={loading || uploadingFiles || isClosing}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
-                disabled={loading || uploadingFiles}
+                disabled={loading || uploadingFiles || isClosing}
               >
                 {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {initialData
@@ -354,40 +427,3 @@ export default function NewPostModal({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
