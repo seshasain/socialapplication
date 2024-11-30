@@ -11,25 +11,23 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
   if (!token) throw new Error('No authentication token');
 
   try {
-    // Using the correct endpoint that matches the server implementation
-    const response = await fetch(`${APP_URL}/api/media/delete`, {
+    const response = await fetch(`${APP_URL}/api/media/batch-delete`, {
       method: 'POST',
       headers: { 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ ids: fileIds }) // Match the expected request body format
+      body: JSON.stringify({ fileIds })
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Failed to delete files' }));
-      throw new Error(errorData.message || `Failed to delete files: ${response.statusText}`);
+      throw new Error(data.message || `Failed to delete files: ${response.statusText}`);
     }
 
-    const data: DeleteFilesResponse = await response.json();
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to delete files');
-    }
+    // Success response doesn't need to throw an error
+    return;
   } catch (error) {
     console.error('File deletion error:', error);
     throw error instanceof Error ? error : new Error('Failed to delete files');
@@ -40,29 +38,29 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
  * Delete a single file by its ID
  */
 export async function deleteFile(fileId: string): Promise<void> {
-  if (!fileId) return;
+  if (!fileId) {
+    throw new Error('No file ID provided');
+  }
 
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
 
   try {
-    // Using the correct endpoint that matches the server implementation
-    const response = await fetch(`${APP_URL}/api/media/delete/${fileId}`, {
+    const response = await fetch(`${APP_URL}/api/media/${fileId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
       }
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Failed to delete file' }));
-      throw new Error(errorData.message || `Failed to delete file: ${response.statusText}`);
+      throw new Error(data.message || `Failed to delete file: ${response.statusText}`);
     }
 
-    const data: DeleteFilesResponse = await response.json();
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to delete file');
-    }
+    // Success response doesn't need to throw an error
+    return;
   } catch (error) {
     console.error('File deletion error:', error);
     throw error instanceof Error ? error : new Error('Failed to delete file');

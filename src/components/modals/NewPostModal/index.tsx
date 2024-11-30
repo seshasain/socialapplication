@@ -77,6 +77,11 @@ export default function NewPostModal({
 
   // Handle individual file removal
   const handleFileRemove = async (file: MediaFile) => {
+    if (!file.id) {
+      console.error('No file ID provided for deletion');
+      return;
+    }
+
     try {
       await deleteFile(file.id);
       setUploadedFiles(prev => prev.filter(f => f.id !== file.id));

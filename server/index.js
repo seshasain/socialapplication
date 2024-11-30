@@ -2536,31 +2536,46 @@ app.delete('/api/media/:id', authenticateToken, async (req, res) => {
 // Delete single file
 app.delete('/api/media/delete/:id', authenticateToken, async (req, res) => {
   try {
-    const fileId = req.params.id;
-
-    // Get file from database
-    const file = await prisma.mediaFile.findFirst({
+    // First find the file to ensure it exists and belongs to the user
+    const mediaFile = await prisma.mediaFile.findFirst({
       where: {
-        id: fileId,
-        userId: req.user.id // Ensure user owns the file
+        id: id,
+        userId: userId
+      },
+      include: {
+        posts: true // Include posts to check references
       }
     });
 
-    if (!file) {
-      return res.status(404).json({ error: 'File not found' });
+    if (!mediaFile) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found or you do not have permission to delete it'
+      });
     }
 
-    // Delete from B2
-    if (file.s3Key) {
-      await deleteFromB2(file.s3Key);
+    // Check if file is being used in any posts
+    if (mediaFile.posts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete file as it is being used in one or more posts'
+      });
     }
+
+    // Delete from B2 storage
+    await deleteFromB2(mediaFile.s3Key);
 
     // Delete from database
     await prisma.mediaFile.delete({
-      where: { id: file.id }
+      where: {
+        id: mediaFile.id
+      }
     });
 
-    res.json({ success: true, message: 'File deleted successfully' });
+    res.json({
+      success: true,
+      message: 'File deleted successfully'
+    });
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({ error: error.message || 'Failed to delete file' });
@@ -2568,8 +2583,7 @@ app.delete('/api/media/delete/:id', authenticateToken, async (req, res) => {
 });
 
 // Bulk delete files
-app.post('/api/media/delete', authenticateToken, async (req, res) => {
-  console.log("workingf");
+app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
   try {
     const { fileIds } = req.body;
     console.log(fileIds);
