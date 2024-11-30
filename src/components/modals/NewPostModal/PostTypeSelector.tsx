@@ -5,16 +5,21 @@ import {
   MessageCircle, 
   Layout, 
   FileText, 
-  BarChart2, 
-  Calendar,
-  ChevronRight,
+  Clock,
   ChevronLeft,
   Lock,
   Sparkles,
   Instagram,
   Facebook,
   Twitter,
-  Linkedin
+  Linkedin,
+  Youtube,
+  Music2,
+  PlaySquare,
+  Camera,
+  BookOpen,
+  Layers,
+  PenTool
 } from 'lucide-react';
 import type { PostType } from './index';
 import type { SocialAccount } from '../../../types/overview';
@@ -27,102 +32,96 @@ interface PostTypeOption {
   platforms: string[];
   premium?: boolean;
   gradient?: string;
+  category: 'regular' | 'story' | 'short' | 'article';
 }
 
 const POST_TYPES: PostTypeOption[] = [
-  // Common post types
+  // Regular Posts
   {
     id: 'post',
     name: 'Regular Post',
     icon: Image,
     description: 'Share photos, videos, or text updates with your audience',
     platforms: ['instagram', 'facebook', 'twitter', 'linkedin'],
-    gradient: 'from-blue-500 to-blue-600'
+    gradient: 'from-blue-500 to-blue-600',
+    category: 'regular'
   },
   {
     id: 'carousel',
-    name: 'Carousel',
-    icon: Layout,
-    description: 'Multiple photos or videos in a single post',
-    platforms: ['instagram', 'linkedin'],
-    gradient: 'from-indigo-500 to-blue-600'
+    name: 'Carousel Post',
+    icon: Layers,
+    description: 'Share multiple photos or videos in a single post',
+    platforms: ['instagram', 'facebook', 'linkedin'],
+    gradient: 'from-indigo-500 to-blue-600',
+    category: 'regular'
   },
   
-  // Instagram-specific
+  // Stories
   {
     id: 'story',
-    name: 'Instagram Story',
-    icon: Layout,
+    name: 'Story',
+    icon: Clock,
     description: '24-hour temporary content with interactive elements',
-    platforms: ['instagram'],
-    gradient: 'from-purple-500 to-pink-500'
+    platforms: ['instagram', 'facebook'],
+    gradient: 'from-purple-500 to-pink-500',
+    category: 'story'
   },
+  
+  // Short-form Videos
   {
     id: 'reel',
-    name: 'Instagram Reel',
-    icon: Film,
-    description: 'Short-form vertical videos with music and effects',
-    platforms: ['instagram'],
-    premium: true,
-    gradient: 'from-orange-500 to-pink-500'
+    name: 'Short Video',
+    icon: PlaySquare,
+    description: 'Create engaging short-form videos (Reels, Shorts, TikTok)',
+    platforms: ['instagram', 'facebook', 'youtube'],
+    gradient: 'from-pink-500 to-rose-500',
+    category: 'short'
   },
   
-  // Facebook-specific
-  {
-    id: 'fb_story',
-    name: 'Facebook Story',
-    icon: Layout,
-    description: '24-hour temporary content for Facebook',
-    platforms: ['facebook'],
-    gradient: 'from-blue-400 to-blue-600'
-  },
-  {
-    id: 'fb_reel',
-    name: 'Facebook Reel',
-    icon: Film,
-    description: 'Short videos optimized for Facebook',
-    platforms: ['facebook'],
-    premium: true,
-    gradient: 'from-blue-500 to-blue-700'
-  },
-  
-  // Twitter-specific
-  {
-    id: 'thread',
-    name: 'Twitter Thread',
-    icon: MessageCircle,
-    description: 'Connected series of tweets for longer narratives',
-    platforms: ['twitter'],
-    gradient: 'from-blue-400 to-blue-500'
-  },
-  {
-    id: 'poll',
-    name: 'Twitter Poll',
-    icon: BarChart2,
-    description: 'Interactive polls to engage with your audience',
-    platforms: ['twitter'],
-    gradient: 'from-blue-500 to-blue-600'
-  },
-  
-  // LinkedIn-specific
+  // Articles & Long-form
   {
     id: 'article',
-    name: 'LinkedIn Article',
-    icon: FileText,
-    description: 'Long-form content with rich formatting',
+    name: 'Article',
+    icon: BookOpen,
+    description: 'Share long-form content with rich formatting',
     platforms: ['linkedin'],
     premium: true,
-    gradient: 'from-blue-600 to-indigo-600'
+    gradient: 'from-blue-600 to-indigo-600',
+    category: 'article'
   },
   {
-    id: 'document',
-    name: 'LinkedIn Document',
-    icon: FileText,
-    description: 'Share PDFs, presentations, and documents',
-    platforms: ['linkedin'],
-    gradient: 'from-blue-500 to-indigo-500'
+    id: 'thread',
+    name: 'Thread',
+    icon: MessageCircle,
+    description: 'Create connected series of posts for longer narratives',
+    platforms: ['twitter'],
+    gradient: 'from-blue-400 to-blue-500',
+    category: 'article'
   }
 ];
+
+const CATEGORIES = {
+  regular: {
+    name: 'Regular Posts',
+    description: 'Standard posts for your social media platforms',
+    icon: Image
+  },
+  story: {
+    name: 'Stories',
+    description: '24-hour temporary content',
+    icon: Clock
+  },
+  short: {
+    name: 'Short Videos',
+    description: 'Engaging short-form video content',
+    icon: PlaySquare
+  },
+  article: {
+    name: 'Long-form Content',
+    description: 'Articles, threads, and detailed content',
+    icon: BookOpen
+  }
+};
 
 interface PostTypeSelectorProps {
   selectedPlatforms: string[];
@@ -139,43 +138,27 @@ export default function PostTypeSelector({
   onBack,
   connectedAccounts
 }: PostTypeSelectorProps) {
-  console.log('[DEBUG] PostTypeSelector Props:', { 
-    selectedPlatforms, 
-    selectedType, 
-    accountsLength: connectedAccounts.length 
-  });
-
   // Get platform names from connected accounts
   const selectedPlatformNames = selectedPlatforms.map(id => {
     const account = connectedAccounts.find(acc => acc.id === id);
     return account?.platform.toLowerCase() || '';
   }).filter(Boolean);
 
-  console.log('[DEBUG] Selected Platform Names:', selectedPlatformNames);
-  
-  // Get common post types (available for all selected platforms)
-  const commonPostTypes = POST_TYPES.filter(type =>
-    type.platforms.length > 1 && // Must support multiple platforms
-    selectedPlatformNames.every(platform => 
+  // Group post types by category
+  const groupedPostTypes = POST_TYPES.reduce((acc, type) => {
+    // Check if this post type is available for the selected platforms
+    const isAvailable = selectedPlatformNames.some(platform => 
       type.platforms.includes(platform)
-    )
-  );
-
-  console.log('[DEBUG] Common Post Types:', commonPostTypes);
-
-  // Get platform-specific post types
-  const platformSpecificTypes = selectedPlatformNames.reduce((acc, platform) => {
-    const types = POST_TYPES.filter(type => 
-      type.platforms.length === 1 && 
-      type.platforms[0] === platform
     );
-    if (types.length > 0) {
-      acc[platform] = types;
+
+    if (isAvailable) {
+      if (!acc[type.category]) {
+        acc[type.category] = [];
+      }
+      acc[type.category].push(type);
     }
     return acc;
   }, {} as Record<string, PostTypeOption[]>);
-
-  console.log('[DEBUG] Platform Specific Types:', platformSpecificTypes);
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -187,6 +170,8 @@ export default function PostTypeSelector({
         return <Twitter className="w-5 h-5 text-blue-400" />;
       case 'linkedin':
         return <Linkedin className="w-5 h-5 text-blue-700" />;
+      case 'youtube':
+        return <Youtube className="w-5 h-5 text-red-600" />;
       default:
         return null;
     }
@@ -236,7 +221,7 @@ export default function PostTypeSelector({
                 </h4>
                 {type.premium && (
                   <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
-                    <Lock className="w-4 h-4 mr-1" />
+                    <Lock className="w-3 h-3 mr-1" />
                     Premium
                   </span>
                 )}
@@ -246,6 +231,13 @@ export default function PostTypeSelector({
               }`}>
                 {type.description}
               </p>
+              <div className="flex items-center mt-2 space-x-1">
+                {type.platforms.map(platform => (
+                  <span key={platform} className="text-gray-400">
+                    {getPlatformIcon(platform)}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -291,52 +283,52 @@ export default function PostTypeSelector({
         </div>
       </div>
 
-      {/* Common Post Types Section */}
-      {commonPostTypes.length > 0 && (
-        <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-700">
-            Common Post Types
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {commonPostTypes.map(renderPostTypeCard)}
-          </div>
-        </div>
-      )}
+      {/* Scrollable content area */}
+      <div className="max-h-[calc(100vh-300px)] overflow-y-auto pr-4 -mr-4">
+        {Object.entries(groupedPostTypes).map(([category, types]) => {
+          const categoryInfo = CATEGORIES[category as keyof typeof CATEGORIES];
+          
+          return (
+            <div key={category} className="mb-8 last:mb-0">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 rounded-lg bg-gray-100">
+                  <categoryInfo.icon className="w-5 h-5 text-gray-600" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900">{categoryInfo.name}</h4>
+                  <p className="text-sm text-gray-500">{categoryInfo.description}</p>
+                </div>
+              </div>
 
-      {/* Platform-Specific Sections */}
-      {Object.entries(platformSpecificTypes).map(([platform, types]) => (
-        <div key={platform} className="space-y-4">
-          <h4 className="flex items-center text-sm font-medium text-gray-700">
-            {getPlatformIcon(platform)}
-            <span className="ml-2">{platform.charAt(0).toUpperCase() + platform.slice(1)} Specific</span>
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {types.map(renderPostTypeCard)}
-          </div>
-        </div>
-      ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {types.map(renderPostTypeCard)}
+              </div>
+            </div>
+          );
+        })}
 
-      {commonPostTypes.length === 0 && Object.keys(platformSpecificTypes).length === 0 && (
-        <div className="text-center py-8">
-          <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
-            <Layout className="w-8 h-8 text-gray-400" />
+        {Object.keys(groupedPostTypes).length === 0 && (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
+              <Layout className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No Available Post Types
+            </h3>
+            <p className="text-gray-500 mb-6">
+              The selected platforms don't have any compatible post types in common.
+              Please select different platforms or go back to modify your selection.
+            </p>
+            <button
+              onClick={onBack}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4 mr-2" />
+              Select Different Platforms
+            </button>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No Available Post Types
-          </h3>
-          <p className="text-gray-500 mb-6">
-            The selected platforms don't have any compatible post types in common.
-            Please select different platforms or go back to modify your selection.
-          </p>
-          <button
-            onClick={onBack}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Select Different Platforms
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
