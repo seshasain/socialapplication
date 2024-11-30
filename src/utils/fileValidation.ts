@@ -29,43 +29,71 @@ export function validateFile(file: File | { type: string; size: number; name?: s
     size: file.size
   });
 
-  // Handle files without a MIME type by checking extension
-  if (!file.type || file.type === 'image' || file.type === 'video') {
+  // Get proper MIME type
+  let mimeType = file.type;
+  if (!mimeType || mimeType === 'image' || mimeType === 'video') {
     if ('name' in file && file.name) {
       const extension = file.name.split('.').pop()?.toLowerCase();
-      if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'mp4', 'mov', 'webm', 'avi'].includes(extension)) {
-        return; // Accept file based on extension
+      switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+          mimeType = 'image/jpeg';
+          break;
+        case 'png':
+          mimeType = 'image/png';
+          break;
+        case 'gif':
+          mimeType = 'image/gif';
+          break;
+        case 'webp':
+          mimeType = 'image/webp';
+          break;
+        case 'svg':
+          mimeType = 'image/svg+xml';
+          break;
+        case 'ico':
+          mimeType = 'image/x-icon';
+          break;
+        case 'mp4':
+          mimeType = 'video/mp4';
+          break;
+        case 'mov':
+          mimeType = 'video/quicktime';
+          break;
+        case 'webm':
+          mimeType = 'video/webm';
+          break;
+        case 'avi':
+          mimeType = 'video/x-msvideo';
+          break;
+        default:
+          throw new FileValidationError('Unsupported file type');
       }
+    } else {
+      throw new FileValidationError('File type not detected');
     }
-    throw new FileValidationError('File type not detected');
   }
 
-  if (!isAcceptedFileType(file.type)) {
-    throw new FileValidationError(`File type "${file.type}" is not supported`);
+  if (!isAcceptedFileType(mimeType)) {
+    throw new FileValidationError(`File type "${mimeType}" is not supported`);
   }
 
   if (file.size > MAX_FILE_SIZE) {
     throw new FileValidationError(`File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`);
   }
-}
-
-export function isAcceptedFileType(type: string): boolean {
-  // Normalize MIME type to lowercase
-  const normalizedType = type.toLowerCase();
-  
-  // Handle generic image/video types
-  if (normalizedType === 'image' || normalizedType === 'video') {
-    return true;
+  // Attach the proper MIME type to the file object if it's a File instance
+  if (file instanceof File && file.type !== mimeType) {
+    Object.defineProperty(file, 'type', {
+      writable: true,
+      value: mimeType
+    });
   }
-  
-  return [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES].some(
-    acceptedType => normalizedType === acceptedType.toLowerCase()
-  );
 }
-
+export function isAcceptedFileType(type: string): boolean {
+  return [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES].includes(type);
+}
 export function getFileTypeCategory(type: string): 'image' | 'video' | 'unknown' {
-  const normalizedType = type.toLowerCase();
-  if (normalizedType === 'image' || ACCEPTED_IMAGE_TYPES.some(t => normalizedType === t.toLowerCase())) return 'image';
-  if (normalizedType === 'video' || ACCEPTED_VIDEO_TYPES.some(t => normalizedType === t.toLowerCase())) return 'video';
+  if (ACCEPTED_IMAGE_TYPES.includes(type)) return 'image';
+  if (ACCEPTED_VIDEO_TYPES.includes(type)) return 'video';
   return 'unknown';
 }
