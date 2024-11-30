@@ -53,7 +53,8 @@
     "uuid": "^9.0.0",
     "backblaze-b2": "^1.7.0",
     "@types/backblaze-b2": "^1.5.6",
-    "facebook-api-node": "^21.0.5"
+    "facebook-api-node": "^21.0.5",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

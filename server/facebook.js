@@ -1,11 +1,14 @@
-import { FacebookApi } from 'facebook-api-node';
+import fb from 'fb';
 
 export const createFacebookClient = (accessToken) => {
-  return new FacebookApi({
+  fb.options({
     appId: process.env.FACEBOOK_APP_ID,
     appSecret: process.env.FACEBOOK_APP_SECRET,
-    accessToken: accessToken,
+    version: 'v18.0'
   });
+  
+  fb.setAccessToken(accessToken);
+  return fb;
 };
 
 export const postToFacebook = async (client, { caption, mediaFiles = [] }) => {
@@ -17,9 +20,17 @@ export const postToFacebook = async (client, { caption, mediaFiles = [] }) => {
       mediaIds = await Promise.all(
         mediaFiles.map(async (file) => {
           const mediaBuffer = await fetch(file.url).then(res => res.buffer());
-          const uploadResponse = await client.uploadMedia({
-            media: mediaBuffer,
-            mediaType: file.type === 'image' ? 'IMAGE' : 'VIDEO'
+          const uploadResponse = await new Promise((resolve, reject) => {
+            client.api('/me/photos', 'POST', {
+              source: mediaBuffer,
+              published: false
+            }, (res) => {
+              if(!res || res.error) {
+                reject(res ? res.error : 'Unknown error');
+                return;
+              }
+              resolve(res);
+            });
           });
           return uploadResponse.id;
         })
@@ -27,9 +38,22 @@ export const postToFacebook = async (client, { caption, mediaFiles = [] }) => {
     }
 
     // Create post
-    const post = await client.createPost({
-      message: caption,
-      mediaIds: mediaIds.length > 0 ? mediaIds : undefined
+    const postData = {
+      message: caption
+    };
+
+    if (mediaIds.length > 0) {
+      postData.attached_media = mediaIds.map(id => ({ media_fbid: id }));
+    }
+
+    const post = await new Promise((resolve, reject) => {
+      client.api('/me/feed', 'POST', postData, (res) => {
+        if(!res || res.error) {
+          reject(res ? res.error : 'Unknown error');
+          return;
+        }
+        resolve(res);
+      });
     });
 
     return post;
