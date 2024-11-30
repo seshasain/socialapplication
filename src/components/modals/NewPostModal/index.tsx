@@ -347,11 +347,12 @@ export default function NewPostModal({
 
             {step === 'type' && (
               <PostTypeSelector
-                selectedPlatforms={selectedPlatforms}
-                selectedType={selectedPostType}
-                onTypeSelect={setSelectedPostType}
-                onBack={() => setStep('platform')}
-                connectedAccounts={connectedAccounts}
+              selectedPlatforms={selectedPlatforms}
+              selectedType={selectedPostType}
+              onTypeSelect={setSelectedPostType}
+              onBack={() => setStep('platform')}
+              onNext={() => setStep('content')}
+              connectedAccounts={connectedAccounts}
               />
             )}
 

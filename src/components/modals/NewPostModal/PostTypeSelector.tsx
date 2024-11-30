@@ -7,6 +7,7 @@ import {
   FileText, 
   Clock,
   ChevronLeft,
+  ChevronRight,
   Lock,
   Sparkles,
   Instagram,
@@ -128,6 +129,7 @@ interface PostTypeSelectorProps {
   selectedType: PostType;
   onTypeSelect: (type: PostType) => void;
   onBack: () => void;
+  onNext: () => void;
   connectedAccounts: SocialAccount[];
 }
 
@@ -136,6 +138,7 @@ export default function PostTypeSelector({
   selectedType,
   onTypeSelect,
   onBack,
+  onNext,
   connectedAccounts
 }: PostTypeSelectorProps) {
   // Get platform names from connected accounts
@@ -180,6 +183,9 @@ export default function PostTypeSelector({
   const renderPostTypeCard = (type: PostTypeOption) => {
     const Icon = type.icon;
     const isSelected = selectedType === type.id;
+    const availablePlatforms = type.platforms.filter(p => 
+      selectedPlatformNames.includes(p)
+    );
 
     return (
       <button
@@ -231,11 +237,18 @@ export default function PostTypeSelector({
               }`}>
                 {type.description}
               </p>
-              <div className="flex items-center mt-2 space-x-1">
-                {type.platforms.map(platform => (
-                  <span key={platform} className="text-gray-400">
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {availablePlatforms.map(platform => (
+                  <div
+                    key={platform}
+                    className="flex items-center px-2 py-1 bg-gray-50 rounded-full"
+                    title={platform.charAt(0).toUpperCase() + platform.slice(1)}
+                  >
                     {getPlatformIcon(platform)}
-                  </span>
+                    <span className="ml-1 text-xs text-gray-600 font-medium">
+                      {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                    </span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -264,32 +277,48 @@ export default function PostTypeSelector({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center space-x-4">
-        <button
-          onClick={onBack}
-          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5 mr-1" />
-          Back
-        </button>
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">
-            Select Content Type
-          </h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Choose the type of content you want to create
-          </p>
+    <div className="flex flex-col h-full">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 pb-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={onBack}
+              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5 mr-1" />
+              Back
+            </button>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Select Content Type
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Choose the type of content you want to create
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {selectedPlatformNames.map(platform => (
+              <div
+                key={platform}
+                className="p-2 bg-gray-100 rounded-lg"
+                title={platform.charAt(0).toUpperCase() + platform.slice(1)}
+              >
+                {getPlatformIcon(platform)}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Scrollable content area */}
-      <div className="max-h-[calc(100vh-300px)] overflow-y-auto pr-4 -mr-4">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto py-4 space-y-8">
         {Object.entries(groupedPostTypes).map(([category, types]) => {
           const categoryInfo = CATEGORIES[category as keyof typeof CATEGORIES];
           
           return (
-            <div key={category} className="mb-8 last:mb-0">
+            <div key={category}>
               <div className="flex items-center space-x-3 mb-4">
                 <div className="p-2 rounded-lg bg-gray-100">
                   <categoryInfo.icon className="w-5 h-5 text-gray-600" />
@@ -329,6 +358,19 @@ export default function PostTypeSelector({
           </div>
         )}
       </div>
+
+      {/* Fixed Footer */}
+      {selectedType && (
+        <div className="flex-shrink-0 pt-4 border-t border-gray-200">
+          <button
+            onClick={onNext}
+            className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            Continue with {selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}
+            <ChevronRight className="w-5 h-5 ml-2" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
