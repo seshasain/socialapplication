@@ -1,5 +1,5 @@
 import React from 'react';
-import { Hash, Globe, Image as ImageIcon, Film, Clock, AlertCircle } from 'lucide-react';
+import { Hash, Globe, Image as ImageIcon, Film, Clock, AlertCircle, ChevronLeft } from 'lucide-react';
 import MediaUploader from '../../media/MediaUploader';
 import type { MediaFile } from '../../../types/media';
 import type { PostType } from './index';
@@ -16,6 +16,7 @@ interface PostContentProps {
   onMediaUpload: (files: File[]) => Promise<void>;
   onMediaRemove: (file: MediaFile) => void;
   uploadError: string | null;
+  onBack: () => void;
 }
 
 export default function PostContent({
@@ -30,6 +31,7 @@ export default function PostContent({
   onMediaUpload,
   onMediaRemove,
   uploadError,
+  onBack
 }: PostContentProps) {
   const getPostTypeConfig = () => {
     switch (postType) {
@@ -87,7 +89,17 @@ export default function PostContent({
 
   return (
     <div className="space-y-6">
-      {/* Post Type Header */}
+      {/* Back Button and Post Type Header */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5 mr-1" />
+          Back
+        </button>
+      </div>
+
       <div className="bg-gray-50 rounded-xl p-4 flex items-start space-x-4">
         <div className="p-3 bg-white rounded-xl shadow-sm">
           <Icon className="w-6 h-6 text-blue-600" />

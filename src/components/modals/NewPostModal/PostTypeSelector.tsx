@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { PostType } from './index';
 import type { SocialAccount } from '../../../types/overview';
+import { isPlatformSupported, isPostTypeSupported } from '../../../utils/platformSupport';
 
 interface PostTypeOption {
   id: PostType;
@@ -73,8 +74,8 @@ const POST_TYPES: PostTypeOption[] = [
     id: 'reel',
     name: 'Short Video',
     icon: PlaySquare,
-    description: 'Create engaging short-form videos (Reels, Shorts, TikTok)',
-    platforms: ['instagram', 'facebook', 'youtube'],
+    description: 'Create engaging short-form videos (Reels, Shorts)',
+    platforms: ['instagram', 'facebook'],
     gradient: 'from-pink-500 to-rose-500',
     category: 'short'
   },
@@ -145,13 +146,14 @@ export default function PostTypeSelector({
   const selectedPlatformNames = selectedPlatforms.map(id => {
     const account = connectedAccounts.find(acc => acc.id === id);
     return account?.platform.toLowerCase() || '';
-  }).filter(Boolean);
+  }).filter(platform => isPlatformSupported(platform));
 
   // Group post types by category
   const groupedPostTypes = POST_TYPES.reduce((acc, type) => {
     // Check if this post type is available for the selected platforms
     const isAvailable = selectedPlatformNames.some(platform => 
-      type.platforms.includes(platform)
+      type.platforms.includes(platform) && 
+      isPostTypeSupported(platform, type.id)
     );
 
     if (isAvailable) {
@@ -180,101 +182,8 @@ export default function PostTypeSelector({
     }
   };
 
-  const renderPostTypeCard = (type: PostTypeOption) => {
-    const Icon = type.icon;
-    const isSelected = selectedType === type.id;
-    const availablePlatforms = type.platforms.filter(p => 
-      selectedPlatformNames.includes(p)
-    );
-
-    return (
-      <button
-        key={type.id}
-        onClick={() => !type.premium && onTypeSelect(type.id)}
-        className={`relative group p-6 rounded-xl text-left transition-all duration-300 transform hover:-translate-y-1 ${
-          type.premium
-            ? 'cursor-not-allowed bg-gray-50'
-            : isSelected
-            ? 'bg-blue-50 border-2 border-blue-500 shadow-lg'
-            : 'bg-white border-2 border-gray-100 hover:border-gray-200 hover:shadow-lg'
-        }`}
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-3">
-            <div
-              className={`p-3 rounded-xl ${
-                isSelected
-                  ? 'bg-blue-100'
-                  : type.premium
-                  ? 'bg-gray-100'
-                  : 'bg-gray-100 group-hover:bg-gray-200'
-              } transition-colors`}
-            >
-              <Icon className={`w-6 h-6 ${
-                isSelected
-                  ? 'text-blue-600'
-                  : type.premium
-                  ? 'text-gray-400'
-                  : 'text-gray-600'
-              }`} />
-            </div>
-            <div>
-              <div className="flex items-center">
-                <h4 className={`font-medium ${
-                  type.premium ? 'text-gray-400' : 'text-gray-900'
-                }`}>
-                  {type.name}
-                </h4>
-                {type.premium && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
-                    <Lock className="w-3 h-3 mr-1" />
-                    Premium
-                  </span>
-                )}
-              </div>
-              <p className={`text-sm mt-1 ${
-                type.premium ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                {type.description}
-              </p>
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                {availablePlatforms.map(platform => (
-                  <div
-                    key={platform}
-                    className="flex items-center px-2 py-1 bg-gray-50 rounded-full"
-                    title={platform.charAt(0).toUpperCase() + platform.slice(1)}
-                  >
-                    {getPlatformIcon(platform)}
-                    <span className="ml-1 text-xs text-gray-600 font-medium">
-                      {platform.charAt(0).toUpperCase() + platform.slice(1)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Gradient bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 overflow-hidden rounded-b-lg">
-          <div
-            className={`h-full w-full bg-gradient-to-r ${type.gradient || 'from-gray-400 to-gray-500'} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300`}
-          />
-        </div>
-
-        {type.premium && (
-          <div className="absolute inset-0 bg-white bg-opacity-50 flex items-center justify-center rounded-xl">
-            <div className="text-center">
-              <Sparkles className="w-6 h-6 text-yellow-500 mx-auto mb-2" />
-              <span className="px-3 py-1 bg-gradient-to-r from-yellow-500 to-yellow-600 text-white text-xs font-medium rounded-full">
-                Premium Feature
-              </span>
-            </div>
-          </div>
-        )}
-      </button>
-    );
-  };
+  // ... rest of the component remains the same ...
+  // (The rendering logic stays unchanged, just using the filtered platforms and post types)
 
   return (
     <div className="flex flex-col h-full">
@@ -330,7 +239,101 @@ export default function PostTypeSelector({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {types.map(renderPostTypeCard)}
+                {types.map(type => {
+                  const Icon = type.icon;
+                  const isSelected = selectedType === type.id;
+                  const availablePlatforms = selectedPlatformNames.filter(platform => 
+                    type.platforms.includes(platform) && isPostTypeSupported(platform, type.id)
+                  );
+
+                  return (
+                    <button
+                      key={type.id}
+                      onClick={() => !type.premium && onTypeSelect(type.id)}
+                      className={`relative group p-6 rounded-xl text-left transition-all duration-300 transform hover:-translate-y-1 ${
+                        type.premium
+                          ? 'cursor-not-allowed bg-gray-50'
+                          : isSelected
+                          ? 'bg-blue-50 border-2 border-blue-500 shadow-lg'
+                          : 'bg-white border-2 border-gray-100 hover:border-gray-200 hover:shadow-lg'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className={`p-3 rounded-xl ${
+                              isSelected
+                                ? 'bg-blue-100'
+                                : type.premium
+                                ? 'bg-gray-100'
+                                : 'bg-gray-100 group-hover:bg-gray-200'
+                            } transition-colors`}
+                          >
+                            <Icon className={`w-6 h-6 ${
+                              isSelected
+                                ? 'text-blue-600'
+                                : type.premium
+                                ? 'text-gray-400'
+                                : 'text-gray-600'
+                            }`} />
+                          </div>
+                          <div>
+                            <div className="flex items-center">
+                              <h4 className={`font-medium ${
+                                type.premium ? 'text-gray-400' : 'text-gray-900'
+                              }`}>
+                                {type.name}
+                              </h4>
+                              {type.premium && (
+                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+                                  <Lock className="w-3 h-3 mr-1" />
+                                  Premium
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-sm mt-1 ${
+                              type.premium ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              {type.description}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                              {availablePlatforms.map(platform => (
+                                <div
+                                  key={platform}
+                                  className="flex items-center px-2 py-1 bg-gray-50 rounded-full"
+                                  title={platform.charAt(0).toUpperCase() + platform.slice(1)}
+                                >
+                                  {getPlatformIcon(platform)}
+                                  <span className="ml-1 text-xs text-gray-600 font-medium">
+                                    {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Gradient bar */}
+                      <div className="absolute bottom-0 left-0 right-0 h-1 overflow-hidden rounded-b-lg">
+                        <div
+                          className={`h-full w-full bg-gradient-to-r ${type.gradient || 'from-gray-400 to-gray-500'} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300`}
+                        />
+                      </div>
+
+                      {type.premium && (
+                        <div className="absolute inset-0 bg-white bg-opacity-50 flex items-center justify-center rounded-xl">
+                          <div className="text-center">
+                            <Sparkles className="w-6 h-6 text-yellow-500 mx-auto mb-2" />
+                            <span className="px-3 py-1 bg-gradient-to-r from-yellow-500 to-yellow-600 text-white text-xs font-medium rounded-full">
+                              Premium Feature
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );
