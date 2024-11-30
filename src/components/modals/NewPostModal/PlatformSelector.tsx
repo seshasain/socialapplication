@@ -19,12 +19,20 @@ export default function PlatformSelector({
     return selectedPlatforms.includes(platformId);
   };
 
+  if (!platforms || platforms.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">No platforms available</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">
         Select Platforms
       </label>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {platforms.map((platform) => (
           <button
             key={platform.id}
@@ -36,7 +44,7 @@ export default function PlatformSelector({
                 : 'border-gray-200 text-gray-600 hover:bg-gray-50'
             } transition-colors`}
           >
-            {platform.id === 'all' ? (
+            {platform.platform.toLowerCase() === 'all' ? (
               <Globe className="w-5 h-5 mr-2" />
             ) : (
               getPlatformIcon(platform.platform, "w-5 h-5 mr-2")
@@ -50,7 +58,7 @@ export default function PlatformSelector({
         <button
           onClick={onNext}
           disabled={selectedPlatforms.length === 0}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Next
         </button>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, AlertCircle, Loader2, ChevronLeft } from 'lucide-react';
+import { X, AlertCircle, Loader2, ChevronLeft, Globe } from 'lucide-react';
 import { toast } from 'react-toastify';
 import type { Post, MediaFile } from '../../../types/posts';
 import { uploadMedia } from '../../../api/posts';
@@ -58,13 +58,11 @@ export default function NewPostModal({
   });
   const [uploadedFiles, setUploadedFiles] = useState<MediaFile[]>([]);
 
-  // Initialize file cleanup hook
   const { cleanupFiles } = useFileCleanup({
     files: uploadedFiles,
     onCleanup: deleteFiles
   });
 
-  // Handle modal close
   const handleClose = useCallback(async () => {
     if (isClosing) return;
     setIsClosing(true);
@@ -94,7 +92,6 @@ export default function NewPostModal({
     }
   }, [uploadedFiles, cleanupFiles, onClose, isClosing, defaultDate]);
 
-  // Handle individual file removal
   const handleFileRemove = async (file: MediaFile) => {
     if (!file.id) {
       console.error('No file ID provided for deletion');
@@ -111,7 +108,6 @@ export default function NewPostModal({
     }
   };
 
-  // Handle successful post cleanup
   const handleSuccessfulPost = async () => {
     try {
       if (uploadedFiles.length > 0) {
@@ -124,7 +120,6 @@ export default function NewPostModal({
     }
   };
 
-  // Handle escape key press
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isOpen && !loading && !uploadingFiles) {
@@ -165,6 +160,11 @@ export default function NewPostModal({
 
   const handlePlatformSelect = (platformId: string) => {
     setSelectedPlatforms(prev => {
+      if (platformId === 'all') {
+        // If "All Platforms" is selected, include all available platforms
+        return prev.length === connectedAccounts.length ? [] : connectedAccounts.map(acc => acc.platform);
+      }
+      
       const newPlatforms = [...prev];
       const index = newPlatforms.indexOf(platformId);
       
@@ -343,7 +343,10 @@ export default function NewPostModal({
       case 'platform':
         return (
           <PlatformSelector
-            platforms={connectedAccounts}
+            platforms={[
+              { id: 'all', name: 'All Platforms', icon: Globe },
+              ...connectedAccounts
+            ]}
             selectedPlatforms={selectedPlatforms}
             onPlatformSelect={handlePlatformSelect}
             onNext={() => setStep('type')}
@@ -364,7 +367,7 @@ export default function NewPostModal({
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setStep('type')}
-                className="flex items-center text-gray-600 hover:text-gray-900"
+                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 mr-1" />
                 Back
@@ -448,22 +451,65 @@ export default function NewPostModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 md:p-0">
+      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl transform transition-all">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
               {initialData ? 'Edit Post' : 'Create New Post'}
             </h2>
-            <button
-              onClick={handleClose}
-              className="text-gray-500 hover:text-gray-700 transition-colors"
-              disabled={loading || uploadingFiles || isClosing}
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <p className="text-sm text-gray-500 mt-1">
+              {step === 'platform'
+                ? 'Select platforms to post to'
+                : step === 'type'
+                ? 'Choose your post type'
+                : 'Create your content'}
+            </p>
           </div>
+          <button
+            onClick={handleClose}
+            className="p-2 hover:bg-white/50 rounded-full transition-colors"
+            disabled={loading || uploadingFiles || isClosing}
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
 
+        {/* Progress Steps */}
+        <div className="px-6 py-3 bg-white border-b border-gray-100">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center space-x-2">
+              {['platform', 'type', 'content'].map((s, index) => (
+                <React.Fragment key={s}>
+                  <div
+                    className={`flex items-center justify-center w-8 h-8 rounded-full font-medium text-sm ${
+                      step === s
+                        ? 'bg-blue-600 text-white'
+                        : index < ['platform', 'type', 'content'].indexOf(step)
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
+                    {index + 1}
+                  </div>
+                  {index < 2 && (
+                    <div
+                      className={`w-16 h-0.5 ${
+                        index < ['platform', 'type', 'content'].indexOf(step)
+                          ? 'bg-green-100'
+                          : 'bg-gray-100'
+                      }`}
+                    />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
           {error && (
             <div className="mb-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center">
               <AlertCircle className="w-5 h-5 mr-2" />
