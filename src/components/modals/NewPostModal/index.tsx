@@ -11,6 +11,7 @@ import SuccessStatus from './SuccessStatus';
 import { validatePlatformContent } from '../../../utils/platformValidation';
 import { useFileCleanup } from '../../../hooks/useFileCleanup';
 import { deleteFile, deleteFiles } from '../../../service/fileCleanupService';
+import { APP_URL } from '../../../config/api';
 
 interface NewPostModalProps {
   isOpen: boolean;
@@ -262,16 +263,22 @@ export default function NewPostModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Starting post submission...');
     setValidationErrors([]);
     setPostSuccess({});
 
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      console.log('Form validation failed');
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
 
       const platformsToPost = getSelectedPlatformNames();
+      console.log('Selected platforms:', platformsToPost);
+
       let scheduledDateTime: Date;
       
       if (publishNow) {
@@ -283,32 +290,58 @@ export default function NewPostModal({
         scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
       }
 
+      console.log('Preparing post data:', {
+        caption: postData.caption,
+        scheduledDateTime: scheduledDateTime.toISOString(),
+        platforms: platformsToPost,
+        mediaFiles: uploadedFiles.length
+      });
+
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token');
+
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
-        selectedPlatforms: platformsToPost,
+        platforms: platformsToPost,
         hashtags: postData.hashtags,
         visibility: postData.visibility,
-        mediaFiles: uploadedFiles.length > 0
-          ? uploadedFiles.map(file => file.id)
-          : null,
+        mediaFiles: uploadedFiles.map(file => file.id),
         publishNow
       };
 
-      const post = await onSave(requestBody as any);
-      
+      console.log('Sending request to create post:', requestBody);
+
+      const response = await fetch(`${APP_URL}/api/posts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create post');
+      }
+
+      const responseData = await response.json();
+      console.log('Post creation response:', responseData);
+
       const newPostSuccess = platformsToPost.reduce((acc, platform) => {
         acc[platform] = true;
         return acc;
       }, {} as { [key: string]: boolean });
       
       setPostSuccess(newPostSuccess);
+      console.log('Post success status:', newPostSuccess);
 
       // If all platforms were successful, clean up the files
       const allSuccessful = Object.values(newPostSuccess).every(success => success);
       if (allSuccessful) {
         await handleSuccessfulPost();
-        toast.success('Post published successfully');
+        toast.success('Post created successfully');
       }
       
       setTimeout(() => {

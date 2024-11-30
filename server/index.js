@@ -1514,9 +1514,11 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
 
     // If publishing now, trigger the publishing process and create analytics
     if (publishNow) {
+      console.log("working");
       // Initialize social media clients and publish
       for (const platform of post.platforms) {
         try {
+          
           const socialAccount = await prisma.socialAccount.findFirst({
             where: {
               userId: req.user.id,
