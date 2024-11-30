@@ -10,6 +10,7 @@ import { validateFile } from '../utils/fileValidation';
 
 class UploadService {
   private pendingUploads = new Map<string, XMLHttpRequest>();
+  private uploadProgress = new Map<string, number>();
 
   async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> {
     const fileId = uuidv4();
@@ -30,11 +31,19 @@ class UploadService {
       xhr.open('POST', `${APP_URL}/api/media/upload`);
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
+      // Track upload progress with throttling
+      let lastUpdate = 0;
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          console.log(`Upload progress: ${progress}%`);
-          onProgress?.(progress);
+          const now = Date.now();
+          // Update progress at most every 100ms to prevent excessive re-renders
+          if (now - lastUpdate > 100) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            this.uploadProgress.set(fileId, progress);
+            console.log(`Upload progress for ${file.name}: ${progress}%`);
+            onProgress?.(progress);
+            lastUpdate = now;
+          }
         }
       };
 
@@ -44,6 +53,7 @@ class UploadService {
             try {
               const response = JSON.parse(xhr.responseText);
               console.log('Upload successful:', response);
+              this.uploadProgress.delete(fileId);
               resolve(response);
             } catch (error) {
               console.error('Failed to parse response:', error);
@@ -72,6 +82,7 @@ class UploadService {
 
     } catch (error) {
       console.error('Upload failed:', error);
+      this.uploadProgress.delete(fileId);
       throw error;
     } finally {
       this.pendingUploads.delete(fileId);
@@ -81,9 +92,9 @@ class UploadService {
   async uploadMultipleFiles(files: File[], callbacks?: UploadCallbacks): Promise<MediaFile[]> {
     console.log(`Starting upload for ${files.length} files`);
     
-    const uploads = files.map(async (file) => {
+    const uploads = files.map(async (file, index) => {
       try {
-        console.log(`Processing file: ${file.name}`);
+        console.log(`Processing file ${index + 1}/${files.length}: ${file.name}`);
         const result = await this.uploadFile(
           file,
           (progress) => {
@@ -107,11 +118,23 @@ class UploadService {
     return Promise.all(uploads);
   }
 
+  getTotalProgress(): number {
+    if (this.uploadProgress.size === 0) return 0;
+    
+    const totalProgress = Array.from(this.uploadProgress.values()).reduce(
+      (sum, progress) => sum + progress,
+      0
+    );
+    
+    return Math.round(totalProgress / this.uploadProgress.size);
+  }
+
   async cleanupPendingUploads(): Promise<void> {
     console.log('Cleaning up pending uploads');
     this.pendingUploads.forEach((xhr, fileId) => {
       xhr.abort();
       this.pendingUploads.delete(fileId);
+      this.uploadProgress.delete(fileId);
     });
     console.log('Cleanup completed');
   }

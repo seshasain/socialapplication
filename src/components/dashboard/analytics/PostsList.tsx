@@ -188,7 +188,6 @@ export default function PostsList({ posts = [], metric }: PostsListProps) {
       return valueB - valueA;
     });
   }, [posts, sortConfig, filterPlatform, searchQuery, dateRange, performanceFilter]);
-console.log(sortedAndFilteredPosts);
   const uniquePlatforms = Array.from(new Set(posts.filter(post => post.platform).map(post => post.platform)));
 
   if (!posts || posts.length === 0) {

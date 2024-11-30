@@ -2586,7 +2586,6 @@ app.delete('/api/media/delete/:id', authenticateToken, async (req, res) => {
 app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
   try {
     const { fileIds } = req.body;
-    console.log(fileIds);
     if (!Array.isArray(fileIds)) {
       return res.status(400).json({ error: 'fileIds must be an array' });
     }

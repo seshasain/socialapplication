@@ -24,7 +24,14 @@ export default function FileUploadProgress({
   hasFailedUploads = false,
   onCancel
 }: FileUploadProgressProps) {
+  // Don't show progress if complete and not processing
   if (status === 'complete' && !isProcessing && queueLength === 0) return null;
+
+  // Calculate the effective progress considering completed files and current upload
+  const effectiveProgress = Math.min(
+    Math.round((completedFiles / totalFiles) * 100 + (totalProgress / totalFiles)),
+    100
+  );
 
   return (
     <div className="fixed bottom-4 right-4 w-80 bg-white rounded-lg shadow-lg border border-gray-200 p-4 animate-slide-up">
@@ -38,13 +45,14 @@ export default function FileUploadProgress({
             <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
           )}
           <span className="font-medium text-gray-900">
-            {isProcessing ? 'Processing Queued Files' : 'Uploading Files'}
+            {isProcessing ? 'Processing Files' : 'Uploading Files'}
           </span>
         </div>
         {onCancel && (
           <button
             onClick={onCancel}
             className="text-gray-400 hover:text-gray-600 transition-colors"
+            title="Cancel upload"
           >
             <X className="w-5 h-5" />
           </button>
@@ -63,7 +71,7 @@ export default function FileUploadProgress({
               `${completedFiles} of ${totalFiles} files`
             )}
           </span>
-          <span>{`${Math.round(totalProgress)}%`}</span>
+          <span>{`${effectiveProgress}%`}</span>
         </div>
 
         <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -71,7 +79,7 @@ export default function FileUploadProgress({
             className={`absolute left-0 top-0 h-full transition-all duration-300 rounded-full ${
               status === 'error' ? 'bg-red-500' : 'bg-blue-500'
             }`}
-            style={{ width: `${totalProgress}%` }}
+            style={{ width: `${effectiveProgress}%` }}
           />
         </div>
 
@@ -87,7 +95,6 @@ export default function FileUploadProgress({
             </button>
           </div>
         )}
-
         {error && (
           <p className="text-sm text-red-600 mt-2">
             {error}
