@@ -2590,7 +2590,6 @@ app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
     if (!Array.isArray(fileIds)) {
       return res.status(400).json({ error: 'fileIds must be an array' });
     }
-    console.log("workingf");
     // Get files from database
     const files = await prisma.mediaFile.findMany({
       where: {
@@ -2598,7 +2597,6 @@ app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
         userId: req.user.id // Ensure user owns the files
       }
     });
-    console.log("workingff");
     // Delete files from B2 and database
     await Promise.all(files.map(async (file) => {
       try {
@@ -2615,7 +2613,6 @@ app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
         console.error(`Failed to delete file ${file.id}:`, error);
       }
     }));
-    console.log("workingfff");
     res.json({ success: true, message: 'Files deleted successfully' });
   } catch (error) {
     console.error('Delete error:', error);

@@ -27,6 +27,7 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
     }
 
     // Success response doesn't need to throw an error
+    console.log("file deleted");
     return;
   } catch (error) {
     console.error('File deletion error:', error);
@@ -60,6 +61,7 @@ export async function deleteFile(fileId: string): Promise<void> {
     }
 
     // Success response doesn't need to throw an error
+    console.log("files deleted");
     return;
   } catch (error) {
     console.error('File deletion error:', error);

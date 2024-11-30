@@ -60,7 +60,7 @@ export default function NewPostModal({
   const handleClose = useCallback(async () => {
     if (isClosing) return;
     setIsClosing(true);
-
+  
     try {
       if (uploadedFiles.length > 0) {
         await cleanupFiles(uploadedFiles.map(file => file.id));
@@ -81,7 +81,7 @@ export default function NewPostModal({
       console.error('No file ID provided for deletion');
       return;
     }
-
+  
     try {
       await deleteFile(file.id);
       setUploadedFiles(prev => prev.filter(f => f.id !== file.id));

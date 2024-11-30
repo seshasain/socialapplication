@@ -1,8 +1,10 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { Upload, X, Film, AlertCircle } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { Upload, X, Film, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { MediaFile } from '../../types/media';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
+import { useUploadQueue } from '../../hooks/useUploadQueue';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import FileUploadProgress from './FileUploadProgress';
 import { validateFile } from '../../utils/fileValidation';
 
@@ -32,14 +34,26 @@ export default function MediaUploader({
     status: 'idle' as 'idle' | 'uploading' | 'complete' | 'error'
   });
 
-  useEffect(() => {
-    if (uploadProgress.status === 'complete') {
-      const timer = setTimeout(() => {
-        setUploadProgress(prev => ({ ...prev, status: 'idle' }));
-      }, 2000);
-      return () => clearTimeout(timer);
+  const { isOnline } = useNetworkStatus();
+  const { 
+    addToQueue, 
+    removeFromQueue, 
+    isProcessing, 
+    queueLength,
+    hasFailedUploads 
+  } = useUploadQueue({
+    onUploadSuccess: (fileId) => {
+      // Handle successful upload from queue
+      setUploadProgress(prev => ({
+        ...prev,
+        completedFiles: prev.completedFiles + 1
+      }));
+    },
+    onUploadError: (fileId, error) => {
+      // Handle failed upload from queue
+      setDragError(`Upload failed: ${error.message}`);
     }
-  }, [uploadProgress.status]);
+  });
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: any[]) => {
     if (!acceptedFiles?.length) {
@@ -70,6 +84,15 @@ export default function MediaUploader({
         status: 'uploading'
       });
 
+      if (!isOnline) {
+        // Add files to queue if offline
+        acceptedFiles.forEach(file => {
+          addToQueue(file);
+        });
+        setDragError('You are offline. Files will be uploaded when connection is restored.');
+        return;
+      }
+
       const uploadedFiles = await uploadFiles(acceptedFiles, {
         onProgress: (completed, total, progress) => {
           setUploadProgress(prev => ({
@@ -98,8 +121,15 @@ export default function MediaUploader({
     } catch (error) {
       console.error('Upload error:', error);
       setDragError(error instanceof Error ? error.message : 'Failed to upload files');
+      
+      if (!isOnline) {
+        // Add failed uploads to queue
+        acceptedFiles.forEach(file => {
+          addToQueue(file);
+        });
+      }
     }
-  }, [maxFiles, existingFiles.length, onUpload, uploadFiles]);
+  }, [maxFiles, existingFiles.length, onUpload, uploadFiles, isOnline, addToQueue]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
@@ -135,6 +165,17 @@ export default function MediaUploader({
           <p className="text-xs text-gray-500 mt-1">
             Supports images and videos up to 100MB
           </p>
+          {!isOnline && (
+            <div className="flex items-center mt-2 text-yellow-600">
+              <WifiOff className="w-4 h-4 mr-1" />
+              <span className="text-sm">Offline mode - Files will upload when connection is restored</span>
+            </div>
+          )}
+          {queueLength > 0 && (
+            <div className="mt-2 text-sm text-blue-600">
+              {queueLength} file(s) queued for upload
+            </div>
+          )}
         </div>
       </div>
 
@@ -145,16 +186,16 @@ export default function MediaUploader({
         </div>
       )}
 
-      {uploadProgress.status !== 'idle' && (
+      {(uploadProgress.status !== 'idle' || isProcessing) && (
         <FileUploadProgress
           totalFiles={uploadProgress.totalFiles}
           completedFiles={uploadProgress.completedFiles}
           totalProgress={uploadProgress.totalProgress}
           status={uploadProgress.status}
           error={uploadError?.message}
-          onCancel={() => {
-            // Implement cancel logic if needed
-          }}
+          isProcessing={isProcessing}
+          queueLength={queueLength}
+          hasFailedUploads={hasFailedUploads}
         />
       )}
 
