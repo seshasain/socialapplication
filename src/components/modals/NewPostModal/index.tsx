@@ -14,7 +14,6 @@ import { deleteFile, deleteFiles } from '../../../service/fileCleanupService';
 import { APP_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
-
 interface NewPostModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,7 +21,6 @@ interface NewPostModalProps {
   initialData?: Post;
   connectedAccounts: Array<{ platform: string; id: string }>;
 }
-
 export type PostType = 
   | 'post' 
   | 'story' 
@@ -111,7 +109,7 @@ export default function NewPostModal({
       console.error('No file ID provided for deletion');
       return;
     }
-  
+
     try {
       await deleteFile(file.id);
       setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
@@ -285,39 +283,37 @@ export default function NewPostModal({
       setLoading(false);
     }
   };
-
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl">
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {initialData ? 'Edit Post' : 'Create New Post'}
-              </h2>
-              {step !== 'platform' && (
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-300" />
-                  <span className="text-sm text-gray-500">
-                    Step {step === 'type' ? '2' : '3'} of 3
-                  </span>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              disabled={loading || uploadingFiles || isClosing}
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {initialData ? 'Edit Post' : 'Create New Post'}
+            </h2>
+            {step !== 'platform' && (
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                <span className="text-sm text-gray-500">
+                  Step {step === 'type' ? '2' : '3'} of 3
+                </span>
+              </div>
+            )}
           </div>
+          <button
+            onClick={handleClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            disabled={loading || uploadingFiles || isClosing}
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6">
             {error && (
               <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg flex items-center">
                 <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
@@ -347,12 +343,12 @@ export default function NewPostModal({
 
             {step === 'type' && (
               <PostTypeSelector
-              selectedPlatforms={selectedPlatforms}
-              selectedType={selectedPostType}
-              onTypeSelect={setSelectedPostType}
-              onBack={() => setStep('platform')}
-              onNext={() => setStep('content')}
-              connectedAccounts={connectedAccounts}
+                selectedPlatforms={selectedPlatforms}
+                selectedType={selectedPostType}
+                onTypeSelect={setSelectedPostType}
+                onBack={() => setStep('platform')}
+                onNext={() => setStep('content')}
+                connectedAccounts={connectedAccounts}
               />
             )}
 
@@ -414,33 +410,37 @@ export default function NewPostModal({
                   onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
                   onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
                 />
-
-                <div className="flex justify-end space-x-4">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
-                    disabled={loading || uploadingFiles || isClosing}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
-                    disabled={loading || uploadingFiles || isClosing}
-                  >
-                    {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    {initialData
-                      ? 'Save Changes'
-                      : publishNow
-                      ? 'Publish Now'
-                      : 'Schedule Post'}
-                  </button>
-                </div>
               </div>
             )}
           </div>
         </div>
+        {/* Footer */}
+        {step === 'content' && (
+          <div className="px-6 py-4 border-t border-gray-100">
+            <div className="flex justify-end space-x-4">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+                disabled={loading || uploadingFiles || isClosing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
+                disabled={loading || uploadingFiles || isClosing}
+              >
+                {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {initialData
+                  ? 'Save Changes'
+                  : publishNow
+                  ? 'Publish Now'
+                  : 'Schedule Post'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
