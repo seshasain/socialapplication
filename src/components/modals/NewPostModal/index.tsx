@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { X, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import type { Post, MediaFile } from '../../../types/posts';
 import { uploadMedia } from '../../../api/posts';
@@ -35,6 +35,7 @@ export type PostType =
   | 'fb_story' 
   | 'fb_reel' 
   | 'document';
+
 export default function NewPostModal({
   isOpen,
   onClose,
@@ -75,7 +76,7 @@ export default function NewPostModal({
   });
 
   // Handle modal close
-  const handleClose = useCallback(async () => {
+  const handleClose = async () => {
     if (isClosing) return;
     setIsClosing(true);
   
@@ -102,7 +103,7 @@ export default function NewPostModal({
       });
       onClose();
     }
-  }, [uploadedFiles, cleanupFiles, onClose, isClosing, defaultDate]);
+  };
 
   // Handle individual file removal
   const handleFileRemove = async (file: MediaFile) => {
@@ -134,75 +135,6 @@ export default function NewPostModal({
     }
   };
 
-  // Handle escape key press
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen && !loading && !uploadingFiles) {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, loading, uploadingFiles, handleClose]);
-
-  useEffect(() => {
-    if (initialData) {
-      const scheduledDate = new Date(initialData.scheduledDate);
-      setPostData({
-        caption: initialData.caption || '',
-        scheduledDate: scheduledDate.toISOString().split('T')[0],
-        scheduledTime: scheduledDate.toTimeString().slice(0, 5),
-        hashtags: initialData.hashtags || '',
-        visibility: initialData.visibility || 'public',
-        platformSpecificData: {},
-      });
-
-      if (initialData.mediaFiles) {
-        setUploadedFiles(initialData.mediaFiles);
-      }
-
-      const initialSelectedPlatforms = initialData.platforms.map(
-        (p) => p.platform.toLowerCase()
-      );
-
-      setSelectedPlatforms(initialSelectedPlatforms);
-      setStep('content');
-    }
-  }, [initialData]);
-
-  const handlePlatformSelect = (platformId: string) => {
-    setSelectedPlatforms(prev => {
-      const newPlatforms = [...prev];
-      const index = newPlatforms.indexOf(platformId);
-      
-      if (index === -1) {
-        newPlatforms.push(platformId);
-      } else {
-        newPlatforms.splice(index, 1);
-      }
-      
-      return newPlatforms;
-    });
-  };
-
-  const handlePostTypeSelect = (type: PostType) => {
-    setSelectedPostType(type);
-    setStep('content');
-  };
-
-  const handlePlatformSpecificDataChange = (platform: string, data: any) => {
-    setPostData(prev => ({
-      ...prev,
-      platformSpecificData: {
-        ...prev.platformSpecificData,
-        [platform]: data
-      }
-    }));
-  };
-
   const validateForm = () => {
     if (!postData.caption.trim() && selectedPostType !== 'story') {
       toast.error('Caption is required for this post type');
@@ -224,7 +156,12 @@ export default function NewPostModal({
       }
     }
 
-    const platformsToValidate = selectedPlatforms;
+    // Map platform IDs back to platform names for validation
+    const platformsToValidate = selectedPlatforms.map(id => {
+      const account = connectedAccounts.find(acc => acc.id === id);
+      return account?.platform.toLowerCase() || '';
+    });
+
     const fullText = `${postData.caption} ${postData.hashtags}`;
     
     const allErrors = platformsToValidate.flatMap(platform => 
@@ -272,8 +209,11 @@ export default function NewPostModal({
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms,
-        postType: selectedPostType,
+        platforms: selectedPlatforms.map(id => ({
+          id,
+          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
+          postType: selectedPostType
+        })),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles: uploadedFiles.map(file => file.id),
@@ -348,115 +288,6 @@ export default function NewPostModal({
 
   if (!isOpen) return null;
 
-  const renderStepContent = () => {
-    switch (step) {
-      case 'platform':
-        return (
-          <PlatformSelector
-            platforms={connectedAccounts}
-            selectedPlatforms={selectedPlatforms}
-            onPlatformSelect={handlePlatformSelect}
-            onNext={() => setStep('type')}
-          />
-        );
-      case 'type':
-        return (
-          <PostTypeSelector
-            selectedPlatforms={selectedPlatforms}
-            selectedType={selectedPostType}
-            onTypeSelect={handlePostTypeSelect}
-            onBack={() => setStep('platform')}
-          />
-        );
-      case 'content':
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setStep('type')}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5 mr-1" />
-                Back
-              </button>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Create {selectedPostType.charAt(0).toUpperCase() + selectedPostType.slice(1)}
-              </h3>
-            </div>
-
-            <PostContent
-              postType={selectedPostType}
-              caption={postData.caption}
-              onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
-              hashtags={postData.hashtags}
-              onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
-              visibility={postData.visibility}
-              onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
-              uploadedFiles={uploadedFiles}
-              onMediaUpload={async (files) => {
-                try {
-                  setUploadingFiles(true);
-                  const uploadedMediaFiles = await Promise.all(
-                    files.map(file => uploadMedia(file))
-                  );
-                  setUploadedFiles(prev => [...prev, ...uploadedMediaFiles]);
-                } catch (error) {
-                  console.error('Upload error:', error);
-                  setUploadError(error instanceof Error ? error.message : 'Failed to upload media');
-                } finally {
-                  setUploadingFiles(false);
-                }
-              }}
-              onMediaRemove={handleFileRemove}
-              uploadError={uploadError}
-            />
-
-            {selectedPlatforms.map(platform => (
-              <PlatformSpecificOptions
-                key={platform}
-                platform={platform}
-                postType={selectedPostType}
-                data={postData.platformSpecificData[platform]}
-                onChange={(data) => handlePlatformSpecificDataChange(platform, data)}
-              />
-            ))}
-
-            <SchedulingOptions
-              publishNow={publishNow}
-              setPublishNow={setPublishNow}
-              scheduledDate={postData.scheduledDate}
-              scheduledTime={postData.scheduledTime}
-              onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
-              onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
-            />
-
-            <div className="flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
-                disabled={loading || uploadingFiles || isClosing}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
-                disabled={loading || uploadingFiles || isClosing}
-              >
-                {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {initialData
-                  ? 'Save Changes'
-                  : publishNow
-                  ? 'Publish Now'
-                  : 'Schedule Post'}
-              </button>
-            </div>
-          </div>
-        );
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl">
@@ -497,7 +328,116 @@ export default function NewPostModal({
             <ValidationErrors errors={validationErrors} />
             <SuccessStatus postSuccess={postSuccess} />
 
-            {renderStepContent()}
+            {step === 'platform' && (
+              <PlatformSelector
+                platforms={connectedAccounts}
+                selectedPlatforms={selectedPlatforms}
+                onPlatformSelect={(platformId) => {
+                  setSelectedPlatforms(prev => {
+                    const index = prev.indexOf(platformId);
+                    if (index === -1) {
+                      return [...prev, platformId];
+                    }
+                    return prev.filter(id => id !== platformId);
+                  });
+                }}
+                onNext={() => setStep('type')}
+              />
+            )}
+
+            {step === 'type' && (
+              <PostTypeSelector
+                selectedPlatforms={selectedPlatforms}
+                selectedType={selectedPostType}
+                onTypeSelect={setSelectedPostType}
+                onBack={() => setStep('platform')}
+                connectedAccounts={connectedAccounts}
+              />
+            )}
+
+            {step === 'content' && (
+              <div className="space-y-6">
+                <PostContent
+                  postType={selectedPostType}
+                  caption={postData.caption}
+                  onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
+                  hashtags={postData.hashtags}
+                  onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
+                  visibility={postData.visibility}
+                  onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
+                  uploadedFiles={uploadedFiles}
+                  onMediaUpload={async (files) => {
+                    try {
+                      setUploadingFiles(true);
+                      const uploadedMediaFiles = await Promise.all(
+                        files.map(file => uploadMedia(file))
+                      );
+                      setUploadedFiles(prev => [...prev, ...uploadedMediaFiles]);
+                    } catch (error) {
+                      console.error('Upload error:', error);
+                      setUploadError(error instanceof Error ? error.message : 'Failed to upload media');
+                    } finally {
+                      setUploadingFiles(false);
+                    }
+                  }}
+                  onMediaRemove={handleFileRemove}
+                  uploadError={uploadError}
+                />
+
+                {selectedPlatforms.map(platformId => {
+                  const account = connectedAccounts.find(acc => acc.id === platformId);
+                  if (!account) return null;
+                  
+                  return (
+                    <PlatformSpecificOptions
+                      key={platformId}
+                      platform={account.platform.toLowerCase()}
+                      postType={selectedPostType}
+                      data={postData.platformSpecificData[platformId]}
+                      onChange={(data) => setPostData(prev => ({
+                        ...prev,
+                        platformSpecificData: {
+                          ...prev.platformSpecificData,
+                          [platformId]: data
+                        }
+                      }))}
+                    />
+                  );
+                })}
+
+                <SchedulingOptions
+                  publishNow={publishNow}
+                  setPublishNow={setPublishNow}
+                  scheduledDate={postData.scheduledDate}
+                  scheduledTime={postData.scheduledTime}
+                  onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
+                  onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
+                />
+
+                <div className="flex justify-end space-x-4">
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+                    disabled={loading || uploadingFiles || isClosing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
+                    disabled={loading || uploadingFiles || isClosing}
+                  >
+                    {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {initialData
+                      ? 'Save Changes'
+                      : publishNow
+                      ? 'Publish Now'
+                      : 'Schedule Post'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { 
   Image, 
   Film, 
@@ -17,6 +17,7 @@ import {
   Linkedin
 } from 'lucide-react';
 import type { PostType } from './index';
+import type { SocialAccount } from '../../../types/overview';
 
 interface PostTypeOption {
   id: PostType;
@@ -28,147 +29,153 @@ interface PostTypeOption {
   gradient?: string;
 }
 
+const POST_TYPES: PostTypeOption[] = [
+  // Common post types
+  {
+    id: 'post',
+    name: 'Regular Post',
+    icon: Image,
+    description: 'Share photos, videos, or text updates with your audience',
+    platforms: ['instagram', 'facebook', 'twitter', 'linkedin'],
+    gradient: 'from-blue-500 to-blue-600'
+  },
+  {
+    id: 'carousel',
+    name: 'Carousel',
+    icon: Layout,
+    description: 'Multiple photos or videos in a single post',
+    platforms: ['instagram', 'linkedin'],
+    gradient: 'from-indigo-500 to-blue-600'
+  },
+  
+  // Instagram-specific
+  {
+    id: 'story',
+    name: 'Instagram Story',
+    icon: Layout,
+    description: '24-hour temporary content with interactive elements',
+    platforms: ['instagram'],
+    gradient: 'from-purple-500 to-pink-500'
+  },
+  {
+    id: 'reel',
+    name: 'Instagram Reel',
+    icon: Film,
+    description: 'Short-form vertical videos with music and effects',
+    platforms: ['instagram'],
+    premium: true,
+    gradient: 'from-orange-500 to-pink-500'
+  },
+  
+  // Facebook-specific
+  {
+    id: 'fb_story',
+    name: 'Facebook Story',
+    icon: Layout,
+    description: '24-hour temporary content for Facebook',
+    platforms: ['facebook'],
+    gradient: 'from-blue-400 to-blue-600'
+  },
+  {
+    id: 'fb_reel',
+    name: 'Facebook Reel',
+    icon: Film,
+    description: 'Short videos optimized for Facebook',
+    platforms: ['facebook'],
+    premium: true,
+    gradient: 'from-blue-500 to-blue-700'
+  },
+  
+  // Twitter-specific
+  {
+    id: 'thread',
+    name: 'Twitter Thread',
+    icon: MessageCircle,
+    description: 'Connected series of tweets for longer narratives',
+    platforms: ['twitter'],
+    gradient: 'from-blue-400 to-blue-500'
+  },
+  {
+    id: 'poll',
+    name: 'Twitter Poll',
+    icon: BarChart2,
+    description: 'Interactive polls to engage with your audience',
+    platforms: ['twitter'],
+    gradient: 'from-blue-500 to-blue-600'
+  },
+  
+  // LinkedIn-specific
+  {
+    id: 'article',
+    name: 'LinkedIn Article',
+    icon: FileText,
+    description: 'Long-form content with rich formatting',
+    platforms: ['linkedin'],
+    premium: true,
+    gradient: 'from-blue-600 to-indigo-600'
+  },
+  {
+    id: 'document',
+    name: 'LinkedIn Document',
+    icon: FileText,
+    description: 'Share PDFs, presentations, and documents',
+    platforms: ['linkedin'],
+    gradient: 'from-blue-500 to-indigo-500'
+  }
+];
+
 interface PostTypeSelectorProps {
   selectedPlatforms: string[];
   selectedType: PostType;
   onTypeSelect: (type: PostType) => void;
   onBack: () => void;
+  connectedAccounts: SocialAccount[];
 }
 
 export default function PostTypeSelector({
   selectedPlatforms,
   selectedType,
   onTypeSelect,
-  onBack
+  onBack,
+  connectedAccounts
 }: PostTypeSelectorProps) {
-  // Debug: Log initial props
-  useEffect(() => {
-    console.log('PostTypeSelector Props:', {
-      selectedPlatforms,
-      selectedType
-    });
-  }, [selectedPlatforms, selectedType]);
+  console.log('[DEBUG] PostTypeSelector Props:', { 
+    selectedPlatforms, 
+    selectedType, 
+    accountsLength: connectedAccounts.length 
+  });
 
-  // Convert selected platforms to lowercase for comparison
-  const normalizedSelectedPlatforms = selectedPlatforms.map(p => p.toLowerCase());
-  console.log('Normalized Selected Platforms:', normalizedSelectedPlatforms);
+  // Get platform names from connected accounts
+  const selectedPlatformNames = selectedPlatforms.map(id => {
+    const account = connectedAccounts.find(acc => acc.id === id);
+    return account?.platform.toLowerCase() || '';
+  }).filter(Boolean);
 
-  // Define common post types available across platforms
-  const commonPostTypes: PostTypeOption[] = [
-    {
-      id: 'post',
-      name: 'Regular Post',
-      icon: Image,
-      description: 'Share photos, videos, or text updates with your audience',
-      platforms: ['instagram', 'facebook', 'twitter', 'linkedin'],
-      gradient: 'from-blue-500 to-blue-600'
-    },
-    {
-      id: 'carousel',
-      name: 'Carousel',
-      icon: Layout,
-      description: 'Multiple photos or videos in a single post',
-      platforms: ['instagram', 'linkedin'],
-      gradient: 'from-indigo-500 to-blue-600'
-    }
-  ];
-
-  // Define platform-specific post types
-  const platformSpecificTypes: Record<string, PostTypeOption[]> = {
-    instagram: [
-      {
-        id: 'story',
-        name: 'Story',
-        icon: Layout,
-        description: '24-hour temporary content with interactive elements',
-        platforms: ['instagram'],
-        gradient: 'from-purple-500 to-pink-500'
-      },
-      {
-        id: 'reel',
-        name: 'Reel',
-        icon: Film,
-        description: 'Short-form vertical videos with music and effects',
-        platforms: ['instagram'],
-        premium: true,
-        gradient: 'from-orange-500 to-pink-500'
-      }
-    ],
-    facebook: [
-      {
-        id: 'story',
-        name: 'Story',
-        icon: Layout,
-        description: '24-hour temporary content with interactive elements',
-        platforms: ['facebook'],
-        gradient: 'from-blue-400 to-blue-600'
-      },
-      {
-        id: 'reel',
-        name: 'Reel',
-        icon: Film,
-        description: 'Short-form vertical videos with music and effects',
-        platforms: ['facebook'],
-        premium: true,
-        gradient: 'from-blue-500 to-blue-700'
-      }
-    ],
-    twitter: [
-      {
-        id: 'thread',
-        name: 'Thread',
-        icon: MessageCircle,
-        description: 'Connected series of posts for longer narratives',
-        platforms: ['twitter'],
-        gradient: 'from-blue-400 to-blue-500'
-      },
-      {
-        id: 'poll',
-        name: 'Poll',
-        icon: BarChart2,
-        description: 'Interactive polls to engage with your audience',
-        platforms: ['twitter'],
-        gradient: 'from-blue-500 to-blue-600'
-      }
-    ],
-    linkedin: [
-      {
-        id: 'article',
-        name: 'Article',
-        icon: FileText,
-        description: 'Long-form content with rich formatting',
-        platforms: ['linkedin'],
-        premium: true,
-        gradient: 'from-blue-600 to-blue-700'
-      },
-      {
-        id: 'event',
-        name: 'Event',
-        icon: Calendar,
-        description: 'Create and promote events',
-        platforms: ['linkedin'],
-        premium: true,
-        gradient: 'from-blue-700 to-blue-800'
-      }
-    ]
-  };
-
-  // Filter common post types based on selected platforms
-  const availableCommonTypes = commonPostTypes.filter(type =>
-    type.platforms.some(platform => 
-      normalizedSelectedPlatforms.includes(platform.toLowerCase())
+  console.log('[DEBUG] Selected Platform Names:', selectedPlatformNames);
+  
+  // Get common post types (available for all selected platforms)
+  const commonPostTypes = POST_TYPES.filter(type =>
+    type.platforms.length > 1 && // Must support multiple platforms
+    selectedPlatformNames.every(platform => 
+      type.platforms.includes(platform)
     )
   );
-  console.log('Available Common Types:', availableCommonTypes);
 
-  // Get platform-specific types for selected platforms
-  const availablePlatformTypes = normalizedSelectedPlatforms.reduce((acc, platform) => {
-    if (platformSpecificTypes[platform]) {
-      acc[platform] = platformSpecificTypes[platform];
+  console.log('[DEBUG] Common Post Types:', commonPostTypes);
+
+  // Get platform-specific post types
+  const platformSpecificTypes = selectedPlatformNames.reduce((acc, platform) => {
+    const types = POST_TYPES.filter(type => 
+      type.platforms.length === 1 && 
+      type.platforms[0] === platform
+    );
+    if (types.length > 0) {
+      acc[platform] = types;
     }
     return acc;
   }, {} as Record<string, PostTypeOption[]>);
-  console.log('Available Platform Types:', availablePlatformTypes);
+
+  console.log('[DEBUG] Platform Specific Types:', platformSpecificTypes);
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -186,20 +193,17 @@ export default function PostTypeSelector({
   };
 
   const renderPostTypeCard = (type: PostTypeOption) => {
-    console.log('Rendering Post Type Card:', type);
+    const Icon = type.icon;
+    const isSelected = selectedType === type.id;
+
     return (
       <button
         key={type.id}
-        onClick={() => {
-          console.log('Post Type Selected:', type.id);
-          if (!type.premium) {
-            onTypeSelect(type.id);
-          }
-        }}
+        onClick={() => !type.premium && onTypeSelect(type.id)}
         className={`relative group p-6 rounded-xl text-left transition-all duration-300 transform hover:-translate-y-1 ${
           type.premium
             ? 'cursor-not-allowed bg-gray-50'
-            : selectedType === type.id
+            : isSelected
             ? 'bg-blue-50 border-2 border-blue-500 shadow-lg'
             : 'bg-white border-2 border-gray-100 hover:border-gray-200 hover:shadow-lg'
         }`}
@@ -208,15 +212,15 @@ export default function PostTypeSelector({
           <div className="flex items-center space-x-3">
             <div
               className={`p-3 rounded-xl ${
-                selectedType === type.id
+                isSelected
                   ? 'bg-blue-100'
                   : type.premium
                   ? 'bg-gray-100'
                   : 'bg-gray-100 group-hover:bg-gray-200'
               } transition-colors`}
             >
-              <type.icon className={`w-6 h-6 ${
-                selectedType === type.id
+              <Icon className={`w-6 h-6 ${
+                isSelected
                   ? 'text-blue-600'
                   : type.premium
                   ? 'text-gray-400'
@@ -232,7 +236,7 @@ export default function PostTypeSelector({
                 </h4>
                 {type.premium && (
                   <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
-                    <Lock className="w-3 h-3 mr-1" />
+                    <Lock className="w-4 h-4 mr-1" />
                     Premium
                   </span>
                 )}
@@ -267,22 +271,11 @@ export default function PostTypeSelector({
     );
   };
 
-  // Debug: Log render state
-  useEffect(() => {
-    console.log('PostTypeSelector Render State:', {
-      availableCommonTypes: availableCommonTypes.length,
-      platformTypesCount: Object.keys(availablePlatformTypes).length
-    });
-  });
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-center space-x-4">
         <button
-          onClick={() => {
-            console.log('Back button clicked');
-            onBack();
-          }}
+          onClick={onBack}
           className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
         >
           <ChevronLeft className="w-5 h-5 mr-1" />
@@ -299,17 +292,19 @@ export default function PostTypeSelector({
       </div>
 
       {/* Common Post Types Section */}
-      {availableCommonTypes.length > 0 && (
+      {commonPostTypes.length > 0 && (
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-700">Common Post Types</h4>
+          <h4 className="text-sm font-medium text-gray-700">
+            Common Post Types
+          </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {availableCommonTypes.map(renderPostTypeCard)}
+            {commonPostTypes.map(renderPostTypeCard)}
           </div>
         </div>
       )}
 
-      {/* Platform-Specific Post Types Section */}
-      {Object.entries(availablePlatformTypes).map(([platform, types]) => (
+      {/* Platform-Specific Sections */}
+      {Object.entries(platformSpecificTypes).map(([platform, types]) => (
         <div key={platform} className="space-y-4">
           <h4 className="flex items-center text-sm font-medium text-gray-700">
             {getPlatformIcon(platform)}
@@ -320,6 +315,28 @@ export default function PostTypeSelector({
           </div>
         </div>
       ))}
+
+      {commonPostTypes.length === 0 && Object.keys(platformSpecificTypes).length === 0 && (
+        <div className="text-center py-8">
+          <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
+            <Layout className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No Available Post Types
+          </h3>
+          <p className="text-gray-500 mb-6">
+            The selected platforms don't have any compatible post types in common.
+            Please select different platforms or go back to modify your selection.
+          </p>
+          <button
+            onClick={onBack}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Select Different Platforms
+          </button>
+        </div>
+      )}
     </div>
   );
 }
