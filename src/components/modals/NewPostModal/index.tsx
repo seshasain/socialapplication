@@ -23,8 +23,18 @@ interface NewPostModalProps {
   connectedAccounts: Array<{ platform: string; id: string }>;
 }
 
-export type PostType = 'post' | 'story' | 'reel' | 'thread' | 'carousel' | 'article' | 'poll' | 'event';
-
+export type PostType = 
+  | 'post' 
+  | 'story' 
+  | 'reel' 
+  | 'thread' 
+  | 'carousel' 
+  | 'article' 
+  | 'poll' 
+  | 'event' 
+  | 'fb_story' 
+  | 'fb_reel' 
+  | 'document';
 export default function NewPostModal({
   isOpen,
   onClose,

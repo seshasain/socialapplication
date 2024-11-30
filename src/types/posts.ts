@@ -14,10 +14,16 @@ export interface Post {
   id: string;
   caption: string;
   scheduledDate: string;
-  platform: string;
+  platforms: Array<{
+    platform: string;
+    status: string;
+    publishedAt: string | null;
+    error?: string;
+    externalId?: string;
+    settings?: Record<string, any>;
+  }>;
   hashtags: string;
   visibility: 'public' | 'private' | 'draft';
-  status: 'scheduled' | 'published' | 'failed';
   mediaFiles: MediaFile[];
   engagementRate?: number;
   likes?: number;
@@ -31,7 +37,11 @@ export interface PostFormData {
   caption: string;
   scheduledDate: string;
   scheduledTime: string;
-  platform: string;
+  platforms: Array<{
+    platform: string;
+    postType: string;
+    settings?: Record<string, any>;
+  }>;
   hashtags: string;
   visibility: string;
   mediaFiles: File[];
