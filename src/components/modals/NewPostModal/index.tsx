@@ -350,6 +350,7 @@ export default function NewPostModal({
                   onMediaRemove={handleFileRemove}
                   uploadError={uploadError}
                   onBack={handleBack}
+                  selectedPlatforms={selectedPlatforms}
                 />
 
                 <SchedulingOptions

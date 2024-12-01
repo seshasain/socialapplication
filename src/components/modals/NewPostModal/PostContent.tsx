@@ -3,6 +3,7 @@ import { Hash, Globe, Image as ImageIcon, Film, Clock, AlertCircle, ChevronLeft 
 import MediaUploader from '../../media/MediaUploader';
 import type { MediaFile } from '../../../types/media';
 import type { PostType } from './index';
+import { getPlatformLimits, isFeatureSupported } from '../../../utils/platformSupport';
 
 interface PostContentProps {
   postType: PostType;
@@ -17,6 +18,7 @@ interface PostContentProps {
   onMediaRemove: (file: MediaFile) => void;
   uploadError: string | null;
   onBack: () => void;
+  selectedPlatforms: string[];
 }
 
 export default function PostContent({
@@ -31,7 +33,8 @@ export default function PostContent({
   onMediaUpload,
   onMediaRemove,
   uploadError,
-  onBack
+  onBack,
+  selectedPlatforms
 }: PostContentProps) {
   const getPostTypeConfig = () => {
     switch (postType) {
@@ -43,6 +46,9 @@ export default function PostContent({
           mediaRequired: true,
           captionOptional: true,
           maxFiles: 1,
+          acceptedTypes: ['image/*', 'video/*'],
+          noHashtags: true, // Stories typically don't support hashtags
+          noCaption: true // Stories typically don't support captions
         };
       case 'reel':
         return {
@@ -52,7 +58,7 @@ export default function PostContent({
           mediaRequired: true,
           captionOptional: false,
           maxFiles: 1,
-          acceptedTypes: ['video/*'],
+          acceptedTypes: ['video/*']
         };
       case 'carousel':
         return {
@@ -61,7 +67,7 @@ export default function PostContent({
           icon: ImageIcon,
           mediaRequired: true,
           captionOptional: false,
-          maxFiles: 10,
+          maxFiles: 10
         };
       case 'article':
         return {
@@ -71,6 +77,7 @@ export default function PostContent({
           mediaRequired: false,
           captionOptional: false,
           maxFiles: 1,
+          acceptedTypes: ['image/*']
         };
       default:
         return {
@@ -79,13 +86,33 @@ export default function PostContent({
           icon: ImageIcon,
           mediaRequired: false,
           captionOptional: false,
-          maxFiles: 4,
+          maxFiles: 4
         };
     }
   };
 
   const config = getPostTypeConfig();
   const Icon = config.icon;
+
+  // Check if any selected platform supports hashtags for this post type
+  const supportsHashtags = selectedPlatforms.some(platform => 
+    isFeatureSupported(platform, 'hashtags') && !config.noHashtags
+  );
+
+  // Get the most restrictive character limit among selected platforms
+  const getCharacterLimit = () => {
+    let minLimit = Infinity;
+    selectedPlatforms.forEach(platform => {
+      const limits = getPlatformLimits(platform);
+      if (limits && limits.maxCharacters < minLimit) {
+        minLimit = limits.maxCharacters;
+      }
+    });
+    return minLimit === Infinity ? 2200 : minLimit;
+  };
+
+  const characterLimit = getCharacterLimit();
+  const remainingCharacters = characterLimit - caption.length;
 
   return (
     <div className="space-y-6">
@@ -110,67 +137,104 @@ export default function PostContent({
         </div>
       </div>
 
-      {/* Caption */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Caption {!config.captionOptional && <span className="text-red-500">*</span>}
-        </label>
-        <textarea
-          value={caption}
-          onChange={onCaptionChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 h-32 resize-none"
-          placeholder={`Write your ${postType} caption here...`}
-          required={!config.captionOptional}
-        />
-        <div className="mt-1 text-sm text-gray-500 flex justify-between">
-          <span>{caption.length} characters</span>
-          <span>{2200 - caption.length} remaining</span>
-        </div>
-      </div>
-
-      {/* Media Upload */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Media {config.mediaRequired && <span className="text-red-500">*</span>}
-          </label>
-          <span className="text-sm text-gray-500">
-            {uploadedFiles.length} of {config.maxFiles} files used
-          </span>
-        </div>
-        <MediaUploader
-          onUpload={onMediaUpload}
-          onRemove={onMediaRemove}
-          existingFiles={uploadedFiles}
-          maxFiles={config.maxFiles}
-          acceptedFileTypes={config.acceptedTypes || ['image/*', 'video/*']}
-          error={uploadError}
-        />
-        {config.mediaRequired && uploadedFiles.length === 0 && (
-          <div className="mt-2 flex items-center text-sm text-amber-600">
-            <AlertCircle className="w-4 h-4 mr-1" />
-            Media is required for this post type
+      {/* Media Upload - Show First for Stories */}
+      {postType === 'story' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Media {config.mediaRequired && <span className="text-red-500">*</span>}
+            </label>
+            <span className="text-sm text-gray-500">
+              {uploadedFiles.length} of {config.maxFiles} files used
+            </span>
           </div>
-        )}
-      </div>
+          <MediaUploader
+            onUpload={onMediaUpload}
+            onRemove={onMediaRemove}
+            existingFiles={uploadedFiles}
+            maxFiles={config.maxFiles}
+            acceptedFileTypes={config.acceptedTypes || ['image/*', 'video/*']}
+            error={uploadError}
+          />
+          {config.mediaRequired && uploadedFiles.length === 0 && (
+            <div className="mt-2 flex items-center text-sm text-amber-600">
+              <AlertCircle className="w-4 h-4 mr-1" />
+              Media is required for stories
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Hashtags */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Hash className="inline w-4 h-4 mr-1" />
-          Hashtags
-        </label>
-        <input
-          type="text"
-          value={hashtags}
-          onChange={onHashtagsChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          placeholder="#socialmedia #marketing"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          Separate hashtags with spaces
-        </p>
-      </div>
+      {/* Caption - Hide for Stories */}
+      {!config.noCaption && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Caption {!config.captionOptional && <span className="text-red-500">*</span>}
+          </label>
+          <textarea
+            value={caption}
+            onChange={onCaptionChange}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 h-32 resize-none"
+            placeholder={`Write your ${postType} caption here...`}
+            required={!config.captionOptional}
+            maxLength={characterLimit}
+          />
+          <div className="mt-1 text-sm text-gray-500 flex justify-between">
+            <span>{caption.length} characters</span>
+            <span className={remainingCharacters < 20 ? 'text-red-500' : ''}>
+              {remainingCharacters} remaining
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Media Upload - Show After Caption for Regular Posts */}
+      {postType !== 'story' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Media {config.mediaRequired && <span className="text-red-500">*</span>}
+            </label>
+            <span className="text-sm text-gray-500">
+              {uploadedFiles.length} of {config.maxFiles} files used
+            </span>
+          </div>
+          <MediaUploader
+            onUpload={onMediaUpload}
+            onRemove={onMediaRemove}
+            existingFiles={uploadedFiles}
+            maxFiles={config.maxFiles}
+            acceptedFileTypes={config.acceptedTypes || ['image/*', 'video/*']}
+            error={uploadError}
+          />
+          {config.mediaRequired && uploadedFiles.length === 0 && (
+            <div className="mt-2 flex items-center text-sm text-amber-600">
+              <AlertCircle className="w-4 h-4 mr-1" />
+              Media is required for this post type
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hashtags - Hide for Stories and if No Platform Supports Them */}
+      {supportsHashtags && !config.noHashtags && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            <Hash className="inline w-4 h-4 mr-1" />
+            Hashtags
+          </label>
+          <input
+            type="text"
+            value={hashtags}
+            onChange={onHashtagsChange}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
+            placeholder="#socialmedia #marketing"
+          />
+          <p className="mt-1 text-sm text-gray-500">
+            Separate hashtags with spaces
+          </p>
+        </div>
+      )}
 
       {/* Visibility */}
       <div>
@@ -191,3 +255,41 @@ export default function PostContent({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

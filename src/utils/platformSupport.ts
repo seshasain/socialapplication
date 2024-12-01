@@ -13,6 +13,10 @@ interface PlatformSupport {
       carousel: boolean;
       scheduling: boolean;
       analytics: boolean;
+      storyCaption: boolean; // Added to track story caption support
+      storyHashtags: boolean; // Added to track story hashtag support
+      storyMentions: boolean; // Added to track story mention support
+      storyLinks: boolean; // Added to track story link support
     };
     limits: {
       maxCharacters: number;
@@ -20,6 +24,7 @@ interface PlatformSupport {
       maxMedia: number;
       maxVideoLength: number;
       maxFileSize: number;
+      storyDuration: number; // Added for story duration limit
     };
   }
   
@@ -38,14 +43,19 @@ interface PlatformSupport {
         reels: true,
         carousel: true,
         scheduling: true,
-        analytics: true
+        analytics: true,
+        storyCaption: false, // Instagram stories don't support captions
+        storyHashtags: true, // Instagram stories support hashtags as stickers
+        storyMentions: true,
+        storyLinks: true // Only for business accounts with >10k followers
       },
       limits: {
         maxCharacters: 2200,
         maxHashtags: 30,
         maxMedia: 10,
         maxVideoLength: 60,
-        maxFileSize: 100
+        maxFileSize: 100,
+        storyDuration: 15 // 15 seconds for stories
       }
     },
     facebook: {
@@ -60,16 +70,21 @@ interface PlatformSupport {
         polls: true,
         stories: true,
         reels: true,
-        carousel: false,
+        carousel: true,
         scheduling: true,
-        analytics: true
+        analytics: true,
+        storyCaption: true, // Facebook stories support captions
+        storyHashtags: true,
+        storyMentions: true,
+        storyLinks: true
       },
       limits: {
         maxCharacters: 63206,
         maxHashtags: 30,
         maxMedia: 4,
         maxVideoLength: 240,
-        maxFileSize: 4096
+        maxFileSize: 4096,
+        storyDuration: 20
       }
     },
     twitter: {
@@ -86,14 +101,19 @@ interface PlatformSupport {
         reels: false,
         carousel: false,
         scheduling: true,
-        analytics: true
+        analytics: true,
+        storyCaption: false,
+        storyHashtags: false,
+        storyMentions: false,
+        storyLinks: false
       },
       limits: {
         maxCharacters: 280,
         maxHashtags: 30,
         maxMedia: 4,
         maxVideoLength: 140,
-        maxFileSize: 512
+        maxFileSize: 512,
+        storyDuration: 0
       }
     },
     linkedin: {
@@ -110,14 +130,19 @@ interface PlatformSupport {
         reels: false,
         carousel: false,
         scheduling: true,
-        analytics: true
+        analytics: true,
+        storyCaption: false,
+        storyHashtags: false,
+        storyMentions: false,
+        storyLinks: false
       },
       limits: {
         maxCharacters: 3000,
         maxHashtags: 30,
         maxMedia: 9,
         maxVideoLength: 600,
-        maxFileSize: 5120
+        maxFileSize: 5120,
+        storyDuration: 0
       }
     }
   };
@@ -145,4 +170,17 @@ interface PlatformSupport {
   
   export function isFeatureSupported(platform: string, feature: string): boolean {
     return PLATFORM_SUPPORT[platform]?.features[feature as keyof PlatformSupport['features']] || false;
+  }
+  
+  export function getStoryFeatures(platform: string) {
+    const features = PLATFORM_SUPPORT[platform]?.features;
+    if (!features) return null;
+  
+    return {
+      supportsCaption: features.storyCaption,
+      supportsHashtags: features.storyHashtags,
+      supportsMentions: features.storyMentions,
+      supportsLinks: features.storyLinks,
+      duration: PLATFORM_SUPPORT[platform]?.limits.storyDuration || 0
+    };
   }
