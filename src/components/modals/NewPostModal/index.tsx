@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import type { Post, MediaFile } from '../../../types/posts';
+import type { SocialAccount } from '../../../types/overview';
 import { uploadMedia } from '../../../api/posts';
 import PlatformSelector from './PlatformSelector';
 import PostTypeSelector from './PostTypeSelector';
@@ -10,17 +11,11 @@ import ValidationErrors from './ValidationErrors';
 import SuccessStatus from './SuccessStatus';
 import { validatePlatformContent } from '../../../utils/platformValidation';
 import { useFileCleanup } from '../../../hooks/useFileCleanup';
-import { deleteFile, deleteFiles } from '../../../service/fileCleanupService';
+import { deleteFile } from '../../../service/fileCleanupService';
 import { APP_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
-interface NewPostModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (post: Post) => void;
-  initialData?: Post;
-  connectedAccounts: Array<{ platform: string; id: string }>;
-}
+
 export type PostType = 
   | 'post' 
   | 'story' 
@@ -29,10 +24,15 @@ export type PostType =
   | 'carousel' 
   | 'article' 
   | 'poll' 
-  | 'event' 
-  | 'fb_story' 
-  | 'fb_reel' 
-  | 'document';
+  | 'event';
+
+interface NewPostModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (post: Post) => void;
+  initialData?: Post;
+  connectedAccounts: SocialAccount[];
+}
 
 export default function NewPostModal({
   isOpen,
@@ -70,8 +70,20 @@ export default function NewPostModal({
   // Initialize file cleanup hook
   const { cleanupFiles } = useFileCleanup({
     files: uploadedFiles,
-    onCleanup: deleteFiles
+    onCleanup: async (fileIds: string[]) => {
+      for (const id of fileIds) {
+        await deleteFile(id);
+      }
+    }
   });
+
+  const handleBack = () => {
+    if (step === 'type') {
+      setStep('platform');
+    } else if (step === 'content') {
+      setStep('type');
+    }
+  };
 
   // Handle modal close
   const handleClose = async () => {
@@ -105,11 +117,6 @@ export default function NewPostModal({
 
   // Handle individual file removal
   const handleFileRemove = async (file: MediaFile) => {
-    if (!file.id) {
-      console.error('No file ID provided for deletion');
-      return;
-    }
-
     try {
       await deleteFile(file.id);
       setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
@@ -117,19 +124,6 @@ export default function NewPostModal({
     } catch (error) {
       console.error('Failed to remove file:', error);
       toast.error('Failed to remove file. Please try again.');
-    }
-  };
-
-  // Handle successful post cleanup
-  const handleSuccessfulPost = async () => {
-    try {
-      if (uploadedFiles.length > 0) {
-        await cleanupFiles(uploadedFiles.map(file => file.id));
-        setUploadedFiles([]);
-      }
-    } catch (error) {
-      console.error('Failed to cleanup files after successful post:', error);
-      toast.error('Some uploaded files could not be cleaned up');
     }
   };
 
@@ -177,12 +171,10 @@ export default function NewPostModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Starting post submission...');
     setValidationErrors([]);
     setPostSuccess({});
 
     if (!validateForm()) {
-      console.log('Form validation failed');
       return;
     }
 
@@ -234,7 +226,7 @@ export default function NewPostModal({
       }
 
       const responseData = await response.json();
-      console.log('Post creation response:', responseData);
+      onSave(responseData);
 
       const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
         acc[platform] = true;
@@ -242,48 +234,26 @@ export default function NewPostModal({
       }, {} as { [key: string]: boolean });
       
       setPostSuccess(newPostSuccess);
-
-      // If all platforms were successful, clean up the files
-      const allSuccessful = Object.values(newPostSuccess).every(success => success);
-      if (allSuccessful) {
-        await handleSuccessfulPost();
-        toast.success('Post created successfully');
-      }
+      toast.success('Post created successfully');
       
       setTimeout(() => {
         handleClose();
       }, 2000);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Post creation error:', err);
-      if (err.platformErrors) {
-        const failedPlatforms = Object.keys(err.platformErrors);
-        const successfulPlatforms = selectedPlatforms.filter(
-          platform => !failedPlatforms.includes(platform)
-        );
-        
-        const newPostSuccess = [...successfulPlatforms].reduce((acc, platform) => {
-          acc[platform] = true;
-          return acc;
-        }, {} as { [key: string]: boolean });
-        
-        setPostSuccess(newPostSuccess);
-        setValidationErrors(
-          failedPlatforms.map(platform => ({
-            platform,
-            message: err.platformErrors[platform]
-          }))
-        );
-
-        toast.error('Failed to publish to some platforms');
+      if (err instanceof Error) {
+        setError(err.message);
       } else {
-        setError(err.message || 'Failed to create post');
-        toast.error('Failed to create post');
+        setError('Failed to create post');
       }
+      toast.error('Failed to create post');
     } finally {
       setLoading(false);
     }
   };
+
   if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
@@ -346,14 +316,14 @@ export default function NewPostModal({
                 selectedPlatforms={selectedPlatforms}
                 selectedType={selectedPostType}
                 onTypeSelect={setSelectedPostType}
-                onBack={() => setStep('platform')}
+                onBack={handleBack}
                 onNext={() => setStep('content')}
                 connectedAccounts={connectedAccounts}
               />
             )}
 
             {step === 'content' && (
-              <div className="space-y-6">
+              <>
                 <PostContent
                   postType={selectedPostType}
                   caption={postData.caption}
@@ -379,28 +349,8 @@ export default function NewPostModal({
                   }}
                   onMediaRemove={handleFileRemove}
                   uploadError={uploadError}
+                  onBack={handleBack}
                 />
-
-                {selectedPlatforms.map(platformId => {
-                  const account = connectedAccounts.find(acc => acc.id === platformId);
-                  if (!account) return null;
-                  
-                  return (
-                    <PlatformSpecificOptions
-                      key={platformId}
-                      platform={account.platform.toLowerCase()}
-                      postType={selectedPostType}
-                      data={postData.platformSpecificData[platformId]}
-                      onChange={(data) => setPostData(prev => ({
-                        ...prev,
-                        platformSpecificData: {
-                          ...prev.platformSpecificData,
-                          [platformId]: data
-                        }
-                      }))}
-                    />
-                  );
-                })}
 
                 <SchedulingOptions
                   publishNow={publishNow}
@@ -410,10 +360,11 @@ export default function NewPostModal({
                   onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
                   onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
                 />
-              </div>
+              </>
             )}
           </div>
         </div>
+
         {/* Footer */}
         {step === 'content' && (
           <div className="px-6 py-4 border-t border-gray-100">

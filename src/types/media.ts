@@ -6,8 +6,8 @@ export interface MediaFile {
   type: string;
   size: number;
   s3Key: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DeleteFileResponse {

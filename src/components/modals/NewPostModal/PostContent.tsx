@@ -93,14 +93,14 @@ export default function PostContent({
       <div className="flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+          className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ChevronLeft className="w-5 h-5 mr-1" />
-          Back
+          Back to Post Type
         </button>
       </div>
 
-      <div className="bg-gray-50 rounded-xl p-4 flex items-start space-x-4">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 flex items-start space-x-4">
         <div className="p-3 bg-white rounded-xl shadow-sm">
           <Icon className="w-6 h-6 text-blue-600" />
         </div>

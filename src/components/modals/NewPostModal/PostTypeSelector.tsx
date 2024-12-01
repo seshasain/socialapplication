@@ -105,22 +105,22 @@ const POST_TYPES: PostTypeOption[] = [
 const CATEGORIES = {
   regular: {
     name: 'Regular Posts',
-    description: 'Standard posts for your social media platforms',
+    description: '',
     icon: Image
   },
   story: {
     name: 'Stories',
-    description: '24-hour temporary content',
+    description: '',
     icon: Clock
   },
   short: {
     name: 'Short Videos',
-    description: 'Engaging short-form video content',
+    description: '',
     icon: PlaySquare
   },
   article: {
     name: 'Long-form Content',
-    description: 'Articles, threads, and detailed content',
+    description: '',
     icon: BookOpen
   }
 };
@@ -202,9 +202,6 @@ export default function PostTypeSelector({
               <h3 className="text-lg font-semibold text-gray-900">
                 Select Content Type
               </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Choose the type of content you want to create
-              </p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
