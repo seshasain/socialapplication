@@ -52,7 +52,9 @@ export default function NewPostModal({
   const [postSuccess, setPostSuccess] = useState<{ [key: string]: boolean }>({});
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  
+  const [threadContent, setThreadContent] = useState<string[]>(['']);
+  const [threadMedia, setThreadMedia] = useState<Record<string, MediaFile[]>>({});
+
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
   defaultDate.setHours(defaultDate.getHours() + 1);
@@ -76,6 +78,45 @@ export default function NewPostModal({
       }
     }
   });
+
+  const handleMediaUpload = async (files: File[], threadId?: string) => {
+    try {
+      setUploadingFiles(true);
+      const uploadedMediaFiles = await Promise.all(
+        files.map(file => uploadMedia(file))
+      );
+
+      if (threadId) {
+        // Update thread-specific media
+        setThreadMedia(prev => ({
+          ...prev,
+          [threadId]: [...(prev[threadId] || []), ...uploadedMediaFiles]
+        }));
+      } else {
+        // Update general media
+        setUploadedFiles(prev => [...prev, ...uploadedMediaFiles]);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error instanceof Error ? error.message : 'Failed to upload media');
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const handleMediaRemove = (file: MediaFile, threadId?: string) => {
+    if (threadId) {
+      // Remove from thread-specific media
+      setThreadMedia(prev => ({
+        ...prev,
+        [threadId]: prev[threadId]?.filter(f => f.id !== file.id) || []
+      }));
+    } else {
+      // Remove from general media
+      setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
+    }
+    deleteFile(file.id);
+  };
 
   const handleBack = () => {
     if (step === 'type') {
@@ -182,8 +223,8 @@ export default function NewPostModal({
       setLoading(true);
       setError(null);
 
+      // Calculate scheduled date time first
       let scheduledDateTime: Date;
-      
       if (publishNow) {
         scheduledDateTime = new Date();
         scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
@@ -192,6 +233,19 @@ export default function NewPostModal({
         const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
         scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
       }
+
+      console.log('Creating post with data:', {
+        caption: postData.caption,
+        scheduledDate: scheduledDateTime.toISOString(),
+        platforms: selectedPlatforms,
+        hashtags: postData.hashtags,
+        visibility: postData.visibility,
+        mediaFiles: uploadedFiles.map(file => file.id),
+        platformSpecificData: postData.platformSpecificData,
+        publishNow
+      });
+
+      console.log('Scheduled date time:', scheduledDateTime.toISOString());
 
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
@@ -211,6 +265,8 @@ export default function NewPostModal({
         publishNow
       };
 
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch(`${APP_URL}/api/posts`, {
         method: 'POST',
         headers: {
@@ -220,12 +276,17 @@ export default function NewPostModal({
         body: JSON.stringify(requestBody)
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create post');
+        const errorData = await response.json().catch(e => ({ message: 'Failed to parse error response' }));
+        console.error('Error response:', errorData);
+        throw new Error(errorData.message || 'Failed to create post');
       }
 
       const responseData = await response.json();
+      console.log('Success response:', responseData);
+      
       onSave(responseData);
 
       const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
@@ -243,10 +304,11 @@ export default function NewPostModal({
       console.error('Post creation error:', err);
       if (err instanceof Error) {
         setError(err.message);
+        toast.error(err.message);
       } else {
         setError('Failed to create post');
+        toast.error('Failed to create post');
       }
-      toast.error('Failed to create post');
     } finally {
       setLoading(false);
     }
@@ -325,33 +387,22 @@ export default function NewPostModal({
             {step === 'content' && (
               <>
                 <PostContent
-                  postType={selectedPostType}
-                  caption={postData.caption}
-                  onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
-                  hashtags={postData.hashtags}
-                  onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
-                  visibility={postData.visibility}
-                  onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
-                  uploadedFiles={uploadedFiles}
-                  onMediaUpload={async (files) => {
-                    try {
-                      setUploadingFiles(true);
-                      const uploadedMediaFiles = await Promise.all(
-                        files.map(file => uploadMedia(file))
-                      );
-                      setUploadedFiles(prev => [...prev, ...uploadedMediaFiles]);
-                    } catch (error) {
-                      console.error('Upload error:', error);
-                      setUploadError(error instanceof Error ? error.message : 'Failed to upload media');
-                    } finally {
-                      setUploadingFiles(false);
-                    }
-                  }}
-                  onMediaRemove={handleFileRemove}
-                  uploadError={uploadError}
-                  onBack={handleBack}
-                  selectedPlatforms={selectedPlatforms}
-                />
+          postType={selectedPostType}
+          caption={postData.caption}
+          onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
+          hashtags={postData.hashtags}
+          onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
+          visibility={postData.visibility}
+          onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
+          uploadedFiles={uploadedFiles}
+          onMediaUpload={handleMediaUpload}
+          onMediaRemove={handleMediaRemove}
+          uploadError={uploadError}
+          onBack={() => setStep('type')}
+          threadContent={threadContent}
+          onThreadChange={setThreadContent}
+          threadMedia={threadMedia}
+        />
 
                 <SchedulingOptions
                   publishNow={publishNow}

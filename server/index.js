@@ -1483,10 +1483,10 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
     if (!caption) {
       return res.status(400).json({ error: 'Caption is required' });
     }
-
     if (!platforms || !Array.isArray(JSON.parse(platforms)) || JSON.parse(platforms).length === 0) {
       return res.status(400).json({ error: 'At least one platform must be selected' });
     }
+    //console.log(platforms);
 
     const post = await prisma.post.create({
       data: {
