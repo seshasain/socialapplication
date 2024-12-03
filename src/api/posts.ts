@@ -1,5 +1,4 @@
-import { Post, PostFormData } from '../types/posts';
-import { MediaFile } from '../types/media';
+import { Post, MediaFile, PostFormData } from '../types/posts';
 import { APP_URL } from '../config/api';
 import { validateFile } from '../utils/fileValidation';
 

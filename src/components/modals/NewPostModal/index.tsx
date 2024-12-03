@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import type { Post } from '../../../types/posts';
-import { MediaFile } from '../../../types/media';
+import type { Post, MediaFile } from '../../../types/posts';
 import type { SocialAccount } from '../../../types/overview';
 import { uploadMedia } from '../../../api/posts';
 import PlatformSelector from './PlatformSelector';
