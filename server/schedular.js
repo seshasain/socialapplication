@@ -2,14 +2,133 @@ import schedule from 'node-schedule';
 import { PrismaClient } from '@prisma/client';
 import { createTwitterClient, postToTwitter } from './twitter.js';
 import { createFacebookClient, postToFacebook } from './facebook.js';
-import { createInstagramClient, authenticateInstagram, postToInstagram } from './instagram.js';
+import { createInstagramClient, postToInstagram } from './instagram.js';
 import { createLinkedInClient, postToLinkedIn } from './linkedin.js';
+import { createYouTubeClient, postToYouTube } from './youtube.js';
+import { createTikTokClient, postToTikTok } from './tiktok.js';
+import { createPinterestClient, postToPinterest } from './pinterest.js';
+import { createThreadsClient, postToThreads } from './threads.js';
+import { RateLimiter } from 'limiter';
+import { uploadToB2, getFileFromB2 } from './storage/b2.js';
 
 const prisma = new PrismaClient();
 const scheduledJobs = new Map();
 
+// Rate limiters for different platforms
+const rateLimiters = {
+  twitter: new RateLimiter({ tokensPerInterval: 300, interval: 'hour' }),
+  facebook: new RateLimiter({ tokensPerInterval: 200, interval: 'hour' }),
+  instagram: new RateLimiter({ tokensPerInterval: 200, interval: 'hour' }),
+  linkedin: new RateLimiter({ tokensPerInterval: 100, interval: 'hour' }),
+  youtube: new RateLimiter({ tokensPerInterval: 50, interval: 'hour' }),
+  tiktok: new RateLimiter({ tokensPerInterval: 100, interval: 'hour' }),
+  pinterest: new RateLimiter({ tokensPerInterval: 100, interval: 'hour' }),
+  threads: new RateLimiter({ tokensPerInterval: 150, interval: 'hour' })
+};
+
+// Platform-specific post type handlers
+const postTypeHandlers = {
+  twitter: {
+    post: postToTwitter,
+    thread: async (client, content) => {
+      // Handle Twitter thread posting
+      const tweets = [];
+      for (const tweet of content.threadContent) {
+        const response = await postToTwitter(client, {
+          ...content,
+          caption: tweet,
+          replyToId: tweets[tweets.length - 1]?.id
+        });
+        tweets.push(response);
+      }
+      return tweets;
+    }
+  },
+  facebook: {
+    post: postToFacebook,
+    story: async (client, content) => {
+      return postToFacebook(client, { ...content, isStory: true });
+    },
+    reel: async (client, content) => {
+      return postToFacebook(client, { ...content, isReel: true });
+    }
+  },
+  instagram: {
+    post: postToInstagram,
+    story: async (client, content) => {
+      return postToInstagram(client, { ...content, isStory: true });
+    },
+    reel: async (client, content) => {
+      return postToInstagram(client, { ...content, isReel: true });
+    },
+    carousel: async (client, content) => {
+      return postToInstagram(client, { ...content, isCarousel: true });
+    }
+  },
+  linkedin: {
+    post: postToLinkedIn,
+    article: async (client, content) => {
+      return postToLinkedIn(client, { ...content, isArticle: true });
+    }
+  },
+  youtube: {
+    video: postToYouTube,
+    shorts: async (client, content) => {
+      return postToYouTube(client, { ...content, isShort: true });
+    }
+  },
+  tiktok: {
+    video: postToTikTok
+  },
+  pinterest: {
+    pin: postToPinterest,
+    story: async (client, content) => {
+      return postToPinterest(client, { ...content, isStory: true });
+    }
+  },
+  threads: {
+    post: postToThreads,
+    thread: async (client, content) => {
+      // Handle Threads thread posting
+      const posts = [];
+      for (const thread of content.threadContent) {
+        const response = await postToThreads(client, {
+          ...content,
+          caption: thread,
+          replyToId: posts[posts.length - 1]?.id
+        });
+        posts.push(response);
+      }
+      return posts;
+    }
+  }
+};
+
+// Media pre-processing function
+async function preprocessMedia(mediaFiles) {
+  const processedMedia = [];
+  
+  for (const file of mediaFiles) {
+    // Get pre-signed URL for the media file
+    const mediaUrl = await getFileFromB2(file.s3Key);
+    
+    // Download and process if needed
+    const processedFile = {
+      ...file,
+      url: mediaUrl,
+      buffer: null // Will be populated only when needed
+    };
+    
+    processedMedia.push(processedFile);
+  }
+  
+  return processedMedia;
+}
+
+// Improved scheduling function with media optimization
 export const schedulePost = async (post) => {
   console.log('Scheduling post:', post.id);
+  
   try {
     // Cancel existing job if it exists
     if (scheduledJobs.has(post.id)) {
@@ -17,71 +136,56 @@ export const schedulePost = async (post) => {
       scheduledJobs.get(post.id).cancel();
     }
 
-    // Schedule new job for each platform
+    // Schedule new job
     const job = schedule.scheduleJob(new Date(post.scheduledDate), async () => {
       console.log('Executing scheduled post:', post.id);
+      
       try {
-        for (const platformData of post.platforms) {
-          console.log(`Processing platform ${platformData.platform} for post ${post.id}`);
+        // Pre-process media files before posting
+        const processedMedia = await preprocessMedia(post.mediaFiles);
+
+        // Process each platform in parallel
+        const platformPromises = post.platforms.map(async (platformData) => {
+          const { platform, postType = 'post' } = platformData;
           
-          const socialAccount = await prisma.socialAccount.findFirst({
-            where: {
-              userId: post.userId,
-              platform: platformData.platform
-            }
-          });
-
-          if (!socialAccount) {
-            console.error(`No connected ${platformData.platform} account found for post ${post.id}`);
-            await prisma.postPlatform.update({
-              where: { id: platformData.id },
-              data: {
-                status: 'failed',
-                error: `No connected ${platformData.platform} account found`,
-              },
-            });
-            continue;
-          }
-
           try {
-            console.log(`Publishing to ${platformData.platform} for post ${post.id}`);
+            // Check rate limit
+            await rateLimiters[platform].removeTokens(1);
+            
+            // Get social account
+            const socialAccount = await prisma.socialAccount.findFirst({
+              where: {
+                userId: post.userId,
+                platform: platformData.platform
+              }
+            });
+
+            if (!socialAccount) {
+              throw new Error(`No connected ${platform} account found`);
+            }
+
+            // Get platform client
+            const client = await getPlatformClient(platform, socialAccount);
+
+            // Get post type handler
+            const handler = postTypeHandlers[platform]?.[postType];
+            if (!handler) {
+              throw new Error(`Unsupported post type "${postType}" for ${platform}`);
+            }
+
+            // Prepare post content
             const postContent = {
-              caption: `${post.caption} ${post.hashtags}`.trim(),
-              mediaFiles: post.mediaFiles || []
+              caption: post.caption,
+              mediaFiles: processedMedia,
+              hashtags: post.hashtags,
+              settings: platformData.settings || {},
+              threadContent: post.threadContent // For thread-type posts
             };
 
-            let result;
-            switch (platformData.platform.toLowerCase()) {
-              case 'twitter':
-                const twitterClient = createTwitterClient(
-                  socialAccount.accessToken,
-                  socialAccount.refreshToken
-                );
-                result = await postToTwitter(twitterClient, postContent);
-                break;
+            // Execute platform-specific post handler
+            const result = await handler(client, postContent);
 
-              case 'facebook':
-                const fbClient = createFacebookClient(socialAccount.accessToken);
-                result = await postToFacebook(fbClient, postContent);
-                break;
-
-              case 'instagram':
-                const igClient = createInstagramClient(socialAccount.username, socialAccount.accessToken);
-                await authenticateInstagram(igClient, socialAccount.username, socialAccount.accessToken);
-                result = await postToInstagram(igClient, postContent);
-                break;
-
-              case 'linkedin':
-                const linkedinClient = createLinkedInClient(socialAccount.accessToken);
-                result = await postToLinkedIn(linkedinClient, postContent);
-                break;
-
-              default:
-                throw new Error(`Unsupported platform: ${platformData.platform}`);
-            }
-
-            console.log(`Successfully published to ${platformData.platform} for post ${post.id}`, result);
-
+            // Update post platform status
             await prisma.postPlatform.update({
               where: { id: platformData.id },
               data: {
@@ -90,8 +194,12 @@ export const schedulePost = async (post) => {
                 externalId: result.id || result.postId,
               },
             });
+
+            return { platform, success: true };
           } catch (error) {
-            console.error(`Failed to publish to ${platformData.platform} for post ${post.id}:`, error);
+            console.error(`Failed to publish to ${platform}:`, error);
+            
+            // Update platform status with error
             await prisma.postPlatform.update({
               where: { id: platformData.id },
               data: {
@@ -99,32 +207,35 @@ export const schedulePost = async (post) => {
                 error: error.message,
               },
             });
-          }
-        }
 
-        // Update main post status based on platform statuses
-        const updatedPlatforms = await prisma.postPlatform.findMany({
-          where: { postId: post.id },
+            return { platform, success: false, error: error.message };
+          }
         });
 
-        const allPublished = updatedPlatforms.every(
-          (p) => p.status === 'published'
-        );
-        const allFailed = updatedPlatforms.every((p) => p.status === 'failed');
+        // Wait for all platforms to complete
+        const results = await Promise.all(platformPromises);
+
+        // Update main post status
+        const allSuccess = results.every(r => r.success);
+        const allFailed = results.every(r => !r.success);
 
         await prisma.post.update({
           where: { id: post.id },
           data: {
-            status: allPublished
-              ? 'published'
-              : allFailed
-              ? 'failed'
-              : 'partial',
+            status: allSuccess ? 'published' : allFailed ? 'failed' : 'partial',
             error: allFailed ? 'Failed to publish to all platforms' : null,
           },
         });
+
+        // Cleanup processed media
+        processedMedia.forEach(media => {
+          if (media.buffer) {
+            media.buffer = null;
+          }
+        });
+
       } catch (error) {
-        console.error(`Failed to publish scheduled post ${post.id}:`, error);
+        console.error(`Failed to process scheduled post ${post.id}:`, error);
         await prisma.post.update({
           where: { id: post.id },
           data: {
@@ -143,6 +254,30 @@ export const schedulePost = async (post) => {
     throw error;
   }
 };
+
+// Helper function to get platform client
+async function getPlatformClient(platform, socialAccount) {
+  switch (platform) {
+    case 'twitter':
+      return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
+    case 'facebook':
+      return createFacebookClient(socialAccount.accessToken);
+    case 'instagram':
+      return createInstagramClient(socialAccount.accessToken);
+    case 'linkedin':
+      return createLinkedInClient(socialAccount.accessToken);
+    case 'youtube':
+      return createYouTubeClient(socialAccount.accessToken);
+    case 'tiktok':
+      return createTikTokClient(socialAccount.accessToken);
+    case 'pinterest':
+      return createPinterestClient(socialAccount.accessToken);
+    case 'threads':
+      return createThreadsClient(socialAccount.accessToken);
+    default:
+      throw new Error(`Unsupported platform: ${platform}`);
+  }
+}
 
 export const cancelScheduledPost = async (postId) => {
   try {
