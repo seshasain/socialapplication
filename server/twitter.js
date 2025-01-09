@@ -25,27 +25,26 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
             }
             const mediaBuffer = await mediaResponse.buffer();
 
-            // Determine media type
+            // Determine media type and validate
             let mediaType;
-            switch (file.type) {
-              case 'image/jpeg':
-              case 'image/png':
-                mediaType = 'image/jpeg';
-                break;
-              case 'image/gif':
-                mediaType = 'image/gif';
-                break;
-              case 'video/mp4':
-                mediaType = 'video/mp4';
-                break;
-              default:
-                throw new Error(`Unsupported media type: ${file.type}`);
+            const mimeType = file.type.toLowerCase();
+            
+            if (mimeType.startsWith('image/')) {
+              if (mimeType === 'image/gif') {
+                mediaType = 'gif';
+              } else {
+                mediaType = 'image/jpeg'; // Twitter prefers JPEG
+              }
+            } else if (mimeType.startsWith('video/')) {
+              mediaType = 'video/mp4'; // Twitter accepts MP4
+            } else {
+              throw new Error(`Unsupported media type: ${mimeType}`);
             }
 
-            // Upload media to Twitter
+            // Upload media to Twitter with proper type
             const mediaId = await client.v1.uploadMedia(mediaBuffer, {
               mimeType: mediaType,
-              target: file.type.startsWith('video/') ? 'tweet_video' : 'tweet_image'
+              target: mediaType === 'video/mp4' ? 'tweet_video' : 'tweet_image'
             });
 
             return mediaId;

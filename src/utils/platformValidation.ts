@@ -7,7 +7,13 @@ const PLATFORM_LIMITS = {
     maxVideoSize: 512,
     maxImages: 4,
     maxVideos: 1,
-    supportedMediaTypes: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'image/webp'],
+    supportedMediaTypes: [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'video/mp4',
+      'image/webp'
+    ],
     maxMediaSize: {
       image: 5, // 5MB for images
       video: 512, // 512MB for videos
@@ -77,9 +83,15 @@ export function validatePlatformContent(platform: string, fullText: string, medi
 
   // Media validations
   if (mediaFiles.length > 0) {
-    const images = mediaFiles.filter(file => file.type.startsWith('image/'));
-    const videos = mediaFiles.filter(file => file.type.startsWith('video/'));
-    const gifs = mediaFiles.filter(file => file.type === 'image/gif');
+    const images = mediaFiles.filter(file => 
+      file.type.startsWith('image/') && file.type !== 'image/gif'
+    );
+    const videos = mediaFiles.filter(file => 
+      file.type.startsWith('video/')
+    );
+    const gifs = mediaFiles.filter(file => 
+      file.type === 'image/gif'
+    );
 
     // Check media count limits
     if (images.length > limits.maxImages) {
@@ -98,23 +110,22 @@ export function validatePlatformContent(platform: string, fullText: string, medi
 
     // Check media type support and size limits
     mediaFiles.forEach(file => {
-      // Handle generic image type
-      const actualType = file.type === 'image' ? 'image/png' : file.type;
+      const mimeType = file.type.toLowerCase();
       
-      if (!limits.supportedMediaTypes.includes(actualType)) {
+      if (!limits.supportedMediaTypes.includes(mimeType)) {
         errors.push({
           platform,
-          message: `File type ${actualType} is not supported on ${platform}`
+          message: `File type ${mimeType} is not supported on ${platform}`
         });
         return;
       }
 
       const sizeInMB = file.size / (1024 * 1024);
-      const isImage = actualType.startsWith('image/');
-      const isVideo = actualType.startsWith('video/');
-      const isGif = actualType === 'image/gif';
+      const isImage = mimeType.startsWith('image/') && mimeType !== 'image/gif';
+      const isVideo = mimeType.startsWith('video/');
+      const isGif = mimeType === 'image/gif';
 
-      if (isImage && !isGif && sizeInMB > limits.maxMediaSize.image) {
+      if (isImage && sizeInMB > limits.maxMediaSize.image) {
         errors.push({
           platform,
           message: `Image size exceeds ${limits.maxMediaSize.image}MB limit for ${platform}`
@@ -143,6 +154,12 @@ export function validatePlatformContent(platform: string, fullText: string, medi
           errors.push({
             platform,
             message: 'Twitter does not support mixing images and videos in the same post'
+          });
+        }
+        if (gifs.length > 0 && (images.length > 0 || videos.length > 0)) {
+          errors.push({
+            platform,
+            message: 'Twitter does not support mixing GIFs with other media types'
           });
         }
         break;
