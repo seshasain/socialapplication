@@ -8,6 +8,7 @@ const PLATFORM_LIMITS = {
     maxImages: 4,
     maxVideos: 1,
     supportedMediaTypes: [
+      'image',
       'image/jpeg',
       'image/png',
       'image/gif',

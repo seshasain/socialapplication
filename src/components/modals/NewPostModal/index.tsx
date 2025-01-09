@@ -210,109 +210,101 @@ export default function NewPostModal({
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationErrors([]);
-    setPostSuccess({});
+  
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setValidationErrors([]);
+  setPostSuccess({});
 
-    if (!validateForm()) {
-      return;
+  if (!validateForm()) {
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setError(null);
+
+    // Calculate scheduled date time first
+    let scheduledDateTime: Date;
+    if (publishNow) {
+      scheduledDateTime = new Date();
+      scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
+    } else {
+      const [year, month, day] = postData.scheduledDate.split('-').map(Number);
+      const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
+      scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
     }
 
-    try {
-      setLoading(true);
-      setError(null);
+    // Ensure media files are properly formatted
+    const mediaFileIds = uploadedFiles.map(file => ({ id: file.id }));
 
-      // Calculate scheduled date time first
-      let scheduledDateTime: Date;
-      if (publishNow) {
-        scheduledDateTime = new Date();
-        scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
-      } else {
-        const [year, month, day] = postData.scheduledDate.split('-').map(Number);
-        const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
-        scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
-      }
+    const requestBody = {
+      caption: postData.caption,
+      scheduledDate: scheduledDateTime.toISOString(),
+      platforms: selectedPlatforms.map(id => ({
+        id,
+        platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
+        postType: selectedPostType
+      })),
+      hashtags: postData.hashtags,
+      visibility: postData.visibility,
+      mediaFiles: mediaFileIds, // Send as array of objects with IDs
+      platformSpecificData: postData.platformSpecificData,
+      publishNow
+    };
 
-      console.log('Creating post with data:', {
-        caption: postData.caption,
-        scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms,
-        hashtags: postData.hashtags,
-        visibility: postData.visibility,
-        mediaFiles: uploadedFiles.map(file => file.id),
-        platformSpecificData: postData.platformSpecificData,
-        publishNow
-      });
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
-      console.log('Scheduled date time:', scheduledDateTime.toISOString());
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
 
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
+    const response = await fetch(`${APP_URL}/api/posts`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-      const requestBody = {
-        caption: postData.caption,
-        scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms.map(id => ({
-          id,
-          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
-          postType: selectedPostType
-        })),
-        hashtags: postData.hashtags,
-        visibility: postData.visibility,
-        mediaFiles: uploadedFiles.map(file => file.id),
-        platformSpecificData: postData.platformSpecificData,
-        publishNow
-      };
-
-      console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch(`${APP_URL}/api/posts`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      console.log('Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(e => ({ message: 'Failed to parse error response' }));
-        console.error('Error response:', errorData);
-        throw new Error(errorData.message || 'Failed to create post');
-      }
-
-      const responseData = await response.json();
-      console.log('Success response:', responseData);
-      
-      onSave(responseData);
-
-      const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
-        acc[platform] = true;
-        return acc;
-      }, {} as { [key: string]: boolean });
-      
-      setPostSuccess(newPostSuccess);
-      toast.success('Post created successfully');
-      
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-    } catch (err) {
-      console.error('Post creation error:', err);
-      if (err instanceof Error) {
-        setError(err.message);
-        toast.error(err.message);
-      } else {
-        setError('Failed to create post');
-        toast.error('Failed to create post');
-      }
-    } finally {
-      setLoading(false);
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Error response:', errorData);
+      throw new Error(errorData.message || 'Failed to create post');
     }
-  };
+
+    const responseData = await response.json();
+    console.log('Success response:', responseData);
+    
+    onSave(responseData);
+
+    const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
+      acc[platform] = true;
+      return acc;
+    }, {} as { [key: string]: boolean });
+    
+    setPostSuccess(newPostSuccess);
+    toast.success('Post created successfully');
+    
+    // Clean up files after successful post creation
+    await cleanupFiles(uploadedFiles.map(file => file.id));
+    
+    setTimeout(() => {
+      handleClose();
+    }, 2000);
+  } catch (err) {
+    console.error('Post creation error:', err);
+    if (err instanceof Error) {
+      setError(err.message);
+      toast.error(err.message);
+    } else {
+      setError('Failed to create post');
+      toast.error('Failed to create post');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (!isOpen) return null;
 

@@ -38,10 +38,10 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
 /**
  * Delete a single file by its ID
  */
+// src/service/fileCleanupService.ts
+
 export async function deleteFile(fileId: string): Promise<void> {
-  if (!fileId) {
-    return; // Skip if no fileId provided
-  }
+  if (!fileId) return;
 
   const token = localStorage.getItem('token');
   if (!token) throw new Error('No authentication token');
@@ -60,7 +60,6 @@ export async function deleteFile(fileId: string): Promise<void> {
       throw new Error(data.message || `Failed to delete file: ${response.statusText}`);
     }
 
-    // Success or 404 (already deleted) - both are OK
     console.log("File deleted or already removed");
     return;
   } catch (error) {
