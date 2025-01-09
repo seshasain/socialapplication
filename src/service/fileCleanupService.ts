@@ -40,7 +40,7 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
  */
 export async function deleteFile(fileId: string): Promise<void> {
   if (!fileId) {
-    throw new Error('No file ID provided');
+    return; // Skip if no fileId provided
   }
 
   const token = localStorage.getItem('token');
@@ -54,17 +54,21 @@ export async function deleteFile(fileId: string): Promise<void> {
       }
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
+    // Don't throw error for 404 - file is already gone
+    if (!response.ok && response.status !== 404) {
+      const data = await response.json();
       throw new Error(data.message || `Failed to delete file: ${response.statusText}`);
     }
 
-    // Success response doesn't need to throw an error
-    console.log("files deleted");
+    // Success or 404 (already deleted) - both are OK
+    console.log("File deleted or already removed");
     return;
   } catch (error) {
+    if (error instanceof Error && error.message.includes('404')) {
+      // File already gone - not an error
+      return;
+    }
     console.error('File deletion error:', error);
-    throw error instanceof Error ? error : new Error('Failed to delete file');
+    throw error;
   }
 }
