@@ -13,6 +13,8 @@ import { uploadToB2, getFileFromB2 } from './storage/b2.js';
 
 const prisma = new PrismaClient();
 const scheduledJobs = new Map();
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 5000; // 5 seconds
 
 // Rate limiters for different platforms
 const rateLimiters = {
@@ -31,7 +33,6 @@ const postTypeHandlers = {
   twitter: {
     post: postToTwitter,
     thread: async (client, content) => {
-      // Handle Twitter thread posting
       const tweets = [];
       for (const tweet of content.threadContent) {
         const response = await postToTwitter(client, {
@@ -60,9 +61,6 @@ const postTypeHandlers = {
     },
     reel: async (client, content) => {
       return postToInstagram(client, { ...content, isReel: true });
-    },
-    carousel: async (client, content) => {
-      return postToInstagram(client, { ...content, isCarousel: true });
     }
   },
   linkedin: {
@@ -89,7 +87,6 @@ const postTypeHandlers = {
   threads: {
     post: postToThreads,
     thread: async (client, content) => {
-      // Handle Threads thread posting
       const posts = [];
       for (const thread of content.threadContent) {
         const response = await postToThreads(client, {
@@ -109,23 +106,58 @@ async function preprocessMedia(mediaFiles) {
   const processedMedia = [];
   
   for (const file of mediaFiles) {
-    // Get pre-signed URL for the media file
-    const mediaUrl = await getFileFromB2(file.s3Key);
-    
-    // Download and process if needed
-    const processedFile = {
-      ...file,
-      url: mediaUrl,
-      buffer: null // Will be populated only when needed
-    };
-    
-    processedMedia.push(processedFile);
+    try {
+      // Get pre-signed URL for the media file
+      const mediaBuffer = await getFileFromB2(file.s3Key);
+      
+      const processedFile = {
+        ...file,
+        buffer: mediaBuffer
+      };
+      
+      processedMedia.push(processedFile);
+    } catch (error) {
+      console.error(`Failed to process media file ${file.id}:`, error);
+      throw error;
+    }
   }
   
   return processedMedia;
 }
 
-// Improved scheduling function with media optimization
+// Get platform client with retry logic
+async function getPlatformClient(platform, socialAccount, retryCount = 0) {
+  try {
+    switch (platform.toLowerCase()) {
+      case 'twitter':
+        return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
+      case 'facebook':
+        return createFacebookClient(socialAccount.accessToken);
+      case 'instagram':
+        return createInstagramClient(socialAccount.accessToken);
+      case 'linkedin':
+        return createLinkedInClient(socialAccount.accessToken);
+      case 'youtube':
+        return createYouTubeClient(socialAccount.accessToken);
+      case 'tiktok':
+        return createTikTokClient(socialAccount.accessToken);
+      case 'pinterest':
+        return createPinterestClient(socialAccount.accessToken);
+      case 'threads':
+        return createThreadsClient(socialAccount.accessToken);
+      default:
+        throw new Error(`Unsupported platform: ${platform}`);
+    }
+  } catch (error) {
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retrying client creation for ${platform}. Attempt ${retryCount + 1}/${MAX_RETRIES}`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return getPlatformClient(platform, socialAccount, retryCount + 1);
+    }
+    throw error;
+  }
+}
+
 export const schedulePost = async (post) => {
   console.log('Scheduling post:', post.id);
   
@@ -254,30 +286,6 @@ export const schedulePost = async (post) => {
     throw error;
   }
 };
-
-// Helper function to get platform client
-async function getPlatformClient(platform, socialAccount) {
-  switch (platform) {
-    case 'twitter':
-      return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
-    case 'facebook':
-      return createFacebookClient(socialAccount.accessToken);
-    case 'instagram':
-      return createInstagramClient(socialAccount.accessToken);
-    case 'linkedin':
-      return createLinkedInClient(socialAccount.accessToken);
-    case 'youtube':
-      return createYouTubeClient(socialAccount.accessToken);
-    case 'tiktok':
-      return createTikTokClient(socialAccount.accessToken);
-    case 'pinterest':
-      return createPinterestClient(socialAccount.accessToken);
-    case 'threads':
-      return createThreadsClient(socialAccount.accessToken);
-    default:
-      throw new Error(`Unsupported platform: ${platform}`);
-  }
-}
 
 export const cancelScheduledPost = async (postId) => {
   try {
