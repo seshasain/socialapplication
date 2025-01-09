@@ -54,7 +54,9 @@
     "backblaze-b2": "^1.7.0",
     "@types/backblaze-b2": "^1.5.6",
     "fb": "^2.0.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "limiter": "^2.1.0",
+    "googleapis": "^39.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
