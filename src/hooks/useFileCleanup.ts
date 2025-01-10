@@ -1,3 +1,5 @@
+// src/hooks/useFileCleanup.ts
+
 import { useEffect, useRef, useCallback } from 'react';
 import { MediaFile } from '../types/media';
 import { toast } from 'react-toastify';
@@ -18,47 +20,54 @@ export function useFileCleanup({
   const filesRef = useRef<MediaFile[]>([]);
   const cleanupInProgress = useRef(false);
   const unmounting = useRef(false);
+  const cleanedUpFiles = useRef(new Set<string>());
 
   // Keep filesRef updated with latest files
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
 
-  // Handle cleanup on unmount and beforeunload
-  useEffect(() => {
-    // Flag for tracking unmounting state
-    unmounting.current = false;
+  // Cleanup function
+  const cleanup = async () => {
+    if (cleanupInProgress.current || !filesRef.current.length) return;
 
-    // Cleanup function
-    const cleanup = async () => {
-      if (cleanupInProgress.current || !filesRef.current.length) return;
+    try {
+      cleanupInProgress.current = true;
+      // Only cleanup files that haven't been cleaned up yet
+      const filesToCleanup = filesRef.current.filter(file => !cleanedUpFiles.current.has(file.id));
+      
+      if (filesToCleanup.length === 0) return;
 
-      try {
-        cleanupInProgress.current = true;
-        const fileIds = filesRef.current.map(file => file.id);
-        await onCleanup(fileIds);
-        if (!silent && !unmounting.current) {
-          toast.success('Files cleaned up successfully');
-        }
-      } catch (error) {
-        console.error('Failed to cleanup files:', error);
-        if (!unmounting.current) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to cleanup files';
-          if (!silent) {
-            toast.error(errorMessage);
-          }
-          onError?.(error instanceof Error ? error : new Error(errorMessage));
-        }
-      } finally {
-        cleanupInProgress.current = false;
+      const fileIds = filesToCleanup.map(file => file.id);
+      await onCleanup(fileIds);
+      
+      // Mark files as cleaned up
+      fileIds.forEach(id => cleanedUpFiles.current.add(id));
+
+      if (!silent && !unmounting.current) {
+        toast.success('Files cleaned up successfully');
       }
-    };
+    } catch (error) {
+      console.error('Failed to cleanup files:', error);
+      if (!unmounting.current) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to cleanup files';
+        if (!silent) {
+          toast.error(errorMessage);
+        }
+        onError?.(error instanceof Error ? error : new Error(errorMessage));
+      }
+    } finally {
+      cleanupInProgress.current = false;
+    }
+  };
+
+  useEffect(() => {
+    unmounting.current = false;
 
     // Handle tab close, refresh, etc.
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (filesRef.current.length > 0) {
         cleanup();
-        // Show confirmation dialog if files are being uploaded
         event.preventDefault();
         event.returnValue = '';
       }
@@ -78,12 +87,10 @@ export function useFileCleanup({
       }
     };
 
-    // Add event listeners
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('offline', handleOffline);
 
-    // Cleanup on unmount
     return () => {
       unmounting.current = true;
       window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -99,7 +106,16 @@ export function useFileCleanup({
 
     try {
       cleanupInProgress.current = true;
-      await onCleanup(fileIds);
+      // Only cleanup files that haven't been cleaned up yet
+      const filesToCleanup = fileIds.filter(id => !cleanedUpFiles.current.has(id));
+      
+      if (filesToCleanup.length === 0) return;
+
+      await onCleanup(filesToCleanup);
+      
+      // Mark files as cleaned up
+      filesToCleanup.forEach(id => cleanedUpFiles.current.add(id));
+
       if (!silent && !unmounting.current) {
         toast.success('Files cleaned up successfully');
       }

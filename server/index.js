@@ -2627,6 +2627,32 @@ app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to delete files' });
   }
 });
+app.post('/api/media/verify', async (req, res) => {
+  try {
+    const { mediaIds } = req.body;
+    console.log(mediaIds);
+    
+    if (!mediaIds || !Array.isArray(mediaIds)) {
+      return res.status(400).json({ error: 'Invalid media IDs' });
+    }
+
+    const mediaFiles = await prisma.mediaFile.findMany({
+      where: {
+        id: { in: mediaIds },
+        userId: req.user.id
+      }
+    });
+
+    if (mediaFiles.length !== mediaIds.length) {
+      return res.status(404).json({ error: 'One or more media files not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Media verification error:', error);
+    res.status(500).json({ error: 'Failed to verify media files' });
+  }
+});
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

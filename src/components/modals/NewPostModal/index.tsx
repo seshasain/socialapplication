@@ -211,6 +211,10 @@ export default function NewPostModal({
   };
 
   
+// src/components/modals/NewPostModal/index.tsx
+
+// In the handleSubmit function:
+
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setValidationErrors([]);
@@ -224,7 +228,6 @@ const handleSubmit = async (e: React.FormEvent) => {
     setLoading(true);
     setError(null);
 
-    // Calculate scheduled date time first
     let scheduledDateTime: Date;
     if (publishNow) {
       scheduledDateTime = new Date();
@@ -235,8 +238,25 @@ const handleSubmit = async (e: React.FormEvent) => {
       scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
     }
 
-    // Ensure media files are properly formatted
-    const mediaFileIds = uploadedFiles.map(file => ({ id: file.id }));
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    // First verify all media files exist
+    const mediaFiles = uploadedFiles.map(file => file.id);
+    if (mediaFiles.length > 0) {
+      const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ mediaIds: mediaFiles })
+      });
+
+      if (!mediaCheckResponse.ok) {
+        throw new Error('One or more media files are no longer available');
+      }
+    }
 
     const requestBody = {
       caption: postData.caption,
@@ -248,15 +268,10 @@ const handleSubmit = async (e: React.FormEvent) => {
       })),
       hashtags: postData.hashtags,
       visibility: postData.visibility,
-      mediaFiles: mediaFileIds, // Send as array of objects with IDs
+      mediaFiles,
       platformSpecificData: postData.platformSpecificData,
       publishNow
     };
-
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
-    const token = localStorage.getItem('token');
-    if (!token) throw new Error('No authentication token');
 
     const response = await fetch(`${APP_URL}/api/posts`, {
       method: 'POST',
@@ -269,13 +284,10 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Error response:', errorData);
       throw new Error(errorData.message || 'Failed to create post');
     }
 
     const responseData = await response.json();
-    console.log('Success response:', responseData);
-    
     onSave(responseData);
 
     const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
@@ -286,25 +298,21 @@ const handleSubmit = async (e: React.FormEvent) => {
     setPostSuccess(newPostSuccess);
     toast.success('Post created successfully');
     
-    // Clean up files after successful post creation
-    await cleanupFiles(uploadedFiles.map(file => file.id));
+    // Clear uploaded files after successful post creation
+    setUploadedFiles([]);
     
     setTimeout(() => {
       handleClose();
     }, 2000);
   } catch (err) {
     console.error('Post creation error:', err);
-    if (err instanceof Error) {
-      setError(err.message);
-      toast.error(err.message);
-    } else {
-      setError('Failed to create post');
-      toast.error('Failed to create post');
-    }
+    setError(err instanceof Error ? err.message : 'Failed to create post');
+    toast.error(err instanceof Error ? err.message : 'Failed to create post');
   } finally {
     setLoading(false);
   }
 };
+
 
   if (!isOpen) return null;
 
