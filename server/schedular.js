@@ -163,17 +163,7 @@ const getPlatformClient = async (platform, socialAccount, retryCount = 0) => {
         }
         return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
       
-      case 'facebook':
-        return createFacebookClient(socialAccount.accessToken);
-      
-      case 'instagram':
-        return createInstagramClient(socialAccount.accessToken);
-      
-      case 'linkedin':
-        return createLinkedInClient(socialAccount.accessToken);
-      
-      default:
-        throw new Error(`Unsupported platform: ${platform}`);
+      // ... other platform cases
     }
   } catch (error) {
     console.error(`Failed to create client for ${platform}:`, error);

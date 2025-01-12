@@ -120,22 +120,27 @@ function authenticateToken(req, res, next) {
 // Twitter OAuth routes
 app.get('/api/auth/twitter', authenticateToken, async (req, res) => {
   try {
-    if (!process.env.TWITTER_API_KEY || !process.env.TWITTER_API_SECRET) {
-      throw new Error('Twitter API credentials not configured');
+    if (!req.user?.id) {
+      throw new Error('User not authenticated');
     }
 
-    const { url, oauth_token, oauth_token_secret } = await twitterClient.generateAuthLink(
-      'http://localhost:5000/api/auth/twitter/callback',
+    const client = new TwitterApi({
+      appKey: process.env.TWITTER_API_KEY,
+      appSecret: process.env.TWITTER_API_SECRET,
+    });
+
+    const authLink = await client.generateAuthLink(
+      `${process.env.APP_URL}/api/auth/twitter/callback`,
       { linkMode: 'authorize' }
     );
 
-    // Store the OAuth token secret for this session
-    oauthTokens.set(oauth_token, {
-      oauth_token_secret,
+    // Store the OAuth token secret and user ID for later use
+    oauthTokens.set(authLink.oauth_token, {
+      oauth_token_secret: authLink.oauth_token_secret,
       userId: req.user.id
     });
 
-    res.json({ authUrl: url });
+    res.json({ authUrl: authLink.url });
   } catch (error) {
     console.error('Twitter auth error:', error);
     res.status(500).json({ error: 'Failed to initialize Twitter authentication' });
@@ -227,27 +232,43 @@ app.get('/api/auth/twitter/callback', async (req, res) => {
       throw new Error('Missing OAuth token or verifier');
     }
 
+    // Retrieve stored data
+    const storedData = oauthTokens.get(oauth_token);
+    if (!storedData) {
+      throw new Error('Invalid OAuth token');
+    }
+
+    const { oauth_token_secret, userId } = storedData;
+
     const client = new TwitterApi({
       appKey: process.env.TWITTER_API_KEY,
       appSecret: process.env.TWITTER_API_SECRET,
       accessToken: oauth_token,
-      accessSecret: process.env.TWITTER_ACCESS_SECRET,
+      accessSecret: oauth_token_secret,
     });
 
-    const { accessToken, accessSecret, screenName, userId } = 
+    // Get final tokens
+    const { client: loggedClient, accessToken, accessSecret } = 
       await client.login(oauth_verifier);
 
-    // Save both access token and secret
+    // Get user info
+    const twitterUser = await loggedClient.v2.me();
+
+    // Save account
     const socialAccount = await prisma.socialAccount.create({
       data: {
+        userId,
         platform: 'twitter',
+        username: twitterUser.data.username,
+        profileUrl: `https://twitter.com/${twitterUser.data.username}`,
         accessToken,
-        accessSecret, // Make sure this is saved!
-        username: screenName,
-        profileUrl: `https://twitter.com/${screenName}`,
-        userId: req.user.id
+        accessSecret,
+        followerCount: twitterUser.data.public_metrics?.followers_count || 0
       }
     });
+
+    // Clean up stored token
+    oauthTokens.delete(oauth_token);
 
     res.redirect(`${process.env.FRONTEND_URL}/dashboard?twitter=connected`);
   } catch (error) {
