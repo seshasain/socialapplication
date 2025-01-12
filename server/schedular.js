@@ -270,18 +270,6 @@ export const schedulePost = async (post) => {
         // Wait for all platforms to complete
         const results = await Promise.all(platformPromises);
 
-        // Update main post status
-        const allSuccess = results.every(r => r.success);
-        const allFailed = results.every(r => !r.success);
-
-        await prisma.post.update({
-          where: { id: post.id },
-          data: {
-            status: allSuccess ? 'published' : allFailed ? 'failed' : 'partial',
-            error: allFailed ? 'Failed to publish to all platforms' : null,
-          },
-        });
-
         // Cleanup processed media
         processedMedia.forEach(media => {
           if (media.buffer) {
@@ -291,15 +279,6 @@ export const schedulePost = async (post) => {
       } catch (error) {
         console.error(`Failed to process scheduled post ${post.id}:`, error);
         
-        // Update post status to failed with detailed error message
-        await prisma.post.update({
-          where: { id: post.id },
-          data: {
-            status: 'failed',
-            error: `Failed to process post: ${error.message}`,
-          },
-        });
-
         // Update platform statuses
         await Promise.all(post.platforms.map(platform => 
           prisma.postPlatform.update({
@@ -321,6 +300,7 @@ export const schedulePost = async (post) => {
     throw error;
   }
 };
+
 export const cancelScheduledPost = async (postId) => {
   try {
     if (scheduledJobs.has(postId)) {
