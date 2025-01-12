@@ -54,6 +54,7 @@ export default function NewPostModal({
   const [isClosing, setIsClosing] = useState(false);
   const [threadContent, setThreadContent] = useState<string[]>(['']);
   const [threadMedia, setThreadMedia] = useState<Record<string, MediaFile[]>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
@@ -69,14 +70,15 @@ export default function NewPostModal({
   });
   const [uploadedFiles, setUploadedFiles] = useState<MediaFile[]>([]);
 
-  // Initialize file cleanup hook
-  const { cleanupFiles } = useFileCleanup({
+  // Use the file cleanup hook with disabled flag during submission
+  const { cleanupFiles, isCleaningUp, isFilePendingCleanup } = useFileCleanup({
     files: uploadedFiles,
-    onCleanup: async (fileIds: string[]) => {
+    onCleanup: async (fileIds) => {
       for (const id of fileIds) {
         await deleteFile(id);
       }
-    }
+    },
+    disabled: isSubmitting // Disable cleanup during submission
   });
 
   const handleMediaUpload = async (files: File[], threadId?: string) => {
@@ -128,11 +130,11 @@ export default function NewPostModal({
 
   // Handle modal close
   const handleClose = async () => {
-    if (isClosing) return;
-    setIsClosing(true);
-  
+    if (isSubmitting || isCleaningUp) return;
+
     try {
-      if (uploadedFiles.length > 0) {
+      // Only cleanup files if we're not in the middle of submitting
+      if (!isSubmitting && uploadedFiles.length > 0) {
         await cleanupFiles(uploadedFiles.map(file => file.id));
         setUploadedFiles([]);
       }
@@ -210,8 +212,6 @@ export default function NewPostModal({
     return true;
   };
 
-  
-// src/components/modals/NewPostModal/index.tsx
 
 // In the handleSubmit function:
 
@@ -225,7 +225,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   }
 
   try {
-    setLoading(true);
+    setIsSubmitting(true);
     setError(null);
 
     let scheduledDateTime: Date;
@@ -241,7 +241,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No authentication token');
 
-    // First verify all media files exist
+    // Verify all media files exist before proceeding
     const mediaFiles = uploadedFiles.map(file => file.id);
     if (mediaFiles.length > 0) {
       const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
@@ -309,7 +309,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     setError(err instanceof Error ? err.message : 'Failed to create post');
     toast.error(err instanceof Error ? err.message : 'Failed to create post');
   } finally {
-    setLoading(false);
+    setIsSubmitting(false);
   }
 };
 
