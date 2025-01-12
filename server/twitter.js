@@ -1,9 +1,20 @@
 import { TwitterApi } from 'twitter-api-v2';
 
 export const createTwitterClient = (accessToken, accessSecret) => {
+  // Add detailed logging
+  console.log('Creating Twitter client with credentials:', {
+    hasAppKey: !!process.env.TWITTER_API_KEY,
+    hasAppSecret: !!process.env.TWITTER_API_SECRET,
+    hasAccessToken: !!accessToken,
+    hasAccessSecret: !!accessSecret
+  });
+
+  if (!process.env.TWITTER_API_KEY || !process.env.TWITTER_API_SECRET) {
+    throw new Error('Twitter API credentials not configured');
+  }
+
   if (!accessToken || !accessSecret) {
-    console.error('Twitter credentials missing:', { hasToken: !!accessToken, hasSecret: !!accessSecret });
-    throw new Error('User Twitter credentials not provided');
+    throw new Error('Twitter access token and secret are required');
   }
 
   try {
@@ -18,6 +29,7 @@ export const createTwitterClient = (accessToken, accessSecret) => {
     throw error;
   }
 };
+
 
 export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
   try {
@@ -39,8 +51,13 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
               size: file.size
             });
 
-            const mediaBuffer = await fetch(file.url).then(res => res.buffer());
-            const mediaId = await client.v1.uploadMedia(mediaBuffer, {
+            // Use node-fetch to get the buffer
+            const response = await fetch(file.url);
+            if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
+            
+            const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
+            
+            const mediaId = await client.v1.uploadMedia(buffer, {
               mimeType: file.type
             });
 
