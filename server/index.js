@@ -23,6 +23,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
 const prisma = new PrismaClient();
 const app = express();
+import { ensureAuthorized } from './storage/b2.js';
 
 
 // Middleware
@@ -77,6 +78,21 @@ const twitterClient = new TwitterApi({
   appKey: process.env.TWITTER_API_KEY || '',
   appSecret: process.env.TWITTER_API_SECRET || '',
 });
+
+async function verifyB2Credentials() {
+  try {
+    await ensureAuthorized();
+    console.log('✅ B2 credentials verified successfully');
+  } catch (error) {
+    console.error('❌ B2 credentials verification failed:', error);
+    // Optionally exit the process if B2 is critical for your application
+    // process.exit(1);
+  }
+}
+
+// Call this when starting your server
+await verifyB2Credentials();
+
 
 // Store OAuth tokens temporarily (in production, use Redis or another session store)
 const oauthTokens = new Map();
@@ -2418,13 +2434,6 @@ const b2 = new B2({
   applicationKey: process.env.VITE_B2_APPLICATION_KEY
 });
 
-let authorized = false;
-async function ensureAuthorized() {
-  if (!authorized) {
-    await b2.authorize();
-    authorized = true;
-  }
-}
 
 app.post('/api/media/presigned-url', authenticateToken, async (req, res) => {
   try {

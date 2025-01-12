@@ -127,14 +127,113 @@ export default function NewPostModal({
       setStep('type');
     }
   };
-
-  // Handle modal close
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationErrors([]);
+    setPostSuccess({});
+  
+    if (!validateForm()) {
+      return;
+    }
+  
+    try {
+      setIsSubmitting(true);
+      setError(null);
+  
+      let scheduledDateTime: Date;
+      if (publishNow) {
+        scheduledDateTime = new Date();
+        scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
+      } else {
+        const [year, month, day] = postData.scheduledDate.split('-').map(Number);
+        const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
+        scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
+      }
+  
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token');
+  
+      // Only verify files exist, don't delete them for scheduled posts
+      const mediaFiles = uploadedFiles.map(file => file.id);
+      if (mediaFiles.length > 0) {
+        const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ mediaIds: mediaFiles })
+        });
+  
+        if (!mediaCheckResponse.ok) {
+          throw new Error('One or more media files are no longer available');
+        }
+      }
+  
+      const requestBody = {
+        caption: postData.caption,
+        scheduledDate: scheduledDateTime.toISOString(),
+        platforms: selectedPlatforms.map(id => ({
+          id,
+          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
+          postType: selectedPostType
+        })),
+        hashtags: postData.hashtags,
+        visibility: postData.visibility,
+        mediaFiles,
+        platformSpecificData: postData.platformSpecificData,
+        publishNow
+      };
+  
+      const response = await fetch(`${APP_URL}/api/posts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create post');
+      }
+  
+      const responseData = await response.json();
+      onSave(responseData);
+  
+      const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
+        acc[platform] = true;
+        return acc;
+      }, {} as { [key: string]: boolean });
+      
+      setPostSuccess(newPostSuccess);
+      toast.success(publishNow ? 'Post created successfully' : 'Post scheduled successfully');
+      
+      // Only clear uploaded files for immediate posts
+      if (publishNow) {
+        setUploadedFiles([]);
+      }
+      
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Post creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create post');
+      toast.error(err instanceof Error ? err.message : 'Failed to create post');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
     if (isSubmitting || isCleaningUp) return;
-
+  
     try {
-      // Only cleanup files if we're not in the middle of submitting
-      if (!isSubmitting && uploadedFiles.length > 0) {
+      // Only cleanup files if we're not in the middle of submitting and it's not a scheduled post
+      if (!isSubmitting && uploadedFiles.length > 0 && publishNow) {
         await cleanupFiles(uploadedFiles.map(file => file.id));
         setUploadedFiles([]);
       }
@@ -211,107 +310,6 @@ export default function NewPostModal({
     setValidationErrors([]);
     return true;
   };
-
-
-// In the handleSubmit function:
-
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setValidationErrors([]);
-  setPostSuccess({});
-
-  if (!validateForm()) {
-    return;
-  }
-
-  try {
-    setIsSubmitting(true);
-    setError(null);
-
-    let scheduledDateTime: Date;
-    if (publishNow) {
-      scheduledDateTime = new Date();
-      scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
-    } else {
-      const [year, month, day] = postData.scheduledDate.split('-').map(Number);
-      const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
-      scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
-    }
-
-    const token = localStorage.getItem('token');
-    if (!token) throw new Error('No authentication token');
-
-    // Verify all media files exist before proceeding
-    const mediaFiles = uploadedFiles.map(file => file.id);
-    if (mediaFiles.length > 0) {
-      const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ mediaIds: mediaFiles })
-      });
-
-      if (!mediaCheckResponse.ok) {
-        throw new Error('One or more media files are no longer available');
-      }
-    }
-
-    const requestBody = {
-      caption: postData.caption,
-      scheduledDate: scheduledDateTime.toISOString(),
-      platforms: selectedPlatforms.map(id => ({
-        id,
-        platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
-        postType: selectedPostType
-      })),
-      hashtags: postData.hashtags,
-      visibility: postData.visibility,
-      mediaFiles,
-      platformSpecificData: postData.platformSpecificData,
-      publishNow
-    };
-
-    const response = await fetch(`${APP_URL}/api/posts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to create post');
-    }
-
-    const responseData = await response.json();
-    onSave(responseData);
-
-    const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
-      acc[platform] = true;
-      return acc;
-    }, {} as { [key: string]: boolean });
-    
-    setPostSuccess(newPostSuccess);
-    toast.success('Post created successfully');
-    
-    // Clear uploaded files after successful post creation
-    setUploadedFiles([]);
-    
-    setTimeout(() => {
-      handleClose();
-    }, 2000);
-  } catch (err) {
-    console.error('Post creation error:', err);
-    setError(err instanceof Error ? err.message : 'Failed to create post');
-    toast.error(err instanceof Error ? err.message : 'Failed to create post');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
 
 
   if (!isOpen) return null;

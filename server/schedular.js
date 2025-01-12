@@ -107,6 +107,16 @@ async function preprocessMedia(mediaFiles) {
   
   for (const file of mediaFiles) {
     try {
+      console.log(`Processing media file: ${file.id}`);
+      
+      // Add more detailed logging
+      console.log('B2 credentials status:', {
+        keyId: !!process.env.VITE_B2_APPLICATION_KEY_ID,
+        key: !!process.env.VITE_B2_APPLICATION_KEY,
+        bucketId: !!process.env.VITE_B2_BUCKET_ID,
+        bucketName: !!process.env.VITE_B2_BUCKET_NAME
+      });
+
       // Get pre-signed URL for the media file
       const mediaBuffer = await getFileFromB2(file.s3Key);
       
@@ -116,9 +126,15 @@ async function preprocessMedia(mediaFiles) {
       };
       
       processedMedia.push(processedFile);
+      console.log(`Successfully processed media file: ${file.id}`);
     } catch (error) {
       console.error(`Failed to process media file ${file.id}:`, error);
-      throw error;
+      
+      // Add more context to the error
+      const enhancedError = new Error(`Failed to process media file ${file.id}: ${error.message}`);
+      enhancedError.originalError = error;
+      enhancedError.fileId = file.id;
+      throw enhancedError;
     }
   }
   
@@ -173,10 +189,17 @@ export const schedulePost = async (post) => {
       console.log('Executing scheduled post:', post.id);
       
       try {
-        // Pre-process media files before posting
-        const processedMedia = await preprocessMedia(post.mediaFiles);
+        // Verify B2 credentials before processing
+        if (!process.env.VITE_B2_APPLICATION_KEY_ID || !process.env.VITE_B2_APPLICATION_KEY) {
+          throw new Error('B2 credentials not configured. Please check environment variables.');
+        }
 
-        // Process each platform in parallel
+        // Pre-process media files before posting
+        let processedMedia = [];
+        if (post.mediaFiles && post.mediaFiles.length > 0) {
+          processedMedia = await preprocessMedia(post.mediaFiles);
+        }
+
         const platformPromises = post.platforms.map(async (platformData) => {
           const { platform, postType = 'post' } = platformData;
           
@@ -265,16 +288,28 @@ export const schedulePost = async (post) => {
             media.buffer = null;
           }
         });
-
       } catch (error) {
         console.error(`Failed to process scheduled post ${post.id}:`, error);
+        
+        // Update post status to failed with detailed error message
         await prisma.post.update({
           where: { id: post.id },
           data: {
             status: 'failed',
-            error: error.message,
+            error: `Failed to process post: ${error.message}`,
           },
         });
+
+        // Update platform statuses
+        await Promise.all(post.platforms.map(platform => 
+          prisma.postPlatform.update({
+            where: { id: platform.id },
+            data: {
+              status: 'failed',
+              error: `Media processing failed: ${error.message}`,
+            },
+          })
+        ));
       }
     });
 
@@ -286,7 +321,6 @@ export const schedulePost = async (post) => {
     throw error;
   }
 };
-
 export const cancelScheduledPost = async (postId) => {
   try {
     if (scheduledJobs.has(postId)) {
