@@ -142,37 +142,52 @@ async function preprocessMedia(mediaFiles) {
 }
 
 // Get platform client with retry logic
-async function getPlatformClient(platform, socialAccount, retryCount = 0) {
+const getPlatformClient = async (platform, socialAccount, retryCount = 0) => {
   try {
+    console.log(`Getting client for platform: ${platform}, attempt ${retryCount + 1}/3`);
+    console.log('Social account details:', {
+      platform: socialAccount.platform,
+      hasAccessToken: !!socialAccount.accessToken,
+      hasAccessSecret: !!socialAccount.accessSecret,
+      username: socialAccount.username
+    });
+
+    if (!socialAccount.accessToken) {
+      throw new Error(`No access token found for ${platform}`);
+    }
+
     switch (platform.toLowerCase()) {
       case 'twitter':
+        if (!socialAccount.accessSecret) {
+          throw new Error('Twitter access secret is required');
+        }
         return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
+      
       case 'facebook':
         return createFacebookClient(socialAccount.accessToken);
+      
       case 'instagram':
         return createInstagramClient(socialAccount.accessToken);
+      
       case 'linkedin':
         return createLinkedInClient(socialAccount.accessToken);
-      case 'youtube':
-        return createYouTubeClient(socialAccount.accessToken);
-      case 'tiktok':
-        return createTikTokClient(socialAccount.accessToken);
-      case 'pinterest':
-        return createPinterestClient(socialAccount.accessToken);
-      case 'threads':
-        return createThreadsClient(socialAccount.accessToken);
+      
       default:
         throw new Error(`Unsupported platform: ${platform}`);
     }
   } catch (error) {
+    console.error(`Failed to create client for ${platform}:`, error);
+    
     if (retryCount < MAX_RETRIES) {
       console.log(`Retrying client creation for ${platform}. Attempt ${retryCount + 1}/${MAX_RETRIES}`);
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       return getPlatformClient(platform, socialAccount, retryCount + 1);
     }
+    
     throw error;
   }
-}
+};
+
 
 export const schedulePost = async (post) => {
   console.log('Scheduling post:', post.id);

@@ -1,16 +1,31 @@
 import { TwitterApi } from 'twitter-api-v2';
 
 export const createTwitterClient = (accessToken, accessSecret) => {
-  return new TwitterApi({
-    appKey: process.env.TWITTER_API_KEY,
-    appSecret: process.env.TWITTER_API_SECRET,
-    accessToken: accessToken,
-    accessSecret: accessSecret,
-  });
+  if (!accessToken || !accessSecret) {
+    console.error('Twitter credentials missing:', { hasToken: !!accessToken, hasSecret: !!accessSecret });
+    throw new Error('User Twitter credentials not provided');
+  }
+
+  try {
+    return new TwitterApi({
+      appKey: process.env.TWITTER_API_KEY,
+      appSecret: process.env.TWITTER_API_SECRET,
+      accessToken: accessToken,
+      accessSecret: accessSecret,
+    });
+  } catch (error) {
+    console.error('Failed to create Twitter client:', error);
+    throw error;
+  }
 };
 
 export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
   try {
+    console.log('Starting Twitter post with:', {
+      captionLength: caption.length,
+      mediaCount: mediaFiles.length
+    });
+
     let mediaIds = [];
 
     // Upload media files if present
@@ -18,40 +33,18 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
       mediaIds = await Promise.all(
         mediaFiles.map(async (file) => {
           try {
-            // Fetch the media file
-            const mediaResponse = await fetch(file.url);
-            if (!mediaResponse.ok) {
-              throw new Error(`Failed to fetch media file: ${mediaResponse.statusText}`);
-            }
-            const arrayBuffer = await mediaResponse.arrayBuffer();
-            const mediaBuffer = Buffer.from(arrayBuffer);
-
-            // Determine media type and validate
-            const mimeType = file.type.toLowerCase();
-            let mediaType;
-            
-            if (mimeType.startsWith('image/')) {
-              if (mimeType === 'image/gif') {
-                mediaType = 'gif';
-              } else {
-                mediaType = 'image/jpeg';
-              }
-            } else if (mimeType.startsWith('video/')) {
-              mediaType = 'video/mp4';
-            } else {
-              throw new Error(`Unsupported media type: ${mimeType}`);
-            }
-
-            // Upload media to Twitter
-            const mediaId = await client.v1.uploadMedia(mediaBuffer, {
-              mimeType: mediaType
+            console.log('Uploading media file to Twitter:', {
+              filename: file.filename,
+              type: file.type,
+              size: file.size
             });
 
-            // Wait for media processing to complete
-            if (mediaType === 'video/mp4' || mediaType === 'gif') {
-              await client.v1.waitForMediaProcessing(mediaId);
-            }
+            const mediaBuffer = await fetch(file.url).then(res => res.buffer());
+            const mediaId = await client.v1.uploadMedia(mediaBuffer, {
+              mimeType: file.type
+            });
 
+            console.log('Successfully uploaded media to Twitter:', { mediaId });
             return mediaId;
           } catch (error) {
             console.error(`Failed to upload media file ${file.filename}:`, error);
@@ -62,14 +55,21 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
     }
 
     // Create tweet
-    const tweet = await client.v2.tweet({
+    const tweetData = {
       text: caption,
-      ...(mediaIds.length > 0 && {
-        media: {
-          media_ids: mediaIds
-        }
-      })
+    };
+
+    if (mediaIds.length > 0) {
+      tweetData.media = { media_ids: mediaIds };
+    }
+
+    console.log('Creating tweet with data:', {
+      ...tweetData,
+      mediaCount: mediaIds.length
     });
+
+    const tweet = await client.v2.tweet(tweetData);
+    console.log('Successfully posted tweet:', tweet);
 
     return tweet;
   } catch (error) {

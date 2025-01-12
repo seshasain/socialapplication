@@ -222,74 +222,37 @@ app.get('/api/auth/linkedin/callback', async (req, res) => {
 app.get('/api/auth/twitter/callback', async (req, res) => {
   try {
     const { oauth_token, oauth_verifier } = req.query;
-    const storedData = oauthTokens.get(oauth_token);
-
-    if (!storedData) {
-      throw new Error('Invalid OAuth token');
+    
+    if (!oauth_token || !oauth_verifier) {
+      throw new Error('Missing OAuth token or verifier');
     }
-
-    const { oauth_token_secret, userId } = storedData;
 
     const client = new TwitterApi({
       appKey: process.env.TWITTER_API_KEY,
       appSecret: process.env.TWITTER_API_SECRET,
       accessToken: oauth_token,
-      accessSecret: oauth_token_secret,
+      accessSecret: process.env.TWITTER_ACCESS_SECRET,
     });
 
-    const { client: loggedClient, accessToken, accessSecret } = await client.login(oauth_verifier);
-    const twitterUser = await loggedClient.v2.me();
+    const { accessToken, accessSecret, screenName, userId } = 
+      await client.login(oauth_verifier);
 
-    // Save the Twitter account to the database
+    // Save both access token and secret
     const socialAccount = await prisma.socialAccount.create({
       data: {
         platform: 'twitter',
         accessToken,
-        refreshToken: accessSecret,
-        username: twitterUser.data.username,
-        profileUrl: `https://twitter.com/${twitterUser.data.username}`,
-        userId
+        accessSecret, // Make sure this is saved!
+        username: screenName,
+        profileUrl: `https://twitter.com/${screenName}`,
+        userId: req.user.id
       }
     });
 
-    // Clean up stored OAuth token
-    oauthTokens.delete(oauth_token);
-
-    // Redirect back to the frontend
-    res.redirect(`http://localhost:5173/dashboard?twitter=connected`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?twitter=connected`);
   } catch (error) {
     console.error('Twitter callback error:', error);
-    res.redirect(`http://localhost:5173/dashboard?twitter=error`);
-  }
-})
-// Facebook Routes
-app.get('/api/auth/facebook', authenticateToken, async (req, res) => {
-  try {
-    if (!process.env.FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET) {
-      throw new Error('Facebook API credentials not configured');
-    }
-
-    const state = Math.random().toString(36).substring(7);
-    const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
-    const scope = [
-      'pages_manage_posts',
-      'pages_read_engagement',
-      'instagram_basic',
-      'instagram_content_publish',
-    ];
-
-    oauthTokens.set(state, {
-      userId: req.user.id
-    });
-
-    const authUrl = `https://www.facebook.com/v12.0/dialog/oauth?client_id=${
-      process.env.FACEBOOK_APP_ID
-    }&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope.join(',')}`;
-
-    res.json({ authUrl });
-  } catch (error) {
-    console.error('Facebook auth error:', error);
-    res.status(500).json({ error: 'Failed to initialize Facebook authentication' });
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?twitter=error`);
   }
 });
 
