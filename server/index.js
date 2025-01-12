@@ -1616,49 +1616,36 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
 });
 
 // Media upload endpoint
-app.post('/api/media/upload', authenticateToken, multer().single('file'), async (req, res) => {
+app.post('/api/media/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: 'No file provided' });
     }
 
-    // Generate unique filename
-    const uniqueId = uuidv4();
-    const fileExtension = path.extname(req.file.originalname);
-    const filename = `${uniqueId}${fileExtension}`;
-    const b2Key = `uploads/${filename}`;
+    // Upload to B2 and get URL
+    const fileUrl = await uploadToB2(req.file.buffer, req.file.mimetype, req.file.originalname);
 
-    // Upload file to B2
-    const b2Url = await uploadToB2(
-      req.file.buffer,
-      req.file.mimetype,
-      filename
-    );
-
-    // Create media file record in database
+    // Save file metadata to database
     const mediaFile = await prisma.mediaFile.create({
       data: {
         userId: req.user.id,
-        url: b2Url,
-        type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
-        filename: filename,
+        url: fileUrl,
+        type: req.file.mimetype,
+        filename: req.file.originalname,
         size: req.file.size,
-        s3Key: b2Key // We'll keep the column name as s3Key for now to avoid migration
+        s3Key: `uploads/${req.file.originalname}`
       }
     });
 
-    res.status(201).json(mediaFile);
+    res.json(mediaFile);
+
   } catch (error) {
-    console.error('Media upload error:', error);
-
-    // If there was an error and we uploaded to B2, clean up
-    if (error.b2Key) {
-      await deleteFromB2(error.b2Key).catch(console.error);
-    }
-
-    res.status(500).json({ error: 'Failed to upload media' });
+    console.error('Upload error:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
   }
 });
+
+
 
 // Delete media endpoint
 app.delete('/api/media/:id', authenticateToken, async (req, res) => {
@@ -2627,32 +2614,45 @@ app.post('/api/media/batch-delete', authenticateToken, async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to delete files' });
   }
 });
-app.post('/api/media/verify', async (req, res) => {
+// Media verification endpoint
+app.post('/api/media/verify', authenticateToken, async (req, res) => {
   try {
     const { mediaIds } = req.body;
-    console.log(mediaIds);
     
     if (!mediaIds || !Array.isArray(mediaIds)) {
-      return res.status(400).json({ error: 'Invalid media IDs' });
+      return res.status(400).json({ error: 'Invalid media IDs provided' });
     }
 
+    // Verify each media file exists in database
     const mediaFiles = await prisma.mediaFile.findMany({
       where: {
-        id: { in: mediaIds },
-        userId: req.user.id
+        AND: [
+          { id: { in: mediaIds } },
+          { userId: req.user.id } // Ensure files belong to user
+        ]
       }
     });
 
+    // Check if all media files were found
     if (mediaFiles.length !== mediaIds.length) {
-      return res.status(404).json({ error: 'One or more media files not found' });
+      const foundIds = mediaFiles.map(file => file.id);
+      const missingIds = mediaIds.filter(id => !foundIds.includes(id));
+      console.log('Missing media files:', missingIds);
+      return res.status(404).json({ 
+        error: 'One or more media files not found',
+        missingIds 
+      });
     }
 
-    res.json({ success: true });
+    // All files verified successfully
+    res.json({ success: true, files: mediaFiles });
+
   } catch (error) {
     console.error('Media verification error:', error);
     res.status(500).json({ error: 'Failed to verify media files' });
   }
 });
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
