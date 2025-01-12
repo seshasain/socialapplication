@@ -23,29 +23,34 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
             if (!mediaResponse.ok) {
               throw new Error(`Failed to fetch media file: ${mediaResponse.statusText}`);
             }
-            const mediaBuffer = await mediaResponse.buffer();
+            const arrayBuffer = await mediaResponse.arrayBuffer();
+            const mediaBuffer = Buffer.from(arrayBuffer);
 
             // Determine media type and validate
-            let mediaType;
             const mimeType = file.type.toLowerCase();
+            let mediaType;
             
             if (mimeType.startsWith('image/')) {
               if (mimeType === 'image/gif') {
                 mediaType = 'gif';
               } else {
-                mediaType = 'image/jpeg'; // Twitter prefers JPEG
+                mediaType = 'image/jpeg';
               }
             } else if (mimeType.startsWith('video/')) {
-              mediaType = 'video/mp4'; // Twitter accepts MP4
+              mediaType = 'video/mp4';
             } else {
               throw new Error(`Unsupported media type: ${mimeType}`);
             }
 
-            // Upload media to Twitter with proper type
+            // Upload media to Twitter
             const mediaId = await client.v1.uploadMedia(mediaBuffer, {
-              mimeType: mediaType,
-              target: mediaType === 'video/mp4' ? 'tweet_video' : 'tweet_image'
+              mimeType: mediaType
             });
+
+            // Wait for media processing to complete
+            if (mediaType === 'video/mp4' || mediaType === 'gif') {
+              await client.v1.waitForMediaProcessing(mediaId);
+            }
 
             return mediaId;
           } catch (error) {
@@ -56,15 +61,17 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
       );
     }
 
-    // Create tweet with media
-    const tweetOptions = {
+    // Create tweet
+    const tweet = await client.v2.tweet({
       text: caption,
-      ...(mediaIds.length > 0 && { media: { media_ids: mediaIds } })
-    };
+      ...(mediaIds.length > 0 && {
+        media: {
+          media_ids: mediaIds
+        }
+      })
+    });
 
-    const tweet = await client.v2.tweet(tweetOptions);
     return tweet;
-
   } catch (error) {
     console.error('Twitter posting error:', error);
     throw error;
