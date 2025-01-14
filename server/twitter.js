@@ -1,4 +1,6 @@
 import { TwitterApi } from 'twitter-api-v2';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 
 export const createTwitterClient = (accessToken, accessSecret) => {
   // Add detailed logging
@@ -30,7 +32,6 @@ export const createTwitterClient = (accessToken, accessSecret) => {
   }
 };
 
-
 export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
   try {
     console.log('Starting Twitter post with:', {
@@ -51,6 +52,10 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
               size: file.size
             });
 
+            // Generate a unique filename for storage
+            const fileExt = path.extname(file.filename);
+            const uniqueFilename = `${uuidv4()}${fileExt}`;
+
             // Use node-fetch to get the buffer
             const response = await fetch(file.url);
             if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
@@ -58,7 +63,8 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
             const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
             
             const mediaId = await client.v1.uploadMedia(buffer, {
-              mimeType: file.type
+              mimeType: file.type,
+              filename: uniqueFilename // Use the unique filename
             });
 
             console.log('Successfully uploaded media to Twitter:', { mediaId });
@@ -88,7 +94,12 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
     const tweet = await client.v2.tweet(tweetData);
     console.log('Successfully posted tweet:', tweet);
 
-    return tweet;
+    // Extract and return the tweet ID and other relevant data
+    return {
+      id: tweet.data.id,
+      text: tweet.data.text,
+      externalId: tweet.data.id // Ensure we return the external ID
+    };
   } catch (error) {
     console.error('Twitter posting error:', error);
     throw error;

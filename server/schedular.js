@@ -162,8 +162,6 @@ const getPlatformClient = async (platform, socialAccount, retryCount = 0) => {
           throw new Error('Twitter access secret is required');
         }
         return createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
-      
-      // ... other platform cases
     }
   } catch (error) {
     console.error(`Failed to create client for ${platform}:`, error);
@@ -219,42 +217,48 @@ export const schedulePost = async (post) => {
                 platform: platformData.platform
               }
             });
-
+    
             if (!socialAccount) {
               throw new Error(`No connected ${platform} account found`);
             }
-
+    
             // Get platform client
             const client = await getPlatformClient(platform, socialAccount);
-
+    
             // Get post type handler
             const handler = postTypeHandlers[platform]?.[postType];
             if (!handler) {
               throw new Error(`Unsupported post type "${postType}" for ${platform}`);
             }
-
+    
             // Prepare post content
             const postContent = {
               caption: post.caption,
               mediaFiles: processedMedia,
               hashtags: post.hashtags,
               settings: platformData.settings || {},
-              threadContent: post.threadContent // For thread-type posts
+              threadContent: post.threadContent
             };
-
+    
             // Execute platform-specific post handler
             const result = await handler(client, postContent);
-
-            // Update post platform status
+    
+            // Update post platform status with external ID
             await prisma.postPlatform.update({
               where: { id: platformData.id },
               data: {
                 status: 'published',
                 publishedAt: new Date(),
-                externalId: result.id || result.postId,
+                externalId: result.id || result.externalId || result.postId, // Handle different response formats
               },
             });
-
+    
+            console.log(`Successfully updated post platform with external ID:`, {
+              platform,
+              postId: post.id,
+              externalId: result.id || result.externalId || result.postId
+            });
+    
             return { platform, success: true };
           } catch (error) {
             console.error(`Failed to publish to ${platform}:`, error);
@@ -267,11 +271,10 @@ export const schedulePost = async (post) => {
                 error: error.message,
               },
             });
-
+    
             return { platform, success: false, error: error.message };
           }
         });
-
         // Wait for all platforms to complete
         const results = await Promise.all(platformPromises);
 

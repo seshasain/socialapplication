@@ -46,6 +46,10 @@ export async function uploadToB2(buffer, fileName, contentType) {
   try {
     await ensureAuthorized();
 
+    // Generate a unique filename with UUID
+    const fileExt = path.extname(fileName);
+    const uniqueFilename = `${uuidv4()}${fileExt}`;
+
     const { data: { uploadUrl, authorizationToken } } = await b2.getUploadUrl({
       bucketId: process.env.VITE_B2_BUCKET_ID
     });
@@ -53,7 +57,7 @@ export async function uploadToB2(buffer, fileName, contentType) {
     const response = await b2.uploadFile({
       uploadUrl,
       uploadAuthToken: authorizationToken,
-      fileName,
+      fileName: uniqueFilename, // Use the unique filename
       data: buffer,
       contentType
     });
@@ -64,7 +68,6 @@ export async function uploadToB2(buffer, fileName, contentType) {
     throw error;
   }
 }
-
 export async function getFileFromB2(fileName) {
   try {
     await ensureAuthorized();
