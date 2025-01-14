@@ -15,6 +15,7 @@ import { deleteFile } from '../../../service/fileCleanupService';
 import { APP_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
+import PostStatusModal from '../PostStatusModal';
 
 export type PostType =
   | 'post'
@@ -54,6 +55,15 @@ export default function NewPostModal({
   const [threadContent, setThreadContent] = useState<string[]>(['']);
   const [threadMedia, setThreadMedia] = useState<Record<string, MediaFile[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+const [platformStatuses, setPlatformStatuses] = useState<Array<{
+  id: string;
+  platform: string;
+  status: 'published' | 'scheduled' | 'failed' | 'processing';
+  error?: string;
+  publishedAt?: string;
+  scheduledFor?: string;
+}>>([]);
 
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
@@ -215,41 +225,30 @@ export default function NewPostModal({
   
       const responseData = await response.json();
   
-      // Check platform-specific statuses
-      const platformStatuses = responseData.platforms || [];
-      let hasFailures = false;
-      let successCount = 0;
+      // Transform platform statuses for the status modal
+      const statuses = responseData.platforms.map((platform: any) => ({
+        id: platform.id,
+        platform: platform.platform,
+        status: platform.status === 'published' ? 'published' 
+          : platform.status === 'scheduled' ? 'scheduled'
+          : platform.status === 'failed' ? 'failed'
+          : 'processing',
+        error: platform.error,
+        publishedAt: platform.publishedAt,
+        scheduledFor: platform.scheduledFor
+      }));
   
-      platformStatuses.forEach((platform: any) => {
-        const platformName = platform.platform.charAt(0).toUpperCase() + platform.platform.slice(1);
-        if (platform.status === 'failed') {
-          hasFailures = true;
-          toast.error(`Failed to post to ${platformName}: ${platform.error || 'Unknown error'}`);
-        } else if (platform.status === 'published' || platform.status === 'scheduled') {
-          successCount++;
-          toast.success(`Successfully ${platform.status === 'published' ? 'posted to' : 'scheduled for'} ${platformName}`);
-        }
-      });
-  
-      // Show overall status
-      if (hasFailures && successCount === 0) {
-        toast.error('Failed to post to all platforms');
-      } else if (hasFailures) {
-        toast.warning('Post was successful on some platforms but failed on others');
-      } else if (successCount > 0) {
-        toast.success(publishNow ? 'Post published successfully!' : 'Post scheduled successfully!');
-      }
-  
+      setPlatformStatuses(statuses);
       onSave(responseData);
-      handleClose();
+      onClose();
+      setShowStatusModal(true);
     } catch (err) {
       console.error('Post creation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create post');
-      toast.error(err instanceof Error ? err.message : 'Failed to create post');
     } finally {
       setIsSubmitting(false);
     }
-  };  
+  }; 
 
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
@@ -339,134 +338,186 @@ export default function NewPostModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-xl max-h-[90vh]">
-        {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {initialData ? 'Edit Post' : 'Create New Post'}
-            </h2>
-            {step !== 'platform' && (
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 rounded-full bg-gray-300" />
-                <span className="text-sm text-gray-500">
-                  Step {step === 'type' ? '2' : '3'} of 3
-                </span>
-              </div>
-            )}
+    <>
+      {/* Modal for Post Creation/Editing */}
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-xl max-h-[90vh]">
+          {/* Header */}
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {initialData ? 'Edit Post' : 'Create New Post'}
+              </h2>
+              {step !== 'platform' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 rounded-full bg-gray-300" />
+                  <span className="text-sm text-gray-500">
+                    Step {step === 'type' ? '2' : '3'} of 3
+                  </span>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleClose}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              disabled={loading || uploadingFiles || isClosing}
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            disabled={loading || uploadingFiles || isClosing}
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-6">
-            {error && (
-              <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg flex items-center">
-                <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
-            <ValidationErrors errors={validationErrors} />
-            <SuccessStatus postSuccess={postSuccess} />
-
-            {step === 'platform' && (
-              <PlatformSelector
-                platforms={connectedAccounts}
-                selectedPlatforms={selectedPlatforms}
-                onPlatformSelect={(platformId) => {
-                  setSelectedPlatforms(prev => {
-                    const index = prev.indexOf(platformId);
-                    if (index === -1) {
-                      return [...prev, platformId];
-                    }
-                    return prev.filter(id => id !== platformId);
-                  });
-                }}
-                onNext={() => setStep('type')}
-              />
-            )}
-
-            {step === 'type' && (
-              <PostTypeSelector
-                selectedPlatforms={selectedPlatforms}
-                selectedType={selectedPostType}
-                onTypeSelect={setSelectedPostType}
-                onBack={handleBack}
-                onNext={() => setStep('content')}
-                connectedAccounts={connectedAccounts}
-              />
-            )}
-
-            {step === 'content' && (
-              <>
-                <PostContent
-                  postType={selectedPostType}
-                  caption={postData.caption}
-                  onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
-                  hashtags={postData.hashtags}
-                  onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
-                  visibility={postData.visibility}
-                  onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
-                  uploadedFiles={uploadedFiles}
-                  onMediaUpload={handleMediaUpload}
-                  onMediaRemove={handleMediaRemove}
-                  uploadError={uploadError}
-                  onBack={() => setStep('type')}
-                  threadContent={threadContent}
-                  onThreadChange={setThreadContent}
-                  threadMedia={threadMedia}
+  
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6">
+              {error && (
+                <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg flex items-center">
+                  <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                  <p className="text-sm">{error}</p>
+                </div>
+              )}
+  
+              <ValidationErrors errors={validationErrors} />
+              <SuccessStatus postSuccess={postSuccess} />
+              
+  
+              {step === 'platform' && (
+                <PlatformSelector
+                  platforms={connectedAccounts}
+                  selectedPlatforms={selectedPlatforms}
+                  onPlatformSelect={(platformId) => {
+                    setSelectedPlatforms(prev => {
+                      const index = prev.indexOf(platformId);
+                      if (index === -1) {
+                        return [...prev, platformId];
+                      }
+                      return prev.filter(id => id !== platformId);
+                    });
+                  }}
+                  onNext={() => setStep('type')}
                 />
-
-                <SchedulingOptions
-                  publishNow={publishNow}
-                  setPublishNow={setPublishNow}
-                  scheduledDate={postData.scheduledDate}
-                  scheduledTime={postData.scheduledTime}
-                  onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
-                  onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
+              )}
+  
+              {step === 'type' && (
+                <PostTypeSelector
+                  selectedPlatforms={selectedPlatforms}
+                  selectedType={selectedPostType}
+                  onTypeSelect={setSelectedPostType}
+                  onBack={handleBack}
+                  onNext={() => setStep('content')}
+                  connectedAccounts={connectedAccounts}
                 />
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        {step === 'content' && (
-          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white rounded-b-2xl">
-            <div className="flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
-                disabled={loading || uploadingFiles || isClosing}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
-                disabled={loading || uploadingFiles || isClosing}
-              >
-                {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {initialData
-                  ? 'Save Changes'
-                  : publishNow
-                  ? 'Publish Now'
-                  : 'Schedule Post'}
-              </button>
+              )}
+              {step === 'content' && (
+                <>
+                  <PostContent
+                    postType={selectedPostType}
+                    caption={postData.caption}
+                    onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
+                    hashtags={postData.hashtags}
+                    onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
+                    visibility={postData.visibility}
+                    onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
+                    uploadedFiles={uploadedFiles}
+                    onMediaUpload={handleMediaUpload}
+                    onMediaRemove={handleMediaRemove}
+                    uploadError={uploadError}
+                    onBack={() => setStep('type')}
+                    threadContent={threadContent}
+                    onThreadChange={setThreadContent}
+                    threadMedia={threadMedia}
+                  />
+  
+                  <SchedulingOptions
+                    publishNow={publishNow}
+                    setPublishNow={setPublishNow}
+                    scheduledDate={postData.scheduledDate}
+                    scheduledTime={postData.scheduledTime}
+                    onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
+                    onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
+                  />
+                </>
+              )}
             </div>
           </div>
-        )}
+  
+          {/* Footer */}
+          {step === 'content' && (
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white rounded-b-2xl">
+              <div className="flex justify-end space-x-4">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+                  disabled={loading || uploadingFiles || isClosing}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
+                  disabled={loading || uploadingFiles || isClosing}
+                >
+                  {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {initialData
+                    ? 'Save Changes'
+                    : publishNow
+                    ? 'Publish Now'
+                    : 'Schedule Post'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+  
+      {/* Post Status Modal */}
+      <PostStatusModal
+        isOpen={showStatusModal}
+        onClose={() => setShowStatusModal(false)}
+        platforms={platformStatuses}
+        scheduledDate={postData.scheduledDate}
+        onRetry={async (platformId) => {
+          try {
+            const token = localStorage.getItem('token');
+            if (!token) throw new Error('No authentication token');
+  
+            const response = await fetch(`${APP_URL}/api/posts/retry/${platformId}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+  
+            if (!response.ok) {
+              throw new Error('Failed to retry post');
+            }
+  
+            // Update the status for this platform
+            setPlatformStatuses(prev => prev.map(p => 
+              p.id === platformId 
+                ? { ...p, status: 'processing', error: undefined }
+                : p
+            ));
+  
+            // Fetch updated status after a short delay
+            setTimeout(async () => {
+              const statusResponse = await fetch(`${APP_URL}/api/posts/status/${platformId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              
+              if (statusResponse.ok) {
+                const updatedStatus = await statusResponse.json();
+                setPlatformStatuses(prev => prev.map(p => 
+                  p.id === platformId ? { ...p, ...updatedStatus } : p
+                ));
+              }
+            }, 2000);
+          } catch (error) {
+            console.error('Failed to retry post:', error);
+            setError(error instanceof Error ? error.message : 'Failed to retry post');
+          }
+        }}
+      />
+    </>
   );
 }
