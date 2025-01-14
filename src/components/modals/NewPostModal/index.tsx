@@ -146,15 +146,15 @@ export default function NewPostModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationErrors([]);
-
+  
     if (!validateForm()) {
       return;
     }
-
+  
     try {
       setIsSubmitting(true);
       setError(null);
-
+  
       let scheduledDateTime: Date;
       if (publishNow) {
         scheduledDateTime = new Date();
@@ -164,10 +164,10 @@ export default function NewPostModal({
         const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
         scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
       }
-
+  
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
-
+  
       const mediaFiles = uploadedFiles.map(file => file.id);
       if (mediaFiles.length > 0) {
         const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
@@ -178,12 +178,12 @@ export default function NewPostModal({
           },
           body: JSON.stringify({ mediaIds: mediaFiles })
         });
-
+  
         if (!mediaCheckResponse.ok) {
           throw new Error('One or more media files are no longer available');
         }
       }
-
+  
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
@@ -198,7 +198,7 @@ export default function NewPostModal({
         platformSpecificData: postData.platformSpecificData,
         publishNow
       };
-
+  
       const response = await fetch(`${APP_URL}/api/posts`, {
         method: 'POST',
         headers: {
@@ -207,18 +207,40 @@ export default function NewPostModal({
         },
         body: JSON.stringify(requestBody)
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to create post');
       }
-
+  
       const responseData = await response.json();
+  
+      // Check platform-specific statuses
+      const platformStatuses = responseData.platforms || [];
+      let hasFailures = false;
+      let successCount = 0;
+  
+      platformStatuses.forEach((platform: any) => {
+        const platformName = platform.platform.charAt(0).toUpperCase() + platform.platform.slice(1);
+        if (platform.status === 'failed') {
+          hasFailures = true;
+          toast.error(`Failed to post to ${platformName}: ${platform.error || 'Unknown error'}`);
+        } else if (platform.status === 'published' || platform.status === 'scheduled') {
+          successCount++;
+          toast.success(`Successfully ${platform.status === 'published' ? 'posted to' : 'scheduled for'} ${platformName}`);
+        }
+      });
+  
+      // Show overall status
+      if (hasFailures && successCount === 0) {
+        toast.error('Failed to post to all platforms');
+      } else if (hasFailures) {
+        toast.warning('Post was successful on some platforms but failed on others');
+      } else if (successCount > 0) {
+        toast.success(publishNow ? 'Post published successfully!' : 'Post scheduled successfully!');
+      }
+  
       onSave(responseData);
-
-      // Show success toast notification
-      toast.success(publishNow ? 'Post created successfully!' : 'Post scheduled successfully!');
-
       handleClose();
     } catch (err) {
       console.error('Post creation error:', err);
@@ -227,7 +249,7 @@ export default function NewPostModal({
     } finally {
       setIsSubmitting(false);
     }
-  };
+  };  
 
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
