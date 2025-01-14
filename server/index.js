@@ -12,6 +12,7 @@ import { SocialMediaManager } from './services/socialMedia.js';
 import path from 'path';
 import { scheduleJob } from 'node-schedule';
 import { createTwitterClient, postToTwitter } from './twitter.js';
+import { createFacebookClient, postToFacebook } from './facebook.js';
 import { schedulePost, cancelScheduledPost } from './schedular.js';
 import { uploadToB2, deleteFromB2, saveFile, deleteFile } from '../src/utils/fileHandlers.js';
 import axios from 'axios';

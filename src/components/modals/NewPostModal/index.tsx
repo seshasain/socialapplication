@@ -16,14 +16,14 @@ import { APP_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
 
-export type PostType = 
-  | 'post' 
-  | 'story' 
-  | 'reel' 
-  | 'thread' 
-  | 'carousel' 
-  | 'article' 
-  | 'poll' 
+export type PostType =
+  | 'post'
+  | 'story'
+  | 'reel'
+  | 'thread'
+  | 'carousel'
+  | 'article'
+  | 'poll'
   | 'event';
 
 interface NewPostModalProps {
@@ -33,7 +33,6 @@ interface NewPostModalProps {
   initialData?: Post;
   connectedAccounts: SocialAccount[];
 }
-
 export default function NewPostModal({
   isOpen,
   onClose,
@@ -59,7 +58,7 @@ export default function NewPostModal({
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = new Date();
   defaultDate.setHours(defaultDate.getHours() + 1);
-  
+
   const [postData, setPostData] = useState({
     caption: '',
     scheduledDate: defaultDate.toISOString().split('T')[0],
@@ -127,19 +126,35 @@ export default function NewPostModal({
       setStep('type');
     }
   };
+  useEffect(() => {
+    if (!isOpen) {
+      setUploadedFiles([]);
+      setPostData({
+        caption: '',
+        scheduledDate: defaultDate.toISOString().split('T')[0],
+        scheduledTime: defaultDate.toTimeString().slice(0, 5),
+        hashtags: '',
+        visibility: 'public',
+        platformSpecificData: {},
+      });
+      setSelectedPlatforms([]);
+      setSelectedPostType('post');
+      setStep('platform');
+      setError(null);
+    }
+  }, [isOpen]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationErrors([]);
-    setPostSuccess({});
-  
+
     if (!validateForm()) {
       return;
     }
-  
+
     try {
       setIsSubmitting(true);
       setError(null);
-  
+
       let scheduledDateTime: Date;
       if (publishNow) {
         scheduledDateTime = new Date();
@@ -149,11 +164,10 @@ export default function NewPostModal({
         const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
         scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
       }
-  
+
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
-  
-      // Only verify files exist, don't delete them for scheduled posts
+
       const mediaFiles = uploadedFiles.map(file => file.id);
       if (mediaFiles.length > 0) {
         const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
@@ -164,12 +178,12 @@ export default function NewPostModal({
           },
           body: JSON.stringify({ mediaIds: mediaFiles })
         });
-  
+
         if (!mediaCheckResponse.ok) {
           throw new Error('One or more media files are no longer available');
         }
       }
-  
+
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
@@ -184,7 +198,7 @@ export default function NewPostModal({
         platformSpecificData: postData.platformSpecificData,
         publishNow
       };
-  
+
       const response = await fetch(`${APP_URL}/api/posts`, {
         method: 'POST',
         headers: {
@@ -193,31 +207,19 @@ export default function NewPostModal({
         },
         body: JSON.stringify(requestBody)
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to create post');
       }
-  
+
       const responseData = await response.json();
       onSave(responseData);
-  
-      const newPostSuccess = selectedPlatforms.reduce((acc, platform) => {
-        acc[platform] = true;
-        return acc;
-      }, {} as { [key: string]: boolean });
-      
-      setPostSuccess(newPostSuccess);
-      toast.success(publishNow ? 'Post created successfully' : 'Post scheduled successfully');
-      
-      // Only clear uploaded files for immediate posts
-      if (publishNow) {
-        setUploadedFiles([]);
-      }
-      
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
+
+      // Show success toast notification
+      toast.success(publishNow ? 'Post created successfully!' : 'Post scheduled successfully!');
+
+      handleClose();
     } catch (err) {
       console.error('Post creation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create post');
@@ -226,11 +228,11 @@ export default function NewPostModal({
       setIsSubmitting(false);
     }
   };
-  
+
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
     if (isSubmitting || isCleaningUp) return;
-  
+
     try {
       // Only cleanup files if we're not in the middle of submitting and it's not a scheduled post
       if (!isSubmitting && uploadedFiles.length > 0 && publishNow) {
@@ -274,7 +276,7 @@ export default function NewPostModal({
       toast.error('Caption is required for this post type');
       return false;
     }
-    
+
     if (selectedPlatforms.length === 0) {
       toast.error('Please select at least one platform');
       return false;
@@ -297,8 +299,8 @@ export default function NewPostModal({
     });
 
     const fullText = `${postData.caption} ${postData.hashtags}`;
-    
-    const allErrors = platformsToValidate.flatMap(platform => 
+
+    const allErrors = platformsToValidate.flatMap(platform =>
       validatePlatformContent(platform, fullText, uploadedFiles)
     );
 
@@ -316,7 +318,7 @@ export default function NewPostModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
+      <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-xl max-h-[90vh]">
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
           <div className="flex items-center space-x-4">
@@ -385,22 +387,22 @@ export default function NewPostModal({
             {step === 'content' && (
               <>
                 <PostContent
-          postType={selectedPostType}
-          caption={postData.caption}
-          onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
-          hashtags={postData.hashtags}
-          onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
-          visibility={postData.visibility}
-          onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
-          uploadedFiles={uploadedFiles}
-          onMediaUpload={handleMediaUpload}
-          onMediaRemove={handleMediaRemove}
-          uploadError={uploadError}
-          onBack={() => setStep('type')}
-          threadContent={threadContent}
-          onThreadChange={setThreadContent}
-          threadMedia={threadMedia}
-        />
+                  postType={selectedPostType}
+                  caption={postData.caption}
+                  onCaptionChange={(e) => setPostData({ ...postData, caption: e.target.value })}
+                  hashtags={postData.hashtags}
+                  onHashtagsChange={(e) => setPostData({ ...postData, hashtags: e.target.value })}
+                  visibility={postData.visibility}
+                  onVisibilityChange={(e) => setPostData({ ...postData, visibility: e.target.value })}
+                  uploadedFiles={uploadedFiles}
+                  onMediaUpload={handleMediaUpload}
+                  onMediaRemove={handleMediaRemove}
+                  uploadError={uploadError}
+                  onBack={() => setStep('type')}
+                  threadContent={threadContent}
+                  onThreadChange={setThreadContent}
+                  threadMedia={threadMedia}
+                />
 
                 <SchedulingOptions
                   publishNow={publishNow}
@@ -417,7 +419,7 @@ export default function NewPostModal({
 
         {/* Footer */}
         {step === 'content' && (
-          <div className="px-6 py-4 border-t border-gray-100">
+          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white rounded-b-2xl">
             <div className="flex justify-end space-x-4">
               <button
                 type="button"
