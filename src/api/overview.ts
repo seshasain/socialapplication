@@ -23,7 +23,7 @@ interface OverviewResponse {
     username?: string;
     profileUrl?: string;
     accessToken: string;
-    refreshToken?: string;
+    accessSecret?: string;
   }>;
 }
 
@@ -69,7 +69,7 @@ export async function connectSocialAccount(platform: string) {
     body: JSON.stringify({ 
       platform,
       accessToken: 'mock-token', // For demo purposes
-      refreshToken: 'mock-refresh',
+      accessSecret: 'mock-refresh',
       username: `demo_${platform}`,
       profileUrl: `https://${platform}.com/demo`
     })

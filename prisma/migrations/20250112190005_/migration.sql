@@ -192,7 +192,6 @@ CREATE TABLE "SocialAccount" (
     "profileUrl" TEXT,
     "accessToken" TEXT NOT NULL,
     "accessSecret" TEXT,
-    "refreshToken" TEXT,
     "followerCount" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

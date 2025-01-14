@@ -5,7 +5,7 @@ export interface SocialAccount {
     profileUrl?: string;
     followerCount: number;
     accessToken?: string;
-    refreshToken?: string;
+    accessSecret?: string;
   }
   
   export type PlanTier = 'free' | 'basic' | 'pro';

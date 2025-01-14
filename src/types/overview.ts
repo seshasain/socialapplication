@@ -22,5 +22,5 @@ export interface SocialAccount {
   username?: string;
   profileUrl?: string;
   accessToken: string;
-  refreshToken?: string;
+  accessSecret?: string;
 }

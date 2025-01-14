@@ -1104,7 +1104,7 @@ app.post('/api/social-accounts/connect', authenticateToken, async (req, res) => 
       data: {
         platform: platform.toLowerCase(),
         accessToken: 'mock-token',
-        refreshToken: 'mock-refresh',
+        accessSecret: 'mock-refresh',
         followerCount: Math.floor(Math.random() * 50000) + 1000,
         userId,
         username: `demo_${platform.toLowerCase()}`,
@@ -1143,7 +1143,7 @@ async function handleImmediatePublishing(post, user, caption, hashtags) {
         case 'twitter':
           const client = createTwitterClient(
             socialAccount.accessToken,
-            socialAccount.refreshToken
+            socialAccount.accessSecret
           );
           const result = await postToTwitter(client, {
             caption: `${caption} ${hashtags}`.trim(),
@@ -1530,7 +1530,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
 
           switch (platform.platform.toLowerCase()) {
             case 'twitter':
-              client = createTwitterClient(socialAccount.accessToken, socialAccount.refreshToken);
+              client = createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
               result = await postToTwitter(client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
                 mediaFiles: post.mediaFiles
@@ -1944,7 +1944,7 @@ app.post('/retry/:id', authenticateToken, async (req, res) => {
 
         const client = await SocialMediaManager.initializeClient(platform.platform, {
           accessToken: socialAccount.accessToken,
-          refreshToken: socialAccount.refreshToken,
+          accessSecret: socialAccount.accessSecret,
           username: socialAccount.username
         });
 

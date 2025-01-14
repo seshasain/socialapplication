@@ -224,7 +224,6 @@ model SocialAccount {
   profileUrl    String?
   accessToken   String
   accessSecret  String?
-  refreshToken  String?
   followerCount Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
