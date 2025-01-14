@@ -27,17 +27,25 @@ export type PostType =
   | 'poll'
   | 'event';
 
-interface NewPostModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (post: Post) => void;
-  initialData?: Post;
-  connectedAccounts: SocialAccount[];
-}
+  interface NewPostModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onPostSubmit: (statuses: Array<{
+      id: string;
+      platform: string;
+      status: 'published' | 'scheduled' | 'failed' | 'processing';
+      error?: string;
+      publishedAt?: string;
+      scheduledFor?: string;
+    }>) => void;
+    onSave: (post: Post) => void;
+    initialData?: Post;
+    connectedAccounts: SocialAccount[];
+  }
 export default function NewPostModal({
   isOpen,
   onClose,
-  onSave,
+  onPostSubmit,
   initialData,
   connectedAccounts = [],
 }: NewPostModalProps) {
@@ -238,17 +246,15 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
         scheduledFor: platform.scheduledFor
       }));
   
-      setPlatformStatuses(statuses);
-      onSave(responseData);
+      onPostSubmit(statuses);
       onClose();
-      setShowStatusModal(true);
     } catch (err) {
       console.error('Post creation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create post');
     } finally {
       setIsSubmitting(false);
     }
-  }; 
+  };
 
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {

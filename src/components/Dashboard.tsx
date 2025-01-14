@@ -19,6 +19,7 @@ import HistoryView from './dashboard/HistoryView';
 import NewPostModal from './modals/NewPostModal';
 import type { Post } from '../types/posts';
 import { SocialAccount } from '../types/overview';
+import PostStatusModal from './modals/PostStatusModal';
 
 type View =
   | 'overview'
@@ -33,6 +34,16 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [platformStatuses, setPlatformStatuses] = useState<Array<{
+    id: string;
+    platform: string;
+    status: 'published' | 'scheduled' | 'failed' | 'processing';
+    error?: string;
+    publishedAt?: string;
+    scheduledFor?: string;
+  }>>([]);
+
 
   // Get the current view from URL search params or default to 'overview'
   const searchParams = new URLSearchParams(location.search);
@@ -69,7 +80,11 @@ export default function Dashboard() {
       console.error('Error fetching social accounts:', error);
     }
   };
-
+  const handlePostSubmit = (statuses: typeof platformStatuses) => {
+    setShowNewPostModal(false);
+    setPlatformStatuses(statuses);
+    setShowStatusModal(true);
+  };
   const handleNewPost = async (post: Post) => {
     // try {
     //   const token = localStorage.getItem('token');
@@ -97,7 +112,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+    <div className="flex h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-white">
       <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
       <main className="flex-1 overflow-y-auto">
@@ -139,8 +154,53 @@ export default function Dashboard() {
       <NewPostModal
         isOpen={showNewPostModal}
         onClose={() => setShowNewPostModal(false)}
-        onSave={handleNewPost}
+        onPostSubmit={handlePostSubmit}
         connectedAccounts={socialAccounts}
+      />
+      <PostStatusModal
+        isOpen={showStatusModal}
+        onClose={() => setShowStatusModal(false)}
+        platforms={platformStatuses}
+        onRetry={async (platformId) => {
+          try {
+            const token = localStorage.getItem('token');
+            if (!token) throw new Error('No authentication token');
+
+            const response = await fetch(`${APP_URL}/api/posts/retry/${platformId}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to retry post');
+            }
+
+            // Update the status for this platform
+            setPlatformStatuses(prev => prev.map(p => 
+              p.id === platformId 
+                ? { ...p, status: 'processing', error: undefined }
+                : p
+            ));
+
+            // Fetch updated status after a short delay
+            setTimeout(async () => {
+              const statusResponse = await fetch(`${APP_URL}/api/posts/status/${platformId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              
+              if (statusResponse.ok) {
+                const updatedStatus = await statusResponse.json();
+                setPlatformStatuses(prev => prev.map(p => 
+                  p.id === platformId ? { ...p, ...updatedStatus } : p
+                ));
+              }
+            }, 2000);
+          } catch (error) {
+            console.error('Failed to retry post:', error);
+          }
+        }}
       />
     </div>
   );
