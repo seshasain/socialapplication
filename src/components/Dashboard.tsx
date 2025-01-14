@@ -20,7 +20,6 @@ import NewPostModal from './modals/NewPostModal';
 import type { Post } from '../types/posts';
 import { SocialAccount } from '../types/overview';
 import PostStatusModal from './modals/PostStatusModal';
-
 type View =
   | 'overview'
   | 'calendar'
