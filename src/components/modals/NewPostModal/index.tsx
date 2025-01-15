@@ -188,30 +188,47 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   
       const mediaFiles = uploadedFiles.map(file => file.id);
   
-      // Handle thread content for Twitter
+      // Check media files availability
+      if (mediaFiles.length > 0) {
+        const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ mediaIds: mediaFiles })
+        });
+  
+        if (!mediaCheckResponse.ok) {
+          throw new Error('One or more media files are no longer available');
+        }
+      }
+  
+      // Format thread content if it's a thread post
+      const formattedThreadContent = selectedPostType === 'thread' ? 
+        threadContent.filter(content => content.trim() !== '') : undefined;
+  
+      // Format thread media if it exists
+      const formattedThreadMedia = selectedPostType === 'thread' ? 
+        Object.entries(threadMedia).reduce((acc, [threadId, files]) => {
+          acc[threadId] = files.map(file => file.id);
+          return acc;
+        }, {} as Record<string, string[]>) : undefined;
+  
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms.map(id => {
-          const platform = connectedAccounts.find(acc => acc.id === id);
-          const isTwitter = platform?.platform.toLowerCase() === 'twitter';
-          
-          return {
-            id,
-            platform: platform?.platform || '',
-            postType: selectedPostType,
-            settings: {
-              ...postData.platformSpecificData[id],
-              // Include thread content only for Twitter threads
-              ...(isTwitter && selectedPostType === 'thread' ? {
-                threadContent: threadContent.filter(content => content.trim() !== '')
-              } : {})
-            }
-          };
-        }),
+        platforms: selectedPlatforms.map(id => ({
+          id,
+          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
+          postType: selectedPostType,
+          settings: postData.platformSpecificData[id] || {}
+        })),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles,
+        threadContent: formattedThreadContent,
+        threadMedia: formattedThreadMedia,
         publishNow
       };
   
@@ -251,6 +268,7 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       setIsSubmitting(false);
     }
   };
+  
   
   // Update the validateForm function:
   
@@ -309,7 +327,7 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
     if (isSubmitting || isCleaningUp) return;
-
+  
     try {
       // Only cleanup files if we're not in the middle of submitting and it's not a scheduled post
       if (!isSubmitting && uploadedFiles.length > 0 && publishNow) {
@@ -332,6 +350,9 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
         visibility: 'public',
         platformSpecificData: {},
       });
+      // Clear thread-specific data
+      setThreadContent(['']);
+      setThreadMedia({});
       onClose();
     }
   };
