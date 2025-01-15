@@ -188,34 +188,40 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   
       const mediaFiles = uploadedFiles.map(file => file.id);
   
-      // Format thread content for Twitter
+      // Format thread content - ensure it's not empty
+      const formattedThreadContent = selectedPostType === 'thread' ? 
+        threadContent.filter(content => content.trim()) : [];
+  
+      // Ensure we have thread content for thread posts
+      if (selectedPostType === 'thread' && formattedThreadContent.length === 0) {
+        throw new Error('Thread content is required');
+      }
+  
       const requestBody = {
-        caption: postData.caption,
+        caption: selectedPostType === 'thread' ? formattedThreadContent[0] : postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
         platforms: selectedPlatforms.map(id => {
           const platform = connectedAccounts.find(acc => acc.id === id);
-          const isTwitter = platform?.platform.toLowerCase() === 'twitter';
-          
           return {
             id,
             platform: platform?.platform || '',
             postType: selectedPostType,
             settings: {
               ...postData.platformSpecificData[id],
-              // Include thread content only for Twitter threads
-              ...(isTwitter && selectedPostType === 'thread' ? {
-                threadContent: threadContent.filter(content => content.trim() !== '')
-              } : {})
+              // Include thread content for thread type
+              threadContent: selectedPostType === 'thread' ? formattedThreadContent : undefined
             }
           };
         }),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles,
+        // Include thread content at the top level as well
+        threadContent: selectedPostType === 'thread' ? formattedThreadContent : undefined,
         publishNow
       };
   
-      console.log('Request body:', requestBody); // For debugging
+      console.log('Request body:', JSON.stringify(requestBody, null, 2)); // Better debug logging
   
       const response = await fetch(`${APP_URL}/api/posts`, {
         method: 'POST',
@@ -228,8 +234,8 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('API Error Response:', errorData); // For debugging
-        throw new Error(errorData.message || 'Failed to create post');
+        console.error('API Error Response:', errorData);
+        throw new Error(errorData.message || errorData.error || 'Failed to create post');
       }
   
       const responseData = await response.json();
@@ -255,18 +261,21 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
     }
   };
   
-  
-  
   // Update the validateForm function:
   
   const validateForm = () => {
-    // For Twitter threads, validate thread content instead of caption
-    if (selectedPostType === 'thread' && 
-        selectedPlatforms.some(id => 
-          connectedAccounts.find(acc => acc.id === id)?.platform.toLowerCase() === 'twitter'
-        )) {
-      if (!threadContent.some(content => content.trim())) {
+    // For Twitter threads, validate thread content
+    if (selectedPostType === 'thread') {
+      const validThreads = threadContent.filter(content => content.trim());
+      if (validThreads.length === 0) {
         toast.error('At least one tweet in the thread is required');
+        return false;
+      }
+      
+      // Validate each thread's content length
+      const invalidThreads = validThreads.filter(content => content.length > 280);
+      if (invalidThreads.length > 0) {
+        toast.error('One or more tweets exceed the 280 character limit');
         return false;
       }
     } else if (!postData.caption.trim() && selectedPostType !== 'story') {
@@ -290,7 +299,7 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
     }
   
     return true;
-  };
+  };  
   
 
   // Modify handleClose to only cleanup files for immediate posts
