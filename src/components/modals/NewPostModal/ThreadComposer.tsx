@@ -80,7 +80,7 @@ export default function ThreadComposer({
     onChange(updatedThreads.map(t => t.content));
   };
 
-  const handleMediaUpload = async (threadId: string, files: File[]) => {
+  const handleMediaUploadWrapper = async (threadId: string, files: File[]) => {
     try {
       console.log(`Uploading media for thread ${threadId}:`, files);
       await onMediaUpload(files, threadId);
@@ -90,7 +90,7 @@ export default function ThreadComposer({
     }
   };
 
-  const handleMediaRemove = (threadId: string, file: MediaFile) => {
+  const handleMediaRemoveWrapper = (threadId: string, file: MediaFile) => {
     onMediaRemove(file, threadId);
   };
 
@@ -166,7 +166,7 @@ export default function ThreadComposer({
                           }}
                         />
                         <button
-                          onClick={() => handleMediaRemove(thread.id, file)}
+                          onClick={() => handleMediaRemoveWrapper(thread.id, file)}
                           className="absolute top-0.5 right-0.5 p-1 bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-3 h-3 text-red-600" />
@@ -176,13 +176,13 @@ export default function ThreadComposer({
                   </div>
                 )}
 
-                <MediaUploader
-                  onUpload={(files) => handleMediaUpload(thread.id, files)}
-                  onRemove={(file) => handleMediaRemove(thread.id, file)}
-                  existingFiles={threadMedia}
-                  maxFiles={MAX_MEDIA_PER_TWEET}
-                  error={uploadError ?? undefined}
-                />
+<MediaUploader
+        onUpload={(files: File[]) => onMediaUpload(files, thread.id)}
+        onRemove={(file: MediaFile) => onMediaRemove(file, thread.id)}
+        existingFiles={threadMedia}
+        maxFiles={MAX_MEDIA_PER_TWEET}
+        error={uploadError ?? undefined}
+      />
               </div>
 
               <div className="flex items-center justify-between mt-2">

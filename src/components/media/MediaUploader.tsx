@@ -8,14 +8,17 @@ import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import FileUploadProgress from './FileUploadProgress';
 import { validateFile } from '../../utils/fileValidation';
 
+// In MediaUploader.tsx
 interface MediaUploaderProps {
-  onUpload: (files: MediaFile[]) => void;
+  onUpload: (files: File[]) => void;
   onRemove: (file: MediaFile) => void;
   existingFiles?: MediaFile[];
   maxFiles?: number;
   acceptedFileTypes?: string[];
   error?: string;
+  
 }
+
 
 export default function MediaUploader({
   onUpload,
