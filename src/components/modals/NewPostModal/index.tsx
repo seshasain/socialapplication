@@ -188,49 +188,34 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   
       const mediaFiles = uploadedFiles.map(file => file.id);
   
-      // Check media files availability
-      if (mediaFiles.length > 0) {
-        const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ mediaIds: mediaFiles })
-        });
-  
-        if (!mediaCheckResponse.ok) {
-          throw new Error('One or more media files are no longer available');
-        }
-      }
-  
-      // Format thread content if it's a thread post
-      const formattedThreadContent = selectedPostType === 'thread' ? 
-        threadContent.filter(content => content.trim() !== '') : undefined;
-  
-      // Format thread media if it exists
-      const formattedThreadMedia = selectedPostType === 'thread' ? 
-        Object.entries(threadMedia).reduce((acc, [threadId, files]) => {
-          acc[threadId] = files.map(file => file.id);
-          return acc;
-        }, {} as Record<string, string[]>) : undefined;
-  
+      // Format thread content for Twitter
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms.map(id => ({
-          id,
-          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
-          postType: selectedPostType,
-          settings: postData.platformSpecificData[id] || {}
-        })),
+        platforms: selectedPlatforms.map(id => {
+          const platform = connectedAccounts.find(acc => acc.id === id);
+          const isTwitter = platform?.platform.toLowerCase() === 'twitter';
+          
+          return {
+            id,
+            platform: platform?.platform || '',
+            postType: selectedPostType,
+            settings: {
+              ...postData.platformSpecificData[id],
+              // Include thread content only for Twitter threads
+              ...(isTwitter && selectedPostType === 'thread' ? {
+                threadContent: threadContent.filter(content => content.trim() !== '')
+              } : {})
+            }
+          };
+        }),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles,
-        threadContent: formattedThreadContent,
-        threadMedia: formattedThreadMedia,
         publishNow
       };
+  
+      console.log('Request body:', requestBody); // For debugging
   
       const response = await fetch(`${APP_URL}/api/posts`, {
         method: 'POST',
@@ -243,6 +228,7 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('API Error Response:', errorData); // For debugging
         throw new Error(errorData.message || 'Failed to create post');
       }
   
@@ -268,6 +254,7 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       setIsSubmitting(false);
     }
   };
+  
   
   
   // Update the validateForm function:
@@ -302,27 +289,9 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       }
     }
   
-    // Map platform IDs back to platform names for validation
-    const platformsToValidate = selectedPlatforms.map(id => {
-      const account = connectedAccounts.find(acc => acc.id === id);
-      return account?.platform.toLowerCase() || '';
-    });
-  
-    const fullText = `${postData.caption} ${postData.hashtags}`;
-  
-    const allErrors = platformsToValidate.flatMap(platform =>
-      validatePlatformContent(platform, fullText, uploadedFiles, 
-        selectedPostType === 'thread' ? threadContent : undefined)
-    );
-  
-    if (allErrors.length > 0) {
-      setValidationErrors(allErrors);
-      return false;
-    }
-  
-    setValidationErrors([]);
     return true;
   };
+  
 
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
