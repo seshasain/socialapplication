@@ -61,33 +61,17 @@ export const postToTwitter = async (client, { caption, mediaFiles = [] }) => {
             if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
             
             const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
-
-            // Determine the correct media type
-            let mediaType;
-            if (file.type.startsWith('image/')) {
-              if (file.type === 'image/gif') {
-                mediaType = 'gif';
-              } else {
-                mediaType = 'image/jpeg'; // Twitter prefers JPEG
-              }
-            } else if (file.type.startsWith('video/')) {
-              mediaType = 'video/mp4'; // Twitter prefers MP4
-            } else {
-              throw new Error(`Unsupported media type: ${file.type}`);
-            }
-
-            // Initialize media upload
+            
             const mediaId = await client.v1.uploadMedia(buffer, {
-              mimeType: mediaType,
-              filename: uniqueFilename,
-              target: mediaType === 'gif' ? 'tweet_gif' : undefined
+              mimeType: file.type,
+              filename: uniqueFilename // Use the unique filename
             });
 
             console.log('Successfully uploaded media to Twitter:', { mediaId });
             return mediaId;
           } catch (error) {
             console.error(`Failed to upload media file ${file.filename}:`, error);
-            throw new Error(`Media upload failed: ${error.message}`);
+            throw error;
           }
         })
       );
