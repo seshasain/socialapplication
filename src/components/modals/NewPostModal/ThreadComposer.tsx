@@ -45,7 +45,7 @@ export default function ThreadComposer({
     if (threads.length >= maxThreads) return;
     
     const newThread: ThreadPost = {
-      id: `thread-${Date.now()}`,
+      id: `thread-${Date.now()}`, // Use timestamp for unique ID
       content: '',
       charCount: 0,
       media: []
@@ -83,17 +83,7 @@ export default function ThreadComposer({
   const handleMediaUpload = async (threadId: string, files: File[]) => {
     try {
       console.log(`Uploading media for thread ${threadId}:`, files);
-      
-      // Preserve original file metadata
-      const fileArray = files.map(file => {
-        const newFile = new File([file], file.name, {
-          type: file.type,
-          lastModified: file.lastModified
-        });
-        return newFile;
-      });
-
-      await onMediaUpload(fileArray, threadId);
+      await onMediaUpload(files, threadId);
     } catch (error) {
       console.error('Failed to upload media:', error);
       throw error;
