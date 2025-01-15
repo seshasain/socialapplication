@@ -161,106 +161,114 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       setError(null);
     }
   }, [isOpen]);
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationErrors([]);
-  
-    if (!validateForm()) {
-      return;
+
+// Update the handleSubmit function:
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setValidationErrors([]);
+
+  if (!validateForm()) {
+    return;
+  }
+
+  try {
+    setIsSubmitting(true);
+    setError(null);
+
+    let scheduledDateTime: Date;
+    if (publishNow) {
+      scheduledDateTime = new Date();
+      scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
+    } else {
+      const [year, month, day] = postData.scheduledDate.split('-').map(Number);
+      const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
+      scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
     }
-  
-    try {
-      setIsSubmitting(true);
-      setError(null);
-  
-      let scheduledDateTime: Date;
-      if (publishNow) {
-        scheduledDateTime = new Date();
-        scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
-      } else {
-        const [year, month, day] = postData.scheduledDate.split('-').map(Number);
-        const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
-        scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
-      }
-  
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-  
-      const mediaFiles = uploadedFiles.map(file => file.id);
-  
-      // Format thread content - ensure it's not empty
-      const formattedThreadContent = selectedPostType === 'thread' ? 
-        threadContent.filter(content => content.trim()) : [];
-  
-      // Ensure we have thread content for thread posts
-      if (selectedPostType === 'thread' && formattedThreadContent.length === 0) {
-        throw new Error('Thread content is required');
-      }
-  
-      const requestBody = {
-        caption: selectedPostType === 'thread' ? formattedThreadContent[0] : postData.caption,
-        scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms.map(id => {
-          const platform = connectedAccounts.find(acc => acc.id === id);
-          return {
-            id,
-            platform: platform?.platform || '',
-            postType: selectedPostType,
-            settings: {
-              ...postData.platformSpecificData[id],
-              // Include thread content for thread type
-              threadContent: selectedPostType === 'thread' ? formattedThreadContent : undefined
-            }
-          };
-        }),
-        hashtags: postData.hashtags,
-        visibility: postData.visibility,
-        mediaFiles,
-        // Include thread content at the top level as well
-        threadContent: selectedPostType === 'thread' ? formattedThreadContent : undefined,
-        publishNow
-      };
-  
-      console.log('Request body:', JSON.stringify(requestBody, null, 2)); // Better debug logging
-  
-      const response = await fetch(`${APP_URL}/api/posts`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-  
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('API Error Response:', errorData);
-        throw new Error(errorData.message || errorData.error || 'Failed to create post');
-      }
-  
-      const responseData = await response.json();
-      const statuses = responseData.platforms.map((platform: any) => ({
-        id: platform.id,
-        platform: platform.platform,
-        status: platform.status === 'published' ? 'published' 
-          : platform.status === 'scheduled' ? 'scheduled'
-          : platform.status === 'failed' ? 'failed'
-          : 'processing',
-        error: platform.error,
-        publishedAt: platform.publishedAt,
-        scheduledFor: platform.scheduledFor
-      }));
-  
-      onPostSubmit(statuses);
-      onClose();
-    } catch (err) {
-      console.error('Post creation error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create post');
-    } finally {
-      setIsSubmitting(false);
+
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('No authentication token');
+
+    // Format thread content and media
+    const formattedThreads = selectedPostType === 'thread' ? 
+      threadContent.map((content, index) => ({
+        content: content.trim(),
+        mediaFiles: threadMedia[`thread-${index}`] || []
+      })).filter(thread => thread.content || thread.mediaFiles.length > 0) : [];
+
+    // Get all media files from threads
+    const allMediaFiles = selectedPostType === 'thread' ?
+      formattedThreads.reduce((acc, thread) => [...acc, ...thread.mediaFiles], [] as MediaFile[]) :
+      uploadedFiles;
+
+    const mediaFileIds = allMediaFiles.map(file => file.id);
+
+    const requestBody = {
+      caption: selectedPostType === 'thread' ? formattedThreads[0]?.content : postData.caption,
+      scheduledDate: scheduledDateTime.toISOString(),
+      platforms: selectedPlatforms.map(id => {
+        const platform = connectedAccounts.find(acc => acc.id === id);
+        return {
+          id,
+          platform: platform?.platform || '',
+          postType: selectedPostType,
+          settings: {
+            ...postData.platformSpecificData[id],
+            threadContent: selectedPostType === 'thread' ? 
+              formattedThreads.map(thread => ({
+                text: thread.content,
+                mediaFiles: thread.mediaFiles.map(file => file.id)
+              })) : undefined
+          }
+        };
+      }),
+      hashtags: postData.hashtags,
+      visibility: postData.visibility,
+      mediaFiles: mediaFileIds,
+      threadContent: selectedPostType === 'thread' ? 
+        formattedThreads.map(thread => thread.content) : undefined,
+      publishNow
+    };
+
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(`${APP_URL}/api/posts`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('API Error Response:', errorData);
+      throw new Error(errorData.message || errorData.error || 'Failed to create post');
     }
-  };
-  
+
+    const responseData = await response.json();
+    const statuses = responseData.platforms.map((platform: any) => ({
+      id: platform.id,
+      platform: platform.platform,
+      status: platform.status === 'published' ? 'published' 
+        : platform.status === 'scheduled' ? 'scheduled'
+        : platform.status === 'failed' ? 'failed'
+        : 'processing',
+      error: platform.error,
+      publishedAt: platform.publishedAt,
+      scheduledFor: platform.scheduledFor
+    }));
+
+    onPostSubmit(statuses);
+    onClose();
+  } catch (err) {
+    console.error('Post creation error:', err);
+    setError(err instanceof Error ? err.message : 'Failed to create post');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
   // Update the validateForm function:
   
   const validateForm = () => {

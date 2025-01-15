@@ -24,7 +24,7 @@ export function validateFile(file: File | { type: string; size: number; name?: s
 
   // Log file information for debugging
   console.log('Validating file:', {
-    name: 'name' in file ? file.name : undefined,
+    name: 'name' in file ? file.name : 'unknown',
     type: file.type,
     size: file.size
   });
@@ -81,6 +81,7 @@ export function validateFile(file: File | { type: string; size: number; name?: s
   if (file.size > MAX_FILE_SIZE) {
     throw new FileValidationError(`File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`);
   }
+
   // Attach the proper MIME type to the file object if it's a File instance
   if (file instanceof File && file.type !== mimeType) {
     Object.defineProperty(file, 'type', {
@@ -89,9 +90,11 @@ export function validateFile(file: File | { type: string; size: number; name?: s
     });
   }
 }
+
 export function isAcceptedFileType(type: string): boolean {
   return [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES].includes(type);
 }
+
 export function getFileTypeCategory(type: string): 'image' | 'video' | 'unknown' {
   if (ACCEPTED_IMAGE_TYPES.includes(type)) return 'image';
   if (ACCEPTED_VIDEO_TYPES.includes(type)) return 'video';

@@ -80,20 +80,25 @@ export default function ThreadComposer({
     onChange(updatedThreads.map(t => t.content));
   };
 
-  const handleMediaUpload = async (threadId: string, files: MediaFile[]) => {
-  const fileArray: File[] = await Promise.all(files.map(async (file) => {
-    const { url, filename, type, size, ...metadata } = file;
-    
-    // Fetch the file content from the URL
-    const response = await fetch(url);
-    const blob = await response.blob(); // Convert the file content into a Blob
+  const handleMediaUpload = async (threadId: string, files: File[]) => {
+    try {
+      console.log(`Uploading media for thread ${threadId}:`, files);
+      
+      // Preserve original file metadata
+      const fileArray = files.map(file => {
+        const newFile = new File([file], file.name, {
+          type: file.type,
+          lastModified: file.lastModified
+        });
+        return newFile;
+      });
 
-    // Return the new File object
-    return new File([blob], filename, { type, lastModified: Date.now() });
-  }));
-
-  await onMediaUpload(fileArray, threadId);
-};
+      await onMediaUpload(fileArray, threadId);
+    } catch (error) {
+      console.error('Failed to upload media:', error);
+      throw error;
+    }
+  };
 
   const handleMediaRemove = (threadId: string, file: MediaFile) => {
     onMediaRemove(file, threadId);
@@ -166,6 +171,9 @@ export default function ThreadComposer({
                           src={file.url}
                           alt={file.filename}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PGxpbmUgeDE9IjEyIiB5MT0iOCIgeDI9IjEyIiB5Mj0iMTIiLz48bGluZSB4MT0iMTIiIHkxPSIxNiIgeDI9IjEyLjAxIiB5Mj0iMTYiLz48L3N2Zz4=';
+                          }}
                         />
                         <button
                           onClick={() => handleMediaRemove(thread.id, file)}
@@ -185,7 +193,7 @@ export default function ThreadComposer({
                   maxFiles={MAX_MEDIA_PER_TWEET}
                   error={uploadError ?? undefined}
                 />
-              </div>handleMediaUpload
+              </div>
 
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center space-x-2">
