@@ -208,12 +208,13 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
         platforms: selectedPlatforms.map(id => ({
           id,
           platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
-          postType: selectedPostType
+          postType: selectedPostType,
+          settings: postData.platformSpecificData[id] || {}
         })),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles,
-        platformSpecificData: postData.platformSpecificData,
+        threadContent, // Add thread content to request
         publishNow
       };
   
@@ -232,8 +233,6 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       }
   
       const responseData = await response.json();
-  
-      // Transform platform statuses for the status modal
       const statuses = responseData.platforms.map((platform: any) => ({
         id: platform.id,
         platform: platform.platform,

@@ -14,8 +14,8 @@ interface ThreadComposerProps {
   value: string[];
   onChange: (threads: string[]) => void;
   maxThreads?: number;
-  onMediaUpload: (files: File[]) => Promise<void>;
-  onMediaRemove: (file: MediaFile) => void;
+  onMediaUpload: (files: File[], threadId?: string) => Promise<void>;
+  onMediaRemove: (file: MediaFile, threadId?: string) => void;
   uploadedFiles: Record<string, MediaFile[]>;
   uploadError?: string | null;
 }
@@ -80,12 +80,23 @@ export default function ThreadComposer({
     onChange(updatedThreads.map(t => t.content));
   };
 
-  const handleMediaUpload = async (threadId: string, files: File[]) => {
-    await onMediaUpload(files);
-  };
+  const handleMediaUpload = async (threadId: string, files: MediaFile[]) => {
+  const fileArray: File[] = await Promise.all(files.map(async (file) => {
+    const { url, filename, type, size, ...metadata } = file;
+    
+    // Fetch the file content from the URL
+    const response = await fetch(url);
+    const blob = await response.blob(); // Convert the file content into a Blob
+
+    // Return the new File object
+    return new File([blob], filename, { type, lastModified: Date.now() });
+  }));
+
+  await onMediaUpload(fileArray, threadId);
+};
 
   const handleMediaRemove = (threadId: string, file: MediaFile) => {
-    onMediaRemove(file);
+    onMediaRemove(file, threadId);
   };
 
   return (
@@ -172,9 +183,9 @@ export default function ThreadComposer({
                   onRemove={(file) => handleMediaRemove(thread.id, file)}
                   existingFiles={threadMedia}
                   maxFiles={MAX_MEDIA_PER_TWEET}
-                  error={uploadError}
+                  error={uploadError ?? undefined}
                 />
-              </div>
+              </div>handleMediaUpload
 
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center space-x-2">

@@ -8,10 +8,8 @@ interface MediaPreviewProps {
 }
 
 export default function MediaPreview({ file, onRemove }: MediaPreviewProps) {
-  console.log('Rendering MediaPreview for file:', file);
-
-  const isVideo = file.type.startsWith('video/');
   const [previewError, setPreviewError] = React.useState(false);
+  const isVideo = file.type.startsWith('video/');
 
   const handleError = () => {
     console.error(`Failed to load preview for file: ${file.filename}`);

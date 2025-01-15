@@ -1,12 +1,42 @@
-import type { MediaFile } from '../types/media';
+// Define the platform-specific types
+interface PlatformLimits {
+  maxCharacters: number;
+  maxVideoLength: number;
+  maxVideoSize: number;
+  maxImages: number;
+  maxVideos: number;
+  supportedMediaTypes: string[];
+  maxMediaSize: {
+    image: number;
+    video: number;
+    gif?: number;  // Optional property
+    carousel?: number;
+    story?: number;
+    document?: number;
+  };
+}
 
-const PLATFORM_LIMITS = {
+interface TwitterLimits extends PlatformLimits {
+  maxThreads: number;  // Twitter-specific property
+}
+
+// Define the platform type union
+type PlatformType = {
+  twitter: TwitterLimits;
+  instagram: PlatformLimits;
+  facebook: PlatformLimits;
+  linkedin: PlatformLimits;
+};
+
+// Define the PLATFORM_LIMITS object with proper types
+const PLATFORM_LIMITS: PlatformType = {
   twitter: {
     maxCharacters: 280,
     maxVideoLength: 140,
     maxVideoSize: 512,
     maxImages: 4,
     maxVideos: 1,
+    maxThreads: 25, // Twitter-specific
     supportedMediaTypes: [
       'image',
       'image/jpeg',
@@ -62,9 +92,23 @@ const PLATFORM_LIMITS = {
   }
 };
 
-export function validatePlatformContent(platform: string, fullText: string, mediaFiles: MediaFile[]) {
+// Define the MediaFile type (assuming this structure based on the context)
+interface MediaFile {
+  type: string;
+  size: number;
+  url: string;
+  filename: string;
+}
+
+// Function to validate platform content
+export function validatePlatformContent(
+  platform: string, 
+  fullText: string, 
+  mediaFiles: MediaFile[], 
+  threadContent?: string[]
+) {
   const errors: Array<{ platform: string; message: string }> = [];
-  const limits = PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS];
+  const limits = PLATFORM_LIMITS[platform as keyof PlatformType];
   
   if (!limits) {
     errors.push({
@@ -74,7 +118,39 @@ export function validatePlatformContent(platform: string, fullText: string, medi
     return errors;
   }
 
-  // Text length validation
+  // Special handling for Twitter threads
+  if (platform === 'twitter' && threadContent && threadContent.length > 0) {
+    // Type guard to narrow the type to TwitterLimits
+    const twitterLimits = limits as TwitterLimits;
+
+    // Validate each tweet in the thread
+    threadContent.forEach((tweet, index) => {
+      if (!tweet.trim()) {
+        errors.push({
+          platform,
+          message: `Tweet ${index + 1} cannot be empty`
+        });
+      } else if (tweet.length > twitterLimits.maxCharacters) {
+        errors.push({
+          platform,
+          message: `Tweet ${index + 1} exceeds ${twitterLimits.maxCharacters} characters`
+        });
+      }
+    });
+
+    // Check thread length limit
+    if (threadContent.length > twitterLimits.maxThreads) {
+      errors.push({
+        platform,
+        message: `Thread exceeds maximum of ${twitterLimits.maxThreads} tweets`
+      });
+    }
+
+    // Return early since we've handled thread validation
+    return errors;
+  }
+
+  // Regular post validation (non-thread)
   if (fullText.length > limits.maxCharacters) {
     errors.push({
       platform,
@@ -82,7 +158,7 @@ export function validatePlatformContent(platform: string, fullText: string, medi
     });
   }
 
-  // Media validations
+  // Media validations remain unchanged...
   if (mediaFiles.length > 0) {
     const images = mediaFiles.filter(file => 
       file.type.startsWith('image/') && file.type !== 'image/gif'
@@ -140,7 +216,7 @@ export function validatePlatformContent(platform: string, fullText: string, medi
         });
       }
 
-      if (isGif && sizeInMB > limits.maxMediaSize.gif) {
+      if (isGif && limits.maxMediaSize.gif && sizeInMB > limits.maxMediaSize.gif) {
         errors.push({
           platform,
           message: `GIF size exceeds ${limits.maxMediaSize.gif}MB limit for ${platform}`
@@ -148,36 +224,27 @@ export function validatePlatformContent(platform: string, fullText: string, medi
       }
     });
 
-    // Platform-specific validations
-    switch (platform) {
-      case 'twitter':
-        if (images.length > 0 && videos.length > 0) {
-          errors.push({
-            platform,
-            message: 'Twitter does not support mixing images and videos in the same post'
-          });
-        }
-        if (gifs.length > 0 && (images.length > 0 || videos.length > 0)) {
-          errors.push({
-            platform,
-            message: 'Twitter does not support mixing GIFs with other media types'
-          });
-        }
-        break;
-      case 'instagram':
-        if (videos.length > 0 && images.length > 0) {
-          errors.push({
-            platform,
-            message: 'Instagram does not support mixing videos and images in the same post'
-          });
-        }
-        break;
+    // Platform-specific media validations
+    if (platform === 'twitter') {
+      if (images.length > 0 && videos.length > 0) {
+        errors.push({
+          platform,
+          message: 'Twitter does not support mixing images and videos in the same post'
+        });
+      }
+      if (gifs.length > 0 && (images.length > 0 || videos.length > 0)) {
+        errors.push({
+          platform,
+          message: 'Twitter does not support mixing GIFs with other media types'
+        });
+      }
     }
   }
 
   return errors;
 }
 
+// Function to get platform limits
 export function getPlatformLimits(platform: string) {
-  return PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS];
+  return PLATFORM_LIMITS[platform as keyof PlatformType];
 }
