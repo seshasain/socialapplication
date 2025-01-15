@@ -119,7 +119,7 @@ export default function MediaUploader({
       });
 
       if (uploadedFiles && uploadedFiles.length > 0) {
-        onUpload(uploadedFiles);
+        onUpload(acceptedFiles);
       }
     } catch (error) {
       console.error('Upload error:', error);
