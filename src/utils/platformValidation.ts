@@ -225,19 +225,52 @@ export function validatePlatformContent(
     });
 
     // Platform-specific media validations
-    if (platform === 'twitter') {
-      if (images.length > 0 && videos.length > 0) {
+    if (platform === 'twitter' && threadContent && threadContent.length > 0) {
+      // Type guard to narrow the type to TwitterLimits
+      const twitterLimits = limits as TwitterLimits;
+    
+      // Check if any thread content exists
+      if (threadContent.every(tweet => !tweet.trim())) {
         errors.push({
           platform,
-          message: 'Twitter does not support mixing images and videos in the same post'
+          message: 'At least one tweet in the thread must have content'
         });
+        return errors;
       }
-      if (gifs.length > 0 && (images.length > 0 || videos.length > 0)) {
+    
+      // Validate each tweet in the thread
+      threadContent.forEach((tweet, index) => {
+        if (!tweet.trim()) {
+          errors.push({
+            platform,
+            message: `Tweet ${index + 1} cannot be empty`
+          });
+        } else if (tweet.length > twitterLimits.maxCharacters) {
+          errors.push({
+            platform,
+            message: `Tweet ${index + 1} exceeds ${twitterLimits.maxCharacters} characters`
+          });
+        }
+      });
+    
+      // Check thread length limit
+      if (threadContent.length > twitterLimits.maxThreads) {
         errors.push({
           platform,
-          message: 'Twitter does not support mixing GIFs with other media types'
+          message: `Thread exceeds maximum of ${twitterLimits.maxThreads} tweets`
         });
       }
+    
+      // Return early since we've handled thread validation
+      return errors;
+    }
+    
+    // Regular post validation (non-thread) - update the text length check
+    if (!threadContent && fullText.length > limits.maxCharacters) {
+      errors.push({
+        platform,
+        message: `Text exceeds ${limits.maxCharacters} characters limit for ${platform}`
+      });
     }
   }
 

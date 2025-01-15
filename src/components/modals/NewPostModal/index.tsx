@@ -187,34 +187,31 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       if (!token) throw new Error('No authentication token');
   
       const mediaFiles = uploadedFiles.map(file => file.id);
-      if (mediaFiles.length > 0) {
-        const mediaCheckResponse = await fetch(`${APP_URL}/api/media/verify`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ mediaIds: mediaFiles })
-        });
   
-        if (!mediaCheckResponse.ok) {
-          throw new Error('One or more media files are no longer available');
-        }
-      }
-  
+      // Handle thread content for Twitter
       const requestBody = {
         caption: postData.caption,
         scheduledDate: scheduledDateTime.toISOString(),
-        platforms: selectedPlatforms.map(id => ({
-          id,
-          platform: connectedAccounts.find(acc => acc.id === id)?.platform || '',
-          postType: selectedPostType,
-          settings: postData.platformSpecificData[id] || {}
-        })),
+        platforms: selectedPlatforms.map(id => {
+          const platform = connectedAccounts.find(acc => acc.id === id);
+          const isTwitter = platform?.platform.toLowerCase() === 'twitter';
+          
+          return {
+            id,
+            platform: platform?.platform || '',
+            postType: selectedPostType,
+            settings: {
+              ...postData.platformSpecificData[id],
+              // Include thread content only for Twitter threads
+              ...(isTwitter && selectedPostType === 'thread' ? {
+                threadContent: threadContent.filter(content => content.trim() !== '')
+              } : {})
+            }
+          };
+        }),
         hashtags: postData.hashtags,
         visibility: postData.visibility,
         mediaFiles,
-        threadContent, // Add thread content to request
         publishNow
       };
   
@@ -253,6 +250,60 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  // Update the validateForm function:
+  
+  const validateForm = () => {
+    // For Twitter threads, validate thread content instead of caption
+    if (selectedPostType === 'thread' && 
+        selectedPlatforms.some(id => 
+          connectedAccounts.find(acc => acc.id === id)?.platform.toLowerCase() === 'twitter'
+        )) {
+      if (!threadContent.some(content => content.trim())) {
+        toast.error('At least one tweet in the thread is required');
+        return false;
+      }
+    } else if (!postData.caption.trim() && selectedPostType !== 'story') {
+      toast.error('Caption is required for this post type');
+      return false;
+    }
+  
+    if (selectedPlatforms.length === 0) {
+      toast.error('Please select at least one platform');
+      return false;
+    }
+  
+    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
+      const scheduledDateTime = new Date(
+        `${postData.scheduledDate}T${postData.scheduledTime}`
+      );
+      if (scheduledDateTime <= new Date()) {
+        toast.error('Scheduled date must be in the future');
+        return false;
+      }
+    }
+  
+    // Map platform IDs back to platform names for validation
+    const platformsToValidate = selectedPlatforms.map(id => {
+      const account = connectedAccounts.find(acc => acc.id === id);
+      return account?.platform.toLowerCase() || '';
+    });
+  
+    const fullText = `${postData.caption} ${postData.hashtags}`;
+  
+    const allErrors = platformsToValidate.flatMap(platform =>
+      validatePlatformContent(platform, fullText, uploadedFiles, 
+        selectedPostType === 'thread' ? threadContent : undefined)
+    );
+  
+    if (allErrors.length > 0) {
+      setValidationErrors(allErrors);
+      return false;
+    }
+  
+    setValidationErrors([]);
+    return true;
   };
 
   // Modify handleClose to only cleanup files for immediate posts
@@ -296,49 +347,6 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
       toast.error('Failed to remove file. Please try again.');
     }
   };
-
-  const validateForm = () => {
-    if (!postData.caption.trim() && selectedPostType !== 'story') {
-      toast.error('Caption is required for this post type');
-      return false;
-    }
-
-    if (selectedPlatforms.length === 0) {
-      toast.error('Please select at least one platform');
-      return false;
-    }
-
-    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
-      const scheduledDateTime = new Date(
-        `${postData.scheduledDate}T${postData.scheduledTime}`
-      );
-      if (scheduledDateTime <= new Date()) {
-        toast.error('Scheduled date must be in the future');
-        return false;
-      }
-    }
-
-    // Map platform IDs back to platform names for validation
-    const platformsToValidate = selectedPlatforms.map(id => {
-      const account = connectedAccounts.find(acc => acc.id === id);
-      return account?.platform.toLowerCase() || '';
-    });
-
-    const fullText = `${postData.caption} ${postData.hashtags}`;
-
-    const allErrors = platformsToValidate.flatMap(platform =>
-      validatePlatformContent(platform, fullText, uploadedFiles)
-    );
-
-    if (allErrors.length > 0) {
-      setValidationErrors(allErrors);
-      return false;
-    }
-
-    setValidationErrors([]);
-    return true;
-  };
-
 
   if (!isOpen) return null;
 
