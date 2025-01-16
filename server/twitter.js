@@ -11,7 +11,7 @@ const userRateLimiters = new Map();
 const createRateLimiter = (userId) => {
   const limiter = new RateLimiter({
     tokensPerInterval: 1500,
-    interval: "15 min",
+    interval: 900000,
     fireImmediately: true
   });
   userRateLimiters.set(userId, limiter);
