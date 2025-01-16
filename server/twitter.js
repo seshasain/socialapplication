@@ -34,21 +34,92 @@ export const createTwitterClient = (accessToken, accessSecret) => {
 
 export const postToTwitter = async (client, { caption, mediaFiles = [], threadContent = [], settings = {} }) => {
   try {
-    console.log(threadContent,mediaFiles,settings);
-    console.log("threadContent length,",threadContent?.length);
+    console.log(threadContent, mediaFiles, settings);
+    console.log("threadContent length,", threadContent?.length);
     console.log('Starting Twitter post with:', {
       hasThreadContent: !!threadContent?.length,
       mediaCount: mediaFiles?.length,
       hasSettings: !!Object.keys(settings).length
     });
 
-    // Check if this is a thread post
+    // Check if this is a thread post by checking settings.threadContent
     if (settings?.threadContent && settings.threadContent.length > 0) {
       console.log('Posting as thread with', settings.threadContent.length, 'tweets');
-      return await postThread(client, settings.threadContent);
+      let lastTweetId = null;
+      const tweets = [];
+
+      // Iterate through each tweet in the thread
+      for (const tweet of settings.threadContent) {
+        console.log('Processing thread tweet:', {
+          text: tweet.text,
+          mediaCount: tweet.mediaFiles?.length,
+          replyToId: lastTweetId
+        });
+
+        // Upload media for this tweet if any
+        let mediaIds = [];
+        if (tweet.mediaFiles && tweet.mediaFiles.length > 0) {
+          mediaIds = await Promise.all(
+            tweet.mediaFiles.map(async (fileId) => {
+              try {
+                // Find the media file from the provided mediaFiles array
+                const mediaFile = mediaFiles.find(file => file.id === fileId);
+                if (!mediaFile) throw new Error(`Media file not found: ${fileId}`);
+
+                console.log('Uploading media file:', {
+                  filename: mediaFile.filename,
+                  type: mediaFile.type,
+                  size: mediaFile.size
+                });
+
+                // Fetch the media file
+                const response = await fetch(mediaFile.url);
+                if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
+
+                const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
+
+                const mediaId = await client.v1.uploadMedia(buffer, {
+                  mimeType: mediaFile.type,
+                });
+
+                console.log('Successfully uploaded media:', { mediaId });
+                return mediaId;
+              } catch (error) {
+                console.error(`Failed to upload media file ${fileId}:`, error);
+                throw error;
+              }
+            })
+          );
+        }
+
+        // Create tweet data
+        const tweetData = {
+          text: tweet.text,
+        };
+
+        if (mediaIds.length > 0) {
+          tweetData.media = { media_ids: mediaIds };
+        }
+
+        if (lastTweetId) {
+          tweetData.reply = { in_reply_to_tweet_id: lastTweetId };
+        }
+
+        // Post the tweet
+        const postedTweet = await client.v2.tweet(tweetData);
+        console.log('Posted tweet:', postedTweet);
+
+        lastTweetId = postedTweet.data.id;
+        tweets.push(postedTweet);
+      }
+
+      return {
+        id: tweets[0].data.id,
+        thread: tweets.map(t => t.data.id)
+      };
     }
 
-    // Single tweet logic
+    // Single tweet logic (unchanged)
     console.log('Posting as single tweet');
     return await postSingleTweet(client, caption, mediaFiles);
   } catch (error) {
@@ -78,9 +149,9 @@ async function postThread(client, threadContent) {
               // Fetch the media file using the fileId
               const response = await fetch(`${process.env.APP_URL}/api/media/${fileId}`);
               if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
-              
+
               const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
-              
+
               const mediaId = await client.v1.uploadMedia(buffer, {
                 mimeType: response.headers.get('content-type'),
               });
@@ -140,12 +211,11 @@ async function postSingleTweet(client, text, mediaFiles) {
               size: file.size
             });
 
-            // Use node-fetch to get the buffer
             const response = await fetch(file.url);
             if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
-            
+
             const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
-            
+
             const mediaId = await client.v1.uploadMedia(buffer, {
               mimeType: file.type,
             });
