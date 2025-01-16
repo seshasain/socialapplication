@@ -1,17 +1,17 @@
 import { TwitterApi } from 'twitter-api-v2';
-import { RateLimiter } from 'limiter';
 import { PrismaClient } from '@prisma/client';
+import { RateLimiter } from 'limiter';
 
 const prisma = new PrismaClient();
 
-// Store rate limiters in memory, keyed by user ID
+// Store rate limiters per user
 const userRateLimiters = new Map();
 
-// Create rate limiter for a user (17 requests per 24 hours)
+// Create rate limiter for a user (1500 requests per 15 minutes as per Twitter's user auth limits)
 const createRateLimiter = (userId) => {
   const limiter = new RateLimiter({
-    tokensPerInterval: 17,
-    interval: "day",
+    tokensPerInterval: 1500,
+    interval: "15 min",
     fireImmediately: true
   });
   userRateLimiters.set(userId, limiter);
@@ -48,9 +48,13 @@ export const postToTwitter = async (userId, client, postData) => {
       throw new Error('Missing required parameters: userId and client are required');
     }
 
-    // Validate postData
-    if (!postData) {
-      throw new Error('Post data is required');
+    // Get rate limiter for this user
+    const rateLimiter = getRateLimiter(userId);
+
+    // Check if user has remaining tokens
+    const remainingRequests = await rateLimiter.tryRemoveTokens(1);
+    if (!remainingRequests) {
+      throw new Error('Rate limit exceeded. Please try again later.');
     }
 
     const {
@@ -65,33 +69,27 @@ export const postToTwitter = async (userId, client, postData) => {
       throw new Error('Either caption or thread content is required');
     }
 
-    // Get rate limiter for this user
-    const rateLimiter = getRateLimiter(userId);
+    try {
+      // Handle thread posts
+      if (settings?.threadContent && settings.threadContent.length > 0) {
+        console.log('Posting thread with', settings.threadContent.length, 'tweets');
+        return await postThread(client, settings.threadContent);
+      }
 
-    // Check if user has remaining tokens
-    const remainingRequests = await rateLimiter.tryRemoveTokens(1);
-    if (!remainingRequests) {
-      throw new Error('Rate limit exceeded. Please try again later.');
+      // Handle single tweet
+      console.log('Posting single tweet');
+      return await postSingleTweet(client, caption, mediaFiles);
+    } catch (error) {
+      // Check if error is rate limit related
+      if (error.code === 429) {
+        // Return token if rate limited
+        await rateLimiter.tryRemoveTokens(-1);
+        throw new Error('Twitter rate limit exceeded. Please try again later.');
+      }
+      throw error;
     }
-
-    // Handle thread posts
-    if (settings?.threadContent && settings.threadContent.length > 0) {
-      console.log('Posting thread with', settings.threadContent.length, 'tweets');
-      return await postThread(client, settings.threadContent);
-    }
-
-    // Handle single tweet
-    console.log('Posting single tweet');
-    return await postSingleTweet(client, caption, mediaFiles);
   } catch (error) {
     console.error('Twitter posting error:', error);
-
-    // If the error is due to Twitter API issues, don't consume the rate limit token
-    if (error.code && (error.code === 429 || error.code >= 500)) {
-      const rateLimiter = getRateLimiter(userId);
-      await rateLimiter.tryRemoveTokens(-1); // Return the token
-    }
-
     throw error;
   }
 };
@@ -237,7 +235,7 @@ export const getRemainingRateLimit = async (userId) => {
   const remainingTokens = await rateLimiter.getTokensRemaining();
   return {
     remaining: remainingTokens,
-    total: 17,
+    total: 1500,
     resetTime: new Date(Date.now() + rateLimiter.msToNextReset())
   };
 };

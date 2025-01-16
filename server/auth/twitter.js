@@ -16,7 +16,11 @@ router.get('/twitter', async (req, res) => {
 
     const authLink = await client.generateAuthLink(
       `${process.env.APP_URL}/api/auth/twitter/callback`,
-      { linkMode: 'authorize' }
+      { 
+        linkMode: 'authorize',
+        // Request all required scopes
+        scopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access']
+      }
     );
 
     // Store the oauth token secret in session
@@ -80,7 +84,9 @@ router.get('/twitter/callback', async (req, res) => {
       accessSecret: accessSecret,
     });
 
-    const user = await userClient.v2.me();
+    const user = await userClient.v2.me({
+      'user.fields': ['public_metrics', 'profile_image_url']
+    });
     
     // Save or update social account
     const socialAccount = await prisma.socialAccount.upsert({
