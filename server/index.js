@@ -1478,6 +1478,8 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       visibility,
       mediaFiles,
       platformSpecificData,
+      threadContent,
+      settings,
       publishNow
     } = req.body;
 
@@ -1534,6 +1536,8 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
               client = createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
               result = await postToTwitter(client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
+                threadContent,
+                settings,
                 mediaFiles: post.mediaFiles
               });
               break;
@@ -1690,6 +1694,8 @@ app.put('/api/posts/:id', authenticateToken, async (req, res) => {
       platforms,
       hashtags,
       visibility,
+      threadContent,
+      settings,
       mediaFiles
     } = req.body;
 

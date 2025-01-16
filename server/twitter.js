@@ -34,6 +34,8 @@ export const createTwitterClient = (accessToken, accessSecret) => {
 
 export const postToTwitter = async (client, { caption, mediaFiles = [], threadContent = [], settings = {} }) => {
   try {
+    console.log(threadContent,mediaFiles,settings);
+    console.log("threadContent length,",threadContent?.length);
     console.log('Starting Twitter post with:', {
       hasThreadContent: !!threadContent?.length,
       mediaCount: mediaFiles?.length,
