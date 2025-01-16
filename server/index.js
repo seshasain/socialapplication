@@ -1470,6 +1470,11 @@ app.delete('/api/media/:id', authenticateToken, async (req, res) => {
 });
 app.post('/api/posts', authenticateToken, async (req, res) => {
   try {
+    // Validate request body exists
+    if (!req.body) {
+      return res.status(400).json({ error: 'Missing request body' });
+    }
+
     const {
       caption,
       scheduledDate,
@@ -1480,11 +1485,16 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       platformSpecificData,
       threadContent,
       settings,
-      publishNow
+      publishNow,
     } = req.body;
 
     // Validate required fields
-    if (!caption || !platforms || !Array.isArray(platforms) || platforms.length === 0) {
+    if (
+      !caption ||
+      !platforms ||
+      !Array.isArray(platforms) ||
+      platforms.length === 0
+    ) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -1496,21 +1506,23 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
         scheduledDate: new Date(scheduledDate),
         hashtags: hashtags || '',
         visibility,
-        mediaFiles: {
-          connect: mediaFiles?.map(id => ({ id })) || []
-        },
+        mediaFiles: mediaFiles?.length
+          ? {
+              connect: mediaFiles.map((id) => ({ id })),
+            }
+          : undefined,
         platforms: {
-          create: platforms.map(platform => ({
+          create: platforms.map((platform) => ({
             platform: platform.platform,
             status: publishNow ? 'publishing' : 'scheduled',
-            settings: platformSpecificData?.[platform.platform] || {}
-          }))
-        }
+            settings: platform.settings || {},
+          })),
+        },
       },
       include: {
         mediaFiles: true,
-        platforms: true
-      }
+        platforms: true,
+      },
     });
 
     // Handle immediate publishing
@@ -1520,8 +1532,8 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
           const socialAccount = await prisma.socialAccount.findFirst({
             where: {
               userId: req.user.id,
-              platform: platform.platform
-            }
+              platform: platform.platform,
+            },
           });
 
           if (!socialAccount) {
@@ -1533,12 +1545,15 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
 
           switch (platform.platform.toLowerCase()) {
             case 'twitter':
-              client = createTwitterClient(socialAccount.accessToken, socialAccount.accessSecret);
-              result = await postToTwitter(client, {
+              client = await createTwitterClient(
+                socialAccount.accessToken,
+                socialAccount.accessSecret
+              );
+              result = await postToTwitter(req.user.id, client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
                 threadContent,
                 settings,
-                mediaFiles: post.mediaFiles
+                mediaFiles: post.mediaFiles,
               });
               break;
 
@@ -1546,7 +1561,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
               client = createFacebookClient(socialAccount.accessToken);
               result = await postToFacebook(client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
-                mediaFiles: post.mediaFiles
+                mediaFiles: post.mediaFiles,
               });
               break;
 
@@ -1554,7 +1569,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
               client = createInstagramClient(socialAccount.accessToken);
               result = await postToInstagram(client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
-                mediaFiles: post.mediaFiles
+                mediaFiles: post.mediaFiles,
               });
               break;
 
@@ -1562,7 +1577,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
               client = createLinkedInClient(socialAccount.accessToken);
               result = await postToLinkedIn(client, {
                 caption: caption + (hashtags ? ' ' + hashtags : ''),
-                mediaFiles: post.mediaFiles
+                mediaFiles: post.mediaFiles,
               });
               break;
 
@@ -1573,27 +1588,28 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
           // Update platform status
           await prisma.postPlatform.update({
             where: {
-              id: post.platforms.find(p => p.platform === platform.platform)?.id
+              id: post.platforms.find((p) => p.platform === platform.platform)
+                ?.id,
             },
             data: {
               status: 'published',
               publishedAt: new Date(),
-              externalId: result.id || result.postId
-            }
+              externalId: result.id || result.postId,
+            },
           });
-
         } catch (error) {
           console.error(`Failed to publish to ${platform.platform}:`, error);
-          
+
           // Update platform status with error
           await prisma.postPlatform.update({
             where: {
-              id: post.platforms.find(p => p.platform === platform.platform)?.id
+              id: post.platforms.find((p) => p.platform === platform.platform)
+                ?.id,
             },
             data: {
               status: 'failed',
-              error: error.message
-            }
+              error: error.message,
+            },
           });
         }
       }
@@ -1603,8 +1619,8 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
         where: { id: post.id },
         include: {
           mediaFiles: true,
-          platforms: true
-        }
+          platforms: true,
+        },
       });
 
       return res.json(updatedPost);

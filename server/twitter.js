@@ -39,13 +39,35 @@ export const createTwitterClient = async (accessToken, accessSecret) => {
   });
 };
 
-export const postToTwitter = async (userId, client, { caption, mediaFiles = [], threadContent = [], settings = {} }) => {
+export const postToTwitter = async (userId, client, postData) => {
   try {
     console.log('Attempting to post to Twitter for user:', userId);
     
+    // Validate required parameters
+    if (!userId || !client) {
+      throw new Error('Missing required parameters: userId and client are required');
+    }
+
+    // Validate postData
+    if (!postData) {
+      throw new Error('Post data is required');
+    }
+
+    const {
+      caption = '',
+      mediaFiles = [],
+      threadContent = [],
+      settings = {},
+    } = postData;
+
+    // Ensure we have either caption or threadContent
+    if (!caption && (!threadContent || threadContent.length === 0)) {
+      throw new Error('Either caption or thread content is required');
+    }
+
     // Get rate limiter for this user
     const rateLimiter = getRateLimiter(userId);
-    
+
     // Check if user has remaining tokens
     const remainingRequests = await rateLimiter.tryRemoveTokens(1);
     if (!remainingRequests) {
@@ -63,13 +85,13 @@ export const postToTwitter = async (userId, client, { caption, mediaFiles = [], 
     return await postSingleTweet(client, caption, mediaFiles);
   } catch (error) {
     console.error('Twitter posting error:', error);
-    
+
     // If the error is due to Twitter API issues, don't consume the rate limit token
     if (error.code && (error.code === 429 || error.code >= 500)) {
       const rateLimiter = getRateLimiter(userId);
       await rateLimiter.tryRemoveTokens(-1); // Return the token
     }
-    
+
     throw error;
   }
 };
@@ -77,7 +99,7 @@ export const postToTwitter = async (userId, client, { caption, mediaFiles = [], 
 const postSingleTweet = async (client, text, mediaFiles = []) => {
   try {
     console.log('Processing single tweet with', mediaFiles.length, 'media files');
-    
+
     let mediaIds = [];
     if (mediaFiles.length > 0) {
       mediaIds = await Promise.all(
@@ -86,7 +108,7 @@ const postSingleTweet = async (client, text, mediaFiles = []) => {
             console.log('Uploading media file:', {
               filename: file.filename,
               type: file.type,
-              size: file.size
+              size: file.size,
             });
 
             const response = await fetch(file.url);
