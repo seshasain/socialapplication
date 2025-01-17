@@ -125,19 +125,56 @@ const postThread = async (client, threadContent) => {
     try {
       console.log('Processing thread tweet:', {
         text: tweet,
-        mediaCount: 0,
+        mediaFiles: tweet.mediaFiles,
         replyToId: lastTweetId
       });
 
+      // Upload media files if present
+      let mediaIds = [];
+      if (tweet.mediaFiles && tweet.mediaFiles.length > 0) {
+        mediaIds = await Promise.all(
+          tweet.mediaFiles.map(async (fileId) => {
+            try {
+              // Fetch the media file from your storage
+              const mediaFile = await prisma.mediaFile.findUnique({
+                where: { id: fileId }
+              });
+
+              if (!mediaFile) {
+                throw new Error(`Media file not found: ${fileId}`);
+              }
+
+              // Download the file from the URL
+              const response = await fetch(mediaFile.url);
+              if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
+
+              const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
+
+              // Upload to Twitter
+              const mediaId = await client.v1.uploadMedia(buffer, {
+                mimeType: mediaFile.type,
+              });
+
+              console.log('Successfully uploaded media:', { mediaId, fileId });
+              return mediaId;
+            } catch (error) {
+              console.error(`Failed to upload media file ${fileId}:`, error);
+              throw error;
+            }
+          })
+        );
+      }
+
       // Create tweet data
       const tweetData = {
-        text: tweet, // Use the tweet content directly
-        ...(lastTweetId && { reply: { in_reply_to_tweet_id: lastTweetId } })
+        text: tweet,
+        ...(lastTweetId && { reply: { in_reply_to_tweet_id: lastTweetId } }),
+        ...(mediaIds.length > 0 && { media: { media_ids: mediaIds } })
       };
 
       console.log('Creating thread tweet with data:', {
         textLength: tweet.length,
-        mediaCount: 0,
+        mediaCount: mediaIds.length,
         replyToId: lastTweetId
       });
 
@@ -157,6 +194,7 @@ const postThread = async (client, threadContent) => {
     thread: tweets.map((t) => t.data.id),
   };
 };
+
 
 
 // Utility function to check remaining rate limit for a user
