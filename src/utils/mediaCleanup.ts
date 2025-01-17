@@ -1,18 +1,7 @@
 import B2 from 'backblaze-b2';
-import { APP_URL } from '../config/api';
+import { PrismaClient } from '@prisma/client';
 
-interface MediaFile {
-  id: string;
-  s3Key: string;
-}
-
-interface PostPlatform { 
-  id: string;
-  status: string;
-  post: {
-    mediaFiles: MediaFile[];
-  };
-}
+const prisma = new PrismaClient();
 
 // Initialize B2 client
 const b2 = new B2({
@@ -70,34 +59,27 @@ async function deleteFromB2(fileName: string) {
 
 export async function cleanupPublishedAndFailedMedia() {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.warn('No auth token found for media cleanup');
-      return;
-    }
-
-    // Fetch posts with published or failed status and their media files
-    const response = await fetch(`${APP_URL}/api/posts/cleanup-check`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
+    // Get all PostPlatform entries that are either published or failed
+    const postPlatforms = await prisma.postPlatform.findMany({
+      where: {
+        OR: [
+          { status: 'published' },
+          { status: 'failed' }
+        ]
       },
+      include: {
+        post: {
+          include: {
+            mediaFiles: true
+          }
+        }
+      }
     });
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch posts for cleanup');
-    }
-
-    const platforms: PostPlatform[] = await response.json();
-    
     // Track processed media files to avoid duplicate deletions
     const processedMediaIds = new Set<string>();
     
-    for (const platform of platforms) {
-      // Only process published or failed posts
-      if (!['published', 'failed'].includes(platform.status)) {
-        continue;
-      }
-
+    for (const platform of postPlatforms) {
       // Get media files for this post
       const mediaFiles = platform.post.mediaFiles;
       
@@ -111,12 +93,11 @@ export async function cleanupPublishedAndFailedMedia() {
           // Delete from B2
           await deleteFromB2(mediaFile.s3Key);
 
-          // Delete from database
-          await fetch(`${APP_URL}/api/media/${mediaFile.id}`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+          // Delete from MediaFile table
+          await prisma.mediaFile.delete({
+            where: {
+              id: mediaFile.id
+            }
           });
 
           // Mark as processed
@@ -125,12 +106,28 @@ export async function cleanupPublishedAndFailedMedia() {
           console.log(`Successfully cleaned up media file: ${mediaFile.id}`);
         } catch (error) {
           console.error(`Failed to cleanup media file ${mediaFile.id}:`, error);
+          // Continue with other files even if one fails
         }
       }
+
+      // Update the post to remove references to deleted media files
+      await prisma.post.update({
+        where: {
+          id: platform.post.id
+        },
+        data: {
+          mediaFiles: {
+            disconnect: mediaFiles.map(file => ({ id: file.id }))
+          }
+        }
+      });
     }
 
     console.log(`Media cleanup completed. Processed ${processedMediaIds.size} files`);
   } catch (error) {
     console.error('Media cleanup error:', error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
   }
 }

@@ -10,12 +10,14 @@ import Signup from './components/Signup';
 import PricingPage from './components/PricingPage';
 import { AuthProvider } from './context/AuthContext';
 import { initGA, initHotjar } from './utils/analytics';
+import { cleanupPublishedAndFailedMedia } from './utils/mediaCleanup';
 
 export default function App() {
   useEffect(() => {
     // Initialize analytics
     initGA();
     initHotjar();
+    cleanupPublishedAndFailedMedia();
   }, []);
 
   return (
