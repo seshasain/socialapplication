@@ -122,61 +122,22 @@ const postThread = async (client, threadContent) => {
   console.log('Processing thread with content:', JSON.stringify(threadContent, null, 2));
 
   for (const tweet of threadContent) {
-    console.log(threadContent);
     try {
       console.log('Processing thread tweet:', {
-        text: tweet.text,
-        mediaCount: tweet.mediaFiles?.length || 0,
+        text: tweet,
+        mediaCount: 0,
         replyToId: lastTweetId
       });
 
-      let mediaIds = [];
-      if (tweet.mediaFiles && tweet.mediaFiles.length > 0) {
-        mediaIds = await Promise.all(
-          tweet.mediaFiles.map(async (fileId) => {
-            try {
-              // Find the media file from the provided mediaFiles array
-              const mediaFile = mediaFiles.find(file => file.id === fileId);
-              if (!mediaFile) throw new Error(`Media file not found: ${fileId}`);
-
-              console.log('Uploading media for thread tweet:', {
-                filename: mediaFile.filename,
-                type: mediaFile.type,
-                size: mediaFile.size
-              });
-
-              const response = await fetch(mediaFile.url);
-              if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
-
-              const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
-              const mediaId = await client.v1.uploadMedia(buffer, {
-                mimeType: mediaFile.type,
-              });
-
-              console.log('Successfully uploaded media:', { mediaId });
-              return mediaId;
-            } catch (error) {
-              console.error(`Failed to upload media file ${fileId}:`, error);
-              throw error;
-            }
-          })
-        );
-      }
-
       // Create tweet data
       const tweetData = {
-        text: tweet.text,
-        media: mediaIds.length > 0 ? { media_ids: mediaIds } : undefined
+        text: tweet, // Use the tweet content directly
+        ...(lastTweetId && { reply: { in_reply_to_tweet_id: lastTweetId } })
       };
-
-      // Add reply parameter if this is not the first tweet
-      if (lastTweetId) {
-        tweetData.reply = { in_reply_to_tweet_id: lastTweetId };
-      }
 
       console.log('Creating thread tweet with data:', {
         textLength: tweet.length,
-        mediaCount: mediaIds.length,
+        mediaCount: 0,
         replyToId: lastTweetId
       });
 
@@ -193,9 +154,10 @@ const postThread = async (client, threadContent) => {
 
   return {
     id: tweets[0].data.id,
-    thread: tweets.map(t => t.data.id)
+    thread: tweets.map((t) => t.data.id),
   };
 };
+
 
 // Utility function to check remaining rate limit for a user
 export const getRemainingRateLimit = async (userId) => {
