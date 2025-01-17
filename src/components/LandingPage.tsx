@@ -1,9 +1,5 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { cleanupUnusedMediaFiles } from '../utils/cleanupService';
-
 import {
   Calendar,
   BarChart2,
@@ -33,15 +29,6 @@ import {
 } from 'lucide-react';
 
 export default function LandingPage() {
-  const { user } = useAuth();
-
-  useEffect(() => {
-    // Only run cleanup if user is logged in
-    if (user) {
-      cleanupUnusedMediaFiles()
-        .catch(error => console.error('Failed to cleanup media files:', error));
-    }
-  }, [user]);
   return (
     <div>
       {/* Hero Section */}
