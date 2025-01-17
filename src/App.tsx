@@ -17,7 +17,17 @@ export default function App() {
     // Initialize analytics
     initGA();
     initHotjar();
-    cleanupPublishedAndFailedMedia();
+
+    // Run media cleanup in the background
+    const cleanup = async () => {
+      try {
+        await cleanupPublishedAndFailedMedia();
+      } catch (error) {
+        // Log error but don't break the app
+        console.error('Background media cleanup failed:', error);
+      }
+    };
+    cleanup();
   }, []);
 
   return (

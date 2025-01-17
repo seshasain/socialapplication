@@ -38,8 +38,11 @@ async function deleteFromB2(fileName: string) {
     const response = await b2.listFileNames({
       bucketId: import.meta.env.VITE_B2_BUCKET_ID,
       startFileName: fileName,
-      maxFileCount: 1
+      maxFileCount: 1,
+      prefix: '', 
+      delimiter: '', 
     });
+
 
     if (response.data.files.length > 0) {
       const file = response.data.files[0];
@@ -70,11 +73,18 @@ export async function cleanupPublishedAndFailedMedia() {
       include: {
         post: {
           include: {
-            mediaFiles: true
+            mediaFiles: {
+              where: {
+                url: {
+                  not: ''
+                }
+              }
+            }
           }
         }
       }
     });
+
 
     // Track processed media files to avoid duplicate deletions
     const processedMediaIds = new Set<string>();
@@ -94,9 +104,12 @@ export async function cleanupPublishedAndFailedMedia() {
           await deleteFromB2(mediaFile.s3Key);
 
           // Delete from MediaFile table
-          await prisma.mediaFile.delete({
+          await prisma.mediaFile.update({
             where: {
               id: mediaFile.id
+            },
+            data: {
+              url: ''
             }
           });
 
