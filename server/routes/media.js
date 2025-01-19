@@ -52,7 +52,7 @@ async function getUploadUrl() {
 // Upload endpoint
 router.post('/upload', upload.single('file'), async (req, res) => {
   console.log('Processing file upload request');
-  
+
   if (!req.file) {
     console.error('No file provided');
     return res.status(400).json({ error: 'No file provided' });
@@ -148,6 +148,129 @@ router.delete('/:fileId', async (req, res) => {
   } catch (error) {
     console.error('Delete failed:', error);
     res.status(500).json({ error: 'Failed to delete file' });
+  }
+});
+async function deleteFromB2(fileName) {
+  console.log(`Processing delete request for file: ${req.params.fileId}`);
+
+  try {
+    const mediaFile = await prisma.mediaFile.findUnique({
+      where: { id: req.params.fileId }
+    });
+
+    if (!mediaFile) {
+      console.log('File not found');
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Authorize B2
+    await authorizeB2();
+
+    // Delete file from B2
+    console.log('Deleting file from B2');
+    await b2.deleteFileVersion({
+      fileId: mediaFile.s3Key,
+      fileName: mediaFile.filename
+    });
+
+    // Delete record from database
+    await prisma.mediaFile.delete({
+      where: { id: req.params.fileId }
+    });
+
+    console.log('File deleted successfully');
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Delete failed:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
+  }
+}
+// Add this route to the existing media routes
+router.post('/api/media/cleanup', async (req, res) => {
+  console.log("in cleanup");
+  try {
+    // Get all PostPlatform entries that are either published or failed
+    const postPlatforms = await prisma.postPlatform.findMany({
+      where: {
+        OR: [
+          { status: 'published' },
+          { status: 'failed' }
+        ]
+      },
+      include: {
+        post: {
+          include: {
+            mediaFiles: {
+              where: {
+                url: {
+                  not: ''
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Track processed media files to avoid duplicate deletions
+    const processedMediaIds = new Set();
+
+    for (const platform of postPlatforms) {
+      const mediaFiles = platform.post.mediaFiles;
+
+      for (const mediaFile of mediaFiles) {
+        if (processedMediaIds.has(mediaFile.id)) {
+          continue;
+        }
+
+        try {
+          console.log("deleting file,", mediaFile.id);
+          // Delete from B2
+          await deleteFromB2(mediaFile.id);
+
+
+          // Update MediaFile record
+          await prisma.mediaFile.update({
+            where: {
+              id: mediaFile.id
+            },
+            data: {
+              url: ''
+            }
+          });
+
+          processedMediaIds.add(mediaFile.id);
+          console.log(`Successfully cleaned up media file: ${mediaFile.id}`);
+        } catch (error) {
+          console.error(`Failed to cleanup media file ${mediaFile.id}:`, error);
+        }
+      }
+
+      // Update post to remove references to deleted media files
+      await prisma.post.update({
+        where: {
+          id: platform.post.id
+        },
+        data: {
+          mediaFiles: {
+            disconnect: mediaFiles.map(file => ({ id: file.id }))
+          }
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Media cleanup completed. Processed ${processedMediaIds.size} files`
+    });
+  } catch (error) {
+    console.error('Media cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup media files',
+      error: error.message
+    });
   }
 });
 

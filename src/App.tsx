@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
 import LandingPage from './components/LandingPage';
@@ -25,6 +25,10 @@ export default function App() {
       } catch (error) {
         // Log error but don't break the app
         console.error('Background media cleanup failed:', error);
+        // Only show toast for non-auth related errors
+        if (error instanceof Error && !error.message.includes('No authentication token')) {
+          toast.error('Media cleanup failed. Some temporary files may remain.');
+        }
       }
     };
     cleanup();

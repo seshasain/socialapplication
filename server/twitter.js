@@ -45,7 +45,7 @@ export const postToTwitter = async (userId, client, postData) => {
     console.log('Post data:', JSON.stringify(postData, null, 2));
     
     // Check if this is a thread post
-    const isThread = postData.threadContent.length > 0;
+    const isThread = postData.threadContent && postData.threadContent.length > 0;
     console.log('Is thread post:', isThread);
     
     if (isThread) {
