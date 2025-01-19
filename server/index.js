@@ -1484,10 +1484,11 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       mediaFiles,
       platformSpecificData,
       threadContent,
-      settings,
       publishNow,
     } = req.body;
-
+    const settings = platforms[0]?.settings; 
+    console.log("settings", settings);
+    
     // Validate required fields
     if (
       !caption ||
