@@ -2669,6 +2669,99 @@ app.post('/api/media/verify', authenticateToken, async (req, res) => {
   }
 });
 
+
+
+app.post('/api/media/cleanup', async (req, res) => {
+  try {
+    // Get all PostPlatform entries that are either published or failed
+    const postPlatforms = await prisma.postPlatform.findMany({
+      where: {
+        OR: [
+          { status: 'published' },
+          { status: 'failed' }
+        ]
+      },
+      include: {
+        post: {
+          include: {
+            mediaFiles: {
+              where: {
+                url: {
+                  not: ''
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    console.log(postPlatforms);
+
+    // Track processed media files to avoid duplicate deletions
+    const processedMediaIds = new Set();
+
+    for (const platform of postPlatforms) {
+      const mediaFiles = platform.post.mediaFiles; 
+      console.log(mediaFiles);
+      for (const mediaFile of mediaFiles) {
+        if (processedMediaIds.has(mediaFile.id)) {
+          continue;
+        }
+
+        try {
+          console.log("deleting file,", mediaFile.id);
+          // Delete from B2
+          await deleteFromB2(mediaFile.id);
+
+
+          // Update MediaFile record
+          await prisma.mediaFile.update({
+            where: {
+              id: mediaFile.id
+            },
+            data: {
+              url: ''
+            }
+          });
+
+          processedMediaIds.add(mediaFile.id);
+          console.log(`Successfully cleaned up media file: ${mediaFile.id}`);
+        } catch (error) {
+          console.error(`Failed to cleanup media file ${mediaFile.id}:`, error);
+        }
+      }
+
+      // Update post to remove references to deleted media files
+      await prisma.post.update({
+        where: {
+          id: platform.post.id
+        },
+        data: {
+          mediaFiles: {
+            disconnect: mediaFiles.map(file => ({ id: file.id }))
+          }
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Media cleanup completed. Processed ${processedMediaIds.size} files`
+    });
+  } catch (error) {
+    console.error('Media cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup media files',
+      error: error.message
+    });
+  }
+});
+
+
+
+
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

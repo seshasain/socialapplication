@@ -105,7 +105,6 @@ async function main() {
       }),
     ]);
 
-
     // Create social accounts
     const socialAccounts = await Promise.all([
       prisma.socialAccount.create({
@@ -132,70 +131,9 @@ async function main() {
       }),
     ]);
 
-    // Create posts with platforms and analytics
-    const now = new Date();
-    const posts = [];
-    const platforms = ['instagram', 'facebook'];
-    const captions = [
-      'Exciting new product launch! 🚀 #innovation',
-      'Behind the scenes at our office 📸 #workplace',
-      'Meet our amazing team! 👥 #teamwork',
-      'Customer success story 🌟 #testimonial',
-      'Tips and tricks for success 💡 #tips',
-    ];
-
-    // Create posts for the last 7 days
-    for (let i = 0; i < 7; i++) {
-      const postDate = new Date(now);
-      postDate.setDate(postDate.getDate() - i);
-
-      const post = await prisma.post.create({
-        data: {
-          userId: users[0].id,
-          caption: captions[Math.floor(Math.random() * captions.length)],
-          scheduledDate: postDate,
-          hashtags: '#social #marketing #business',
-          visibility: 'public',
-          platforms: {
-            create: platforms.map(platform => ({
-              platform,
-              status: 'published',
-              publishedAt: postDate,
-            })),
-          },
-        },
-        include: {
-          platforms: true,
-        },
-      });
-
-      // Create analytics for each platform of the post
-      for (const platform of post.platforms) {
-        await prisma.analytics.create({
-          data: {
-            userId: users[0].id,
-            postPlatformId: platform.id,
-            platform: platform.platform,
-            date: postDate,
-            reach: Math.floor(Math.random() * 1000) + 500,
-            impressions: Math.floor(Math.random() * 2000) + 1000,
-            engagement: Math.floor(Math.random() * 500) + 100,
-            clicks: Math.floor(Math.random() * 300) + 50,
-            shares: Math.floor(Math.random() * 100) + 10,
-            saves: Math.floor(Math.random() * 50) + 5,
-            likes: Math.floor(Math.random() * 800) + 200,
-            comments: Math.floor(Math.random() * 100) + 20,
-          },
-        });
-      }
-
-      posts.push(post);
-    }
-
     console.log({
       users: users.length,
       plans: plans.length,
-      posts: posts.length,
       socialAccounts: socialAccounts.length,
     });
 
@@ -213,3 +151,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+  
