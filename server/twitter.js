@@ -12,7 +12,7 @@ const createRateLimiter = (userId) => {
   const limiter = new RateLimiter({
     tokensPerInterval: 1500,
     interval: 900000,
-    fireImmediately: true
+    fireImmediately: true,
   });
   userRateLimiters.set(userId, limiter);
   return limiter;
@@ -43,14 +43,13 @@ export const postToTwitter = async (userId, client, postData) => {
   try {
     console.log('Attempting to post to Twitter for user:', userId);
     console.log('Post data:', JSON.stringify(postData, null, 2));
-    
-    // Check if this is a thread post
+
     const isThread = postData.threadContent && postData.threadContent.length > 0;
     console.log('Is thread post:', isThread);
-    
+
     if (isThread) {
       console.log('Posting thread with', postData.threadContent.length, 'tweets');
-      return await postThread(client, postData.threadContent);
+      return await postThread(client, postData);
     } else {
       console.log('Posting single tweet');
       return await postSingleTweet(client, postData.caption, postData.mediaFiles);
@@ -63,7 +62,7 @@ export const postToTwitter = async (userId, client, postData) => {
 
 const postSingleTweet = async (client, text, mediaFiles = []) => {
   console.log('Processing single tweet with', mediaFiles.length, 'media files');
-  
+
   let mediaIds = [];
   if (mediaFiles.length > 0) {
     mediaIds = await Promise.all(
@@ -72,13 +71,15 @@ const postSingleTweet = async (client, text, mediaFiles = []) => {
           console.log('Uploading media file:', {
             filename: file.filename,
             type: file.type,
-            size: file.size
+            size: file.size,
           });
 
           const response = await fetch(file.url);
-          if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
+          if (!response.ok)
+            throw new Error(`Failed to fetch media file: ${response.statusText}`);
 
-          const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
+          const buffer = await response.arrayBuffer()
+            .then((arr) => Buffer.from(arr));
           const mediaId = await client.v1.uploadMedia(buffer, {
             mimeType: file.type,
           });
@@ -96,12 +97,12 @@ const postSingleTweet = async (client, text, mediaFiles = []) => {
   // Create tweet data
   const tweetData = {
     text: text,
-    media: mediaIds.length > 0 ? { media_ids: mediaIds } : undefined
+    media: mediaIds.length > 0 ? { media_ids: mediaIds } : undefined,
   };
 
   console.log('Creating tweet with data:', {
     textLength: text.length,
-    mediaCount: mediaIds.length
+    mediaCount: mediaIds.length,
   });
 
   const tweet = await client.v2.tweet(tweetData);
@@ -110,55 +111,59 @@ const postSingleTweet = async (client, text, mediaFiles = []) => {
   return {
     id: tweet.data.id,
     text: tweet.data.text,
-    externalId: tweet.data.id
+    externalId: tweet.data.id,
   };
 };
 
-
-const postThread = async (client, threadContent) => {
+const postThread = async (client, postData) => {
+  const { threadContent, settings } = postData;
   let lastTweetId = null;
   const tweets = [];
 
-  console.log('Processing thread with content:', JSON.stringify(threadContent, null, 2));
+  console.log('Processing thread with settings:', JSON.stringify(settings, null, 2));
 
-  for (const tweet of threadContent) {
+  for (let i = 0; i < threadContent.length; i++) {
     try {
-      console.log('Processing thread tweet:', {
-        text: tweet,
-        mediaFiles: tweet.mediaFiles,
-        replyToId: lastTweetId
+      const content = threadContent[i];
+      // Get media files for this specific tweet from settings
+      const threadMediaFiles = settings?.threadContent?.[i]?.mediaFiles || [];
+      const mediaFiles = postData.mediaFiles.filter(file => 
+        threadMediaFiles.includes(file.id)
+      );
+
+      console.log(`Processing thread tweet ${i + 1}:`, {
+        content,
+        mediaFiles: mediaFiles.length,
+        replyToId: lastTweetId,
       });
 
       // Upload media files if present
       let mediaIds = [];
-      if (tweet.mediaFiles && tweet.mediaFiles.length > 0) {
+      if (mediaFiles.length > 0) {
         mediaIds = await Promise.all(
-          tweet.mediaFiles.map(async (fileId) => {
+          mediaFiles.map(async (file) => {
             try {
-              // Fetch the media file from your storage
-              const mediaFile = await prisma.mediaFile.findUnique({
-                where: { id: fileId }
+              console.log('Uploading media for thread:', {
+                filename: file.filename,
+                type: file.type,
+                size: file.size
               });
 
-              if (!mediaFile) {
-                throw new Error(`Media file not found: ${fileId}`);
+              const response = await fetch(file.url);
+              if (!response.ok) {
+                throw new Error(`Failed to fetch media file: ${response.statusText}`);
               }
 
-              // Download the file from the URL
-              const response = await fetch(mediaFile.url);
-              if (!response.ok) throw new Error(`Failed to fetch media file: ${response.statusText}`);
-
-              const buffer = await response.arrayBuffer().then(arr => Buffer.from(arr));
-
-              // Upload to Twitter
+              const buffer = await response.arrayBuffer()
+                .then((arr) => Buffer.from(arr));
               const mediaId = await client.v1.uploadMedia(buffer, {
-                mimeType: mediaFile.type,
+                mimeType: file.type,
               });
 
-              console.log('Successfully uploaded media:', { mediaId, fileId });
+              console.log('Successfully uploaded thread media:', { mediaId });
               return mediaId;
             } catch (error) {
-              console.error(`Failed to upload media file ${fileId}:`, error);
+              console.error(`Failed to upload thread media file:`, error);
               throw error;
             }
           })
@@ -167,15 +172,15 @@ const postThread = async (client, threadContent) => {
 
       // Create tweet data
       const tweetData = {
-        text: tweet,
+        text: content,
         ...(lastTweetId && { reply: { in_reply_to_tweet_id: lastTweetId } }),
-        ...(mediaIds.length > 0 && { media: { media_ids: mediaIds } })
+        ...(mediaIds.length > 0 && { media: { media_ids: mediaIds } }),
       };
 
       console.log('Creating thread tweet with data:', {
-        textLength: tweet.length,
+        textLength: content.length,
         mediaCount: mediaIds.length,
-        replyToId: lastTweetId
+        replyToId: lastTweetId,
       });
 
       const postedTweet = await client.v2.tweet(tweetData);
@@ -195,8 +200,6 @@ const postThread = async (client, threadContent) => {
   };
 };
 
-
-
 // Utility function to check remaining rate limit for a user
 export const getRemainingRateLimit = async (userId) => {
   const rateLimiter = getRateLimiter(userId);
@@ -204,7 +207,7 @@ export const getRemainingRateLimit = async (userId) => {
   return {
     remaining: remainingTokens,
     total: 1500,
-    resetTime: new Date(Date.now() + rateLimiter.msToNextReset())
+    resetTime: new Date(Date.now() + rateLimiter.msToNextReset()),
   };
 };
 
