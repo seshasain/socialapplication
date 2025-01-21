@@ -284,41 +284,6 @@ export default function PostContent({
           </div>
         </>
       )}
-
-      {/* Hashtags */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Hash className="inline w-4 h-4 mr-1" />
-          Hashtags
-        </label>
-        <input
-          type="text"
-          value={hashtags}
-          onChange={onHashtagsChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          placeholder="#socialmedia #marketing"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          Separate hashtags with spaces
-        </p>
-      </div>
-
-      {/* Visibility */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Globe className="inline w-4 h-4 mr-1" />
-          Visibility
-        </label>
-        <select
-          value={visibility}
-          onChange={onVisibilityChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="public">Public - Anyone can see this post</option>
-          <option value="followers">Followers - Only your followers can see this post</option>
-          <option value="private">Private - Only you can see this post</option>
-        </select>
-      </div>
     </div>
   );
 }

@@ -444,14 +444,16 @@ const handleSubmit = async (e: React.FormEvent) => {
                     threadMedia={threadMedia}
                   />
   
-                  <SchedulingOptions
-                    publishNow={publishNow}
-                    setPublishNow={setPublishNow}
-                    scheduledDate={postData.scheduledDate}
-                    scheduledTime={postData.scheduledTime}
-                    onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
-                    onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
-                  />
+                  <div className="mt-8">
+                    <SchedulingOptions
+                      publishNow={publishNow}
+                      setPublishNow={setPublishNow}
+                      scheduledDate={postData.scheduledDate}
+                      scheduledTime={postData.scheduledTime}
+                      onDateChange={(e) => setPostData({ ...postData, scheduledDate: e.target.value })}
+                      onTimeChange={(e) => setPostData({ ...postData, scheduledTime: e.target.value })}
+                    />
+                  </div>
                 </>
               )}
             </div>

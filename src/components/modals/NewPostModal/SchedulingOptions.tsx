@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Clock, Zap } from 'lucide-react';
 
 interface SchedulingOptionsProps {
@@ -18,61 +18,75 @@ export default function SchedulingOptions({
   onDateChange,
   onTimeChange,
 }: SchedulingOptionsProps) {
+  const dateTimeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!publishNow && dateTimeRef.current) {
+      dateTimeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [publishNow]);
+
   return (
-    <div>
-      <div className="flex items-center space-x-4 mb-4">
-        <button
-          type="button"
-          onClick={() => setPublishNow(false)}
-          className={`flex items-center px-4 py-2 rounded-lg ${
-            !publishNow
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          } transition-colors`}
-        >
-          <Clock className="w-4 h-4 mr-2" />
-          Schedule Post
-        </button>
+    <div className="flex flex-col space-y-6">
+      <h3 className="text-sm font-medium text-gray-700">When would you like to publish?</h3>
+      
+      <div className="inline-flex rounded-lg p-1 bg-gray-50 border border-gray-200">
+        {/* Publish Now Option */}
         <button
           type="button"
           onClick={() => setPublishNow(true)}
-          className={`flex items-center px-4 py-2 rounded-lg ${
+          className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md transition-all ${
             publishNow
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          } transition-colors`}
+              ? 'bg-white shadow-sm border border-gray-200 text-blue-600'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
         >
-          <Zap className="w-4 h-4 mr-2" />
-          Publish Now
+          <Zap size={18} className="mr-2" />
+          <span className="font-medium">Publish Now</span>
+        </button>
+
+        {/* Schedule Post Option */}
+        <button
+          type="button"
+          onClick={() => setPublishNow(false)}
+          className={`flex-1 flex items-center justify-center px-4 py-2 rounded-md transition-all ${
+            !publishNow
+              ? 'bg-white shadow-sm border border-gray-200 text-blue-600'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Clock size={18} className="mr-2" />
+          <span className="font-medium">Schedule Post</span>
         </button>
       </div>
 
+      {/* Date Time Selector */}
       {!publishNow && (
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Date
-            </label>
-            <input
-              type="date"
-              value={scheduledDate}
-              onChange={onDateChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-              min={new Date().toISOString().split('T')[0]}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time
-            </label>
-            <input
-              type="time"
-              value={scheduledTime}
-              onChange={onTimeChange}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-              required
-            />
+        <div 
+          ref={dateTimeRef}
+          className="animate-slideDown"
+        >
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="block text-sm font-medium text-gray-700">Select date and time for your post</label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={onDateChange}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={onTimeChange}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
