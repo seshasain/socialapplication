@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   X, 
   Check, 
@@ -13,6 +13,7 @@ import {
   Info,
   ChevronRight
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface Platform {
   id: string;
@@ -120,6 +121,26 @@ export default function PostStatusModal({
   const allSuccessful = platforms.every(p => p.status === 'published' || p.status === 'scheduled');
   const anyFailed = platforms.some(p => p.status === 'failed');
   const anyProcessing = platforms.some(p => p.status === 'processing');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const allSuccessful = platforms.every(p => p.status === 'published');
+    if (allSuccessful) {
+      console.log('Triggering confetti for successful posts');
+      
+      const confettiColors = ['#22c55e', '#16a34a', '#15803d', '#166534']; // Different shades of green
+
+      // Single burst from center
+      confetti({
+        particleCount: 200,
+        spread: 90,
+        origin: { y: 0.5, x: 0.5 },
+        colors: confettiColors,
+        gravity: 0.8,
+      });
+    }
+  }, [isOpen, platforms]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
