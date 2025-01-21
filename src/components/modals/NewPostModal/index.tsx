@@ -54,7 +54,7 @@ export default function NewPostModal({
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Array<{ platform: string; message: string }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [publishNow, setPublishNow] = useState(false);
+  const [publishNow, setPublishNow] = useState(true);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedPostType, setSelectedPostType] = useState<PostType>('post');
   const [postSuccess, setPostSuccess] = useState<{ [key: string]: boolean }>({});
@@ -77,12 +77,12 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   const defaultDate = new Date();
   defaultDate.setHours(defaultDate.getHours() + 1);
 
+  // Get current date and time for defaults
+  const now = new Date();
   const [postData, setPostData] = useState({
     caption: '',
-    scheduledDate: defaultDate.toISOString().split('T')[0],
-    scheduledTime: defaultDate.toTimeString().slice(0, 5),
-    hashtags: '',
-    visibility: 'public',
+    scheduledDate: now.toISOString().split('T')[0],
+    scheduledTime: now.toTimeString().slice(0, 5),
     platformSpecificData: {} as Record<string, any>,
   });
   const [uploadedFiles, setUploadedFiles] = useState<MediaFile[]>([]);
@@ -146,19 +146,18 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
   };
   useEffect(() => {
     if (!isOpen) {
-      setUploadedFiles([]);
+      const now = new Date();
       setPostData({
         caption: '',
-        scheduledDate: defaultDate.toISOString().split('T')[0],
-        scheduledTime: defaultDate.toTimeString().slice(0, 5),
-        hashtags: '',
-        visibility: 'public',
+        scheduledDate: now.toISOString().split('T')[0],
+        scheduledTime: now.toTimeString().slice(0, 5),
         platformSpecificData: {},
       });
       setSelectedPlatforms([]);
       setSelectedPostType('post');
       setStep('platform');
       setError(null);
+      setPublishNow(true); // Reset to default publish now
     }
   }, [isOpen]);
 
@@ -221,8 +220,6 @@ const handleSubmit = async (e: React.FormEvent) => {
           }
         };
       }),
-      hashtags: postData.hashtags,
-      visibility: postData.visibility,
       mediaFiles: mediaFileIds,
       threadContent: selectedPostType === 'thread' ? 
         formattedThreads.map(thread => thread.content) : undefined,
@@ -332,8 +329,6 @@ const handleSubmit = async (e: React.FormEvent) => {
         caption: '',
         scheduledDate: defaultDate.toISOString().split('T')[0],
         scheduledTime: defaultDate.toTimeString().slice(0, 5),
-        hashtags: '',
-        visibility: 'public',
         platformSpecificData: {},
       });
       // Clear thread-specific data

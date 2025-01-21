@@ -25,6 +25,7 @@ interface PostContentProps {
   threadContent?: string[];
   onThreadChange?: (threads: string[]) => void;
   threadMedia?: Record<string, MediaFile[]>;
+  characterLimit: number;
 }
 
 export default function PostContent({
@@ -44,7 +45,8 @@ export default function PostContent({
   connectedAccounts = [],
   threadContent = [],
   onThreadChange,
-  threadMedia = {}
+  threadMedia = {},
+  characterLimit
 }: PostContentProps) {
   console.log('Selected Platform IDs:', selectedPlatforms);
   console.log('Connected Accounts:', connectedAccounts);
@@ -140,6 +142,7 @@ export default function PostContent({
         </button>
       </div>
 
+      {/* Post Type Info */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 flex items-start space-x-4">
         <div className="p-3 bg-white rounded-xl shadow-sm">
           <Icon className="w-6 h-6 text-blue-600" />
@@ -163,7 +166,7 @@ export default function PostContent({
         />
       ) : (
         <>
-          {/* Caption */}
+          {/* Caption with Character Limit */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Caption {!config.captionOptional && <span className="text-red-500">*</span>}
@@ -175,10 +178,38 @@ export default function PostContent({
               placeholder={`Write your ${postType} caption here...`}
               required={!config.captionOptional}
             />
+            
+            {/* Character Limit Info */}
+            <div className="mt-2 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 font-medium">{caption.length} characters</span>
+                <span className={`font-medium ${
+                  caption.length > characterLimit * 0.9 ? 'text-amber-500' : 'text-gray-400'
+                }`}>
+                  {characterLimit - caption.length} remaining
+                </span>
+              </div>
+              
+              {/* Platform-specific character limits */}
+              {selectedPlatforms.map(platformId => {
+                const account = connectedAccounts.find(acc => acc.id === platformId);
+                const platformName = account?.platform?.toLowerCase();
+                const limits = platformName ? getPlatformLimits(platformName) : null;
+                
+                if (limits && caption.length > limits.maxCharacters) {
+                  return (
+                    <div key={platformId} className="text-sm text-amber-600 bg-amber-50/50 px-3 py-2 rounded-lg">
+                      {platformName}: Exceeds maximum of {limits.maxCharacters} characters
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
           </div>
 
-          {/* Media Upload */}
-          <div className="mt-12 bg-white/50 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 space-y-4">
+          {/* Media Upload Section */}
+          <div className="mt-8 bg-white/50 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center space-x-2">
                 <ImageIcon className="w-5 h-5 text-gray-600" />
@@ -198,7 +229,7 @@ export default function PostContent({
               error={uploadError}
             />
 
-            {/* Show platform-specific limits */}
+            {/* Platform-specific media limits */}
             <div className="mt-2 space-y-2">
               {selectedPlatforms.map(platformId => {
                 const account = connectedAccounts.find(acc => acc.id === platformId);
@@ -216,53 +247,14 @@ export default function PostContent({
                   </div>
                 );
               })}
-              
-              {selectedPlatforms.length > 1 && (
-                <div className="text-sm text-gray-500 mt-2 pt-2 border-t">
-                  <span className="font-medium">Combined limit:</span> {mediaLimit} files
-                  <br />
-                  <span className="text-xs">(Based on most restrictive platform)</span>
-                </div>
-              )}
             </div>
           </div>
         </>
       )}
 
-      {/* Hashtags */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Hash className="inline w-4 h-4 mr-1" />
-          Hashtags
-        </label>
-        <input
-          type="text"
-          value={hashtags}
-          onChange={onHashtagsChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          placeholder="#socialmedia #marketing"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          Separate hashtags with spaces
-        </p>
-      </div>
+     
 
-      {/* Visibility */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          <Globe className="inline w-4 h-4 mr-1" />
-          Visibility
-        </label>
-        <select
-          value={visibility}
-          onChange={onVisibilityChange}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="public">Public - Anyone can see this post</option>
-          <option value="followers">Followers - Only your followers can see this post</option>
-          <option value="private">Private - Only you can see this post</option>
-        </select>
-      </div>
+      
     </div>
   );
 }
