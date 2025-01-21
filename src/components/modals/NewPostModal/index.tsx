@@ -360,50 +360,35 @@ const handleSubmit = async (e: React.FormEvent) => {
   return (
     <>
       {/* Modal for Post Creation/Editing */}
-      <div 
-        className={`fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4
-          animate-[fadeIn_0.2s_ease-out]`}
-      >
-        <div 
-          className={`bg-white rounded-2xl w-full max-w-3xl flex flex-col shadow-2xl max-h-[85vh] border border-gray-100
-            animate-[modalEnter_0.3s_cubic-bezier(0.21, 1.02, 0.73, 1)]`}
-        >
-          {/* Premium Gradient Header */}
-          <div className="relative flex justify-between items-center px-6 py-4 border-b border-gray-100">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 via-white to-indigo-50/50" />
-            
-            <div className="relative flex items-center space-x-4 animate-[slideRight_0.4s_ease-out]">
-              <h2 className="text-xl font-semibold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col shadow-xl max-h-[90vh]">
+          {/* Header */}
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-semibold text-gray-900">
                 {initialData ? 'Edit Post' : 'Create New Post'}
               </h2>
               {step !== 'platform' && (
-                <div className="flex items-center space-x-3 ml-4 animate-[fadeIn_0.6s_ease-out]">
-                  <div className="flex space-x-1.5">
-                    {['platform', 'type', 'content'].map((stepName, index) => (
-                      <div
-                        key={stepName}
-                        className={`h-1 rounded-full transition-all duration-500 transform
-                          ${['platform', 'type', 'content'].indexOf(step) >= index
-                            ? 'w-16 bg-blue-600 scale-100'
-                            : 'w-12 bg-gray-200 scale-95'}`}
-                      />
-                    ))}
-                  </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 rounded-full bg-gray-300" />
+                  <span className="text-sm text-gray-500">
+                    Step {step === 'type' ? '2' : '3'} of 3
+                  </span>
                 </div>
               )}
             </div>
-            
             <button
               onClick={handleClose}
-              className="relative p-2 hover:bg-gray-50 rounded-full transition-all duration-200 hover:scale-105 group"
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              disabled={loading || uploadingFiles || isClosing}
             >
-              <X className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
   
-          {/* Content with Smooth Transitions */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
-            <div className="p-6 animate-[fadeIn_0.4s_ease-out]">
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6">
               {error && (
                 <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg flex items-center">
                   <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
@@ -456,7 +441,9 @@ const handleSubmit = async (e: React.FormEvent) => {
                     onMediaUpload={handleMediaUpload}
                     onMediaRemove={handleMediaRemove}
                     uploadError={uploadError}
-                    onBack={() => setStep('type')}
+                    onBack={handleBack}
+                    selectedPlatforms={selectedPlatforms}
+                    connectedAccounts={connectedAccounts}
                     threadContent={threadContent}
                     onThreadChange={setThreadContent}
                     threadMedia={threadMedia}
@@ -475,33 +462,29 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
           </div>
   
-          {/* Footer with Premium Button Styles */}
+          {/* Footer */}
           {step === 'content' && (
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white/80 backdrop-blur-sm rounded-b-2xl animate-[slideUp_0.3s_ease-out]">
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white rounded-b-2xl">
               <div className="flex justify-end space-x-4">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-5 py-2.5 text-gray-600 hover:text-gray-900 font-medium transition-all duration-200 hover:bg-gray-50 rounded-xl"
+                  className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
                   disabled={loading || uploadingFiles || isClosing}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmit}
-                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:translate-y-[-1px] hover:shadow-lg flex items-center transition-all duration-200 disabled:opacity-50 disabled:hover:translate-y-0 font-medium"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors disabled:opacity-50"
                   disabled={loading || uploadingFiles || isClosing}
                 >
-                  {(loading || uploadingFiles) && (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  )}
-                  <span className="inline-flex items-center">
-                    {initialData
-                      ? 'Save Changes'
-                      : publishNow
-                      ? 'Publish Now'
-                      : 'Schedule Post'}
-                  </span>
+                  {(loading || uploadingFiles) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {initialData
+                    ? 'Save Changes'
+                    : publishNow
+                    ? 'Publish Now'
+                    : 'Schedule Post'}
                 </button>
               </div>
             </div>

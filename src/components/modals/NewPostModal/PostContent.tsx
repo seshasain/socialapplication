@@ -2,8 +2,10 @@ import React from 'react';
 import { Hash, Globe, Image as ImageIcon, Film, Clock, AlertCircle, ChevronLeft } from 'lucide-react';
 import MediaUploader from '../../media/MediaUploader';
 import ThreadComposer from './ThreadComposer';
+import { getPlatformLimits } from '../../../utils/platformSupport';
 import type { MediaFile } from '../../../types/media';
 import type { PostType } from './index';
+import { PLATFORM_SUPPORT } from '../../../utils/platformSupport';
 
 interface PostContentProps {
   postType: PostType;
@@ -18,6 +20,8 @@ interface PostContentProps {
   onMediaRemove: (file: MediaFile) => void;
   uploadError: string | null;
   onBack: () => void;
+  selectedPlatforms: string[];
+  connectedAccounts: Array<{ id: string; platform: string }>;
   threadContent?: string[];
   onThreadChange?: (threads: string[]) => void;
   threadMedia?: Record<string, MediaFile[]>;
@@ -36,10 +40,15 @@ export default function PostContent({
   onMediaRemove,
   uploadError,
   onBack,
+  selectedPlatforms = [],
+  connectedAccounts = [],
   threadContent = [],
   onThreadChange,
   threadMedia = {}
 }: PostContentProps) {
+  console.log('Selected Platform IDs:', selectedPlatforms);
+  console.log('Connected Accounts:', connectedAccounts);
+
   const getPostTypeConfig = () => {
     switch (postType) {
       case 'story':
@@ -94,6 +103,30 @@ export default function PostContent({
   const config = getPostTypeConfig();
   const Icon = config.icon;
 
+  const getMediaLimit = () => {
+    if (!selectedPlatforms?.length) {
+      return 10; // Higher default limit
+    }
+
+    // Get all platform limits
+    const platformLimits = selectedPlatforms.map(platformId => {
+      const account = connectedAccounts.find(acc => acc.id === platformId);
+      const platformName = account?.platform?.toLowerCase();
+      const limits = platformName ? getPlatformLimits(platformName) : null;
+      return limits?.maxMedia || 10;
+    });
+
+    // If only one platform is selected, use its limit
+    if (platformLimits.length === 1) {
+      return platformLimits[0];
+    }
+
+    // For multiple platforms, find the minimum limit
+    return Math.min(...platformLimits);
+  };
+
+  const mediaLimit = getMediaLimit();
+
   return (
     <div className="space-y-6">
       {/* Back Button and Post Type Header */}
@@ -142,36 +175,56 @@ export default function PostContent({
               placeholder={`Write your ${postType} caption here...`}
               required={!config.captionOptional}
             />
-            <div className="mt-1 text-sm text-gray-500 flex justify-between">
-              <span>{caption.length} characters</span>
-              <span>{2200 - caption.length} remaining</span>
-            </div>
           </div>
 
           {/* Media Upload */}
-          <div>
+          <div className="mt-12 bg-white/50 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 space-y-4">
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Media {config.mediaRequired && <span className="text-red-500">*</span>}
-              </label>
-              <span className="text-sm text-gray-500">
-                {uploadedFiles.length} of {config.maxFiles} files used
+              <div className="flex items-center space-x-2">
+                <ImageIcon className="w-5 h-5 text-gray-600" />
+                <span className="font-medium text-gray-900">Media</span>
+              </div>
+              <span className="text-sm text-gray-500 font-medium">
+                {uploadedFiles.length} of {mediaLimit} files
               </span>
             </div>
+            
             <MediaUploader
               onUpload={onMediaUpload}
               onRemove={onMediaRemove}
               existingFiles={uploadedFiles}
-              maxFiles={config.maxFiles}
-              acceptedFileTypes={config.acceptedTypes || ['image/*', 'video/*']}
+              maxFiles={mediaLimit}
+              acceptedFileTypes={['image/*', 'video/*']}
               error={uploadError}
             />
-            {config.mediaRequired && uploadedFiles.length === 0 && (
-              <div className="mt-2 flex items-center text-sm text-amber-600">
-                <AlertCircle className="w-4 h-4 mr-1" />
-                Media is required for this post type
-              </div>
-            )}
+
+            {/* Show platform-specific limits */}
+            <div className="mt-2 space-y-2">
+              {selectedPlatforms.map(platformId => {
+                const account = connectedAccounts.find(acc => acc.id === platformId);
+                const platformName = account?.platform?.toLowerCase();
+                const limits = platformName ? getPlatformLimits(platformName) : null;
+                
+                return limits && (
+                  <div key={platformId} className="text-sm text-gray-600">
+                    <span className="font-medium capitalize">{platformName}:</span> {limits.maxMedia} files max
+                    {uploadedFiles.length > limits.maxMedia && (
+                      <span className="text-amber-600 ml-2">
+                        Exceeds {platformName}'s limit
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {selectedPlatforms.length > 1 && (
+                <div className="text-sm text-gray-500 mt-2 pt-2 border-t">
+                  <span className="font-medium">Combined limit:</span> {mediaLimit} files
+                  <br />
+                  <span className="text-xs">(Based on most restrictive platform)</span>
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
