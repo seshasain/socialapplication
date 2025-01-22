@@ -169,17 +169,54 @@ export default function CalendarView() {
     return { bg: '#60A5FA', border: '#3B82F6' }; // Blue for scheduled/default
   };
 
+  const customButtons = {
+    prev: {
+      text: <ChevronLeft className="w-4 h-4" />,
+      click: () => {
+        const calendarApi = calendarRef.current?.getApi();
+        calendarApi?.prev();
+      }
+    },
+    next: {
+      text: <ChevronRight className="w-4 h-4" />,
+      click: () => {
+        const calendarApi = calendarRef.current?.getApi();
+        calendarApi?.next();
+      }
+    },
+    today: {
+      text: 'Today',
+      click: () => {
+        const calendarApi = calendarRef.current?.getApi();
+        calendarApi?.today();
+      }
+    }
+  };
+
+  const calendarRef = React.useRef<any>(null);
+
   const renderEventContent = (eventInfo: any) => {
-    const time = new Date(eventInfo.event.start).toLocaleString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }).toLowerCase();
+    const platform = eventInfo.event.extendedProps.platform;
+    const status = eventInfo.event.extendedProps.status;
     
     return (
-      <div className="flex items-center gap-1 px-1 py-0.5 w-full overflow-hidden text-white text-xs">
-        <span className="whitespace-nowrap">{time}</span>
-        <span className="truncate">{eventInfo.event.extendedProps.caption}</span>
+      <div className="flex items-center gap-2 px-2 py-1 w-full overflow-hidden">
+        {platform === 'instagram' && <Instagram className="w-4 h-4 flex-shrink-0" />}
+        {platform === 'facebook' && <Facebook className="w-4 h-4 flex-shrink-0" />}
+        {platform === 'twitter' && <Twitter className="w-4 h-4 flex-shrink-0" />}
+        {platform === 'linkedin' && <Linkedin className="w-4 h-4 flex-shrink-0" />}
+        <div className="flex flex-col overflow-hidden">
+          <span className="text-xs font-medium truncate">{eventInfo.event.extendedProps.caption}</span>
+          <span className="text-[10px] opacity-75">
+            {new Date(eventInfo.event.start).toLocaleTimeString([], { 
+              hour: 'numeric',
+              minute: '2-digit'
+            })}
+          </span>
+        </div>
+        {status === 'failed' && (
+          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+        )}
       </div>
     );
   };
@@ -340,159 +377,266 @@ export default function CalendarView() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
           <AlertTriangle className="w-5 h-5 mr-2" />
           {error}
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center">
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl flex items-center">
           <Check className="w-5 h-5 mr-2" />
           {successMessage}
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+        <div className="p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 bg-gray-100 rounded-xl p-1">
+                <button
+                  onClick={() => setView('dayGridMonth')}
+                  className={`p-2 rounded-lg transition-all ${
+                    view === 'dayGridMonth' 
+                      ? 'bg-white shadow-sm text-blue-600' 
+                      : 'hover:bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  <Grid className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setView('timeGridWeek')}
+                  className={`p-2 rounded-lg transition-all ${
+                    view === 'timeGridWeek' 
+                      ? 'bg-white shadow-sm text-blue-600' 
+                      : 'hover:bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  <Calendar className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setView('listWeek')}
+                  className={`p-2 rounded-lg transition-all ${
+                    view === 'listWeek' 
+                      ? 'bg-white shadow-sm text-blue-600' 
+                      : 'hover:bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  <List className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="relative">
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="appearance-none bg-gray-100 border-0 rounded-xl pl-3 pr-8 py-2 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Platforms</option>
+                  {connectedAccounts.map((account) => (
+                    <option key={account.id} value={account.platform?.toLowerCase()}>
+                      {account.platform}
+                    </option>
+                  ))}
+                </select>
+                <Filter className="absolute right-2 top-2.5 w-4 h-4 text-gray-500 pointer-events-none" />
+              </div>
+
               <button
-                onClick={() => setView('dayGridMonth')}
-                className={`p-2 rounded-lg transition-all ${
-                  view === 'dayGridMonth' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-                }`}
+                onClick={fetchPosts}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Refresh"
               >
-                <Grid className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setView('timeGridWeek')}
-                className={`p-2 rounded-lg transition-all ${
-                  view === 'timeGridWeek' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-                }`}
-              >
-                <Calendar className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setView('listWeek')}
-                className={`p-2 rounded-lg transition-all ${
-                  view === 'listWeek' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
-                }`}
-              >
-                <List className="w-5 h-5" />
+                <RefreshCw className="w-5 h-5 text-gray-600" />
               </button>
             </div>
 
-            <div className="relative">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="appearance-none bg-gray-100 border-0 rounded-lg pl-3 pr-8 py-2 focus:ring-2 focus:ring-blue-500"
+            <div className="flex items-center space-x-4 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
+                <input
+                  type="text"
+                  placeholder="Search posts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full sm:w-64 pl-9 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedDate(new Date());
+                  setSelectedPost(null);
+                  setIsModalOpen(true);
+                }}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
               >
-                <option value="all">All Platforms</option>
-                {connectedAccounts.map((account) => (
-                  <option key={account.id} value={account.platform?.toLowerCase()}>
-                    {account.platform}
-                  </option>
-                ))}
-              </select>
-              <Filter className="absolute right-2 top-2.5 w-4 h-4 text-gray-500 pointer-events-none" />
+                <Plus className="w-5 h-5 mr-2" />
+                New Post
+              </button>
             </div>
-
-            <button
-              onClick={fetchPosts}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw className="w-5 h-5 text-gray-600" />
-            </button>
           </div>
 
-          <div className="flex items-center space-x-4 w-full sm:w-auto">
-            <div className="relative flex-1 sm:flex-initial">
-              <input
-                type="text"
-                placeholder="Search posts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:w-64 pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-            </div>
-            <button
-              onClick={() => {
-                setSelectedDate(new Date());
-                setSelectedPost(null);
-                setIsModalOpen(true);
-              }}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              New Post
-            </button>
-          </div>
+          <style>
+            {`
+              .fc {
+                --fc-border-color: #e5e7eb;
+                --fc-today-bg-color: #eff6ff;
+                --fc-neutral-bg-color: #ffffff;
+                --fc-list-event-hover-bg-color: #f3f4f6;
+                --fc-theme-standard-border-radius: 0.75rem;
+                --fc-button-bg-color: #ffffff;
+                --fc-button-border-color: #e5e7eb;
+                --fc-button-hover-bg-color: #f3f4f6;
+                --fc-button-hover-border-color: #d1d5db;
+                --fc-button-active-bg-color: #2563eb;
+                --fc-button-active-border-color: #2563eb;
+              }
+              
+              .fc .fc-toolbar {
+                padding: 1rem;
+                background: #f9fafb;
+                border-radius: 0.75rem;
+                margin-bottom: 1rem !important;
+              }
+
+              .fc .fc-toolbar-title {
+                font-size: 1.25rem;
+                font-weight: 600;
+              }
+
+              .fc .fc-button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.5rem 1rem;
+                font-size: 0.875rem;
+                font-weight: 500;
+                border-radius: 0.5rem;
+                border: 1px solid var(--fc-button-border-color);
+                background: var(--fc-button-bg-color);
+                color: #374151;
+                transition: all 0.2s;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+                min-width: 32px;
+                height: 32px;
+              }
+
+              .fc .fc-button:hover {
+                background: var(--fc-button-hover-bg-color);
+                border-color: var(--fc-button-hover-border-color);
+                color: #111827;
+              }
+
+              .fc .fc-button:focus {
+                outline: none;
+                ring: 2px;
+                ring-offset: 2px;
+                ring-blue-500;
+              }
+
+              .fc .fc-button-primary:not(:disabled).fc-button-active,
+              .fc .fc-button-primary:not(:disabled):active {
+                background: var(--fc-button-active-bg-color);
+                border-color: var(--fc-button-active-border-color);
+                color: #ffffff;
+              }
+
+              .fc .fc-prev-button,
+              .fc .fc-next-button {
+                padding: 0.5rem;
+                background: #ffffff;
+              }
+
+              .fc .fc-today-button {
+                font-weight: 500;
+              }
+
+              .fc .fc-today-button:disabled {
+                opacity: 0.7;
+                background: #f3f4f6;
+              }
+
+              .fc .fc-toolbar-chunk {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+              }
+
+              .fc-event {
+                border-radius: 0.375rem;
+                border: none;
+                padding: 2px;
+                margin: 1px 0;
+              }
+
+              .fc-daygrid-event {
+                white-space: normal;
+              }
+
+              .fc td, .fc th {
+                border: 1px solid #e5e7eb;
+              }
+
+              .fc-day-today {
+                background: #eff6ff !important;
+              }
+
+              .fc-list-event:hover td {
+                background: #f3f4f6;
+              }
+
+              .fc-list-day-cushion {
+                background: #f9fafb !important;
+              }
+            `}
+          </style>
+
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+            initialView={view}
+            headerToolbar={{
+              left: 'prev,next today',
+              center: 'title',
+              right: '',
+            }}
+            customButtons={customButtons}
+            events={posts}
+            dateClick={handleDateClick}
+            eventClick={handleEventClick}
+            eventContent={renderEventContent}
+            height="auto"
+            aspectRatio={1.8}
+            editable={false}
+            selectable={true}
+            selectMirror={true}
+            dayMaxEvents={3}
+            weekends={true}
+            nowIndicator={true}
+            slotMinTime="06:00:00"
+            slotMaxTime="22:00:00"
+            eventTimeFormat={{
+              hour: 'numeric',
+              minute: '2-digit',
+              meridiem: 'short'
+            }}
+            views={{
+              timeGridWeek: {
+                titleFormat: { year: 'numeric', month: 'short', day: '2-digit' },
+                dayHeaderFormat: { weekday: 'short', month: 'numeric', day: 'numeric', omitCommas: true },
+              },
+              dayGridMonth: {
+                titleFormat: { year: 'numeric', month: 'long' },
+                dayHeaderFormat: { weekday: 'short' },
+              },
+              listWeek: {
+                titleFormat: { year: 'numeric', month: 'short', day: '2-digit' },
+                dayHeaderFormat: { weekday: 'long', month: 'short', day: 'numeric' },
+              },
+            }}
+          />
         </div>
-
-        <style>
-          {`
-            .calendar-event {
-              margin: 1px 0;
-              padding: 0 2px;
-              border-radius: 4px;
-            }
-            .fc-daygrid-event-harness {
-              margin-top: 1px !important;
-              margin-bottom: 1px !important;
-            }
-            .fc-daygrid-day-events {
-              padding: 2px !important;
-            }
-          `}
-        </style>
-
-        <FullCalendar
-          key={calendarKey}
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
-          initialView={view}
-          headerToolbar={{
-            left: 'prev,next today',
-            center: 'title',
-            right: '',
-          }}
-          events={posts}
-          dateClick={handleDateClick}
-          eventClick={handleEventClick}
-          eventContent={renderEventContent}
-          height="auto"
-          aspectRatio={1.8}
-          editable={false}
-          selectable={true}
-          selectMirror={true}
-          dayMaxEvents={true}
-          weekends={true}
-          nowIndicator={true}
-          slotMinTime="06:00:00"
-          slotMaxTime="22:00:00"
-          eventTimeFormat={{
-            hour: 'numeric',
-            minute: '2-digit',
-            meridiem: 'short'
-          }}
-          views={{
-            timeGridWeek: {
-              titleFormat: { year: 'numeric', month: 'short', day: '2-digit' },
-              dayHeaderFormat: { weekday: 'short', month: 'numeric', day: 'numeric', omitCommas: true },
-            },
-            dayGridMonth: {
-              titleFormat: { year: 'numeric', month: 'long' },
-              dayHeaderFormat: { weekday: 'short' },
-            },
-            listWeek: {
-              titleFormat: { year: 'numeric', month: 'short', day: '2-digit' },
-              dayHeaderFormat: { weekday: 'long', month: 'short', day: 'numeric' },
-            },
-          }}
-        />
       </div>
 
       {isModalOpen && (

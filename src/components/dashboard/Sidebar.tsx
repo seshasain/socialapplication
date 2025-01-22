@@ -13,7 +13,10 @@ import {
   MessageSquare,
   Menu,
   X,
+  Shield,
+  Headphones,
 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import PricingModal from '../modals/PricingModal';
 import SupportModal from '../modals/SupportModal';
 import FeedbackModal from '../modals/FeedbackModal';
@@ -44,6 +47,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
     daysLimit: number;
   } | null>(null);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const isPremium = user?.subscription?.planId !== 'free';
   const viewChange = false;
@@ -283,21 +287,28 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
             )}
           </div>
 
-          {/* Support & Feedback Section */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Support & Feedback Section - Updated to horizontal layout */}
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => setIsSupportModalOpen(true)}
-              className="flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl"
+              className="flex flex-col items-center justify-center px-2 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-xl"
             >
-              <HelpCircle className="w-4 h-4 mr-2" />
+              <Headphones className="w-4 h-4 mb-1" />
               Support
             </button>
             <button
               onClick={() => setIsFeedbackModalOpen(true)}
-              className="flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl"
+              className="flex flex-col items-center justify-center px-2 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-xl"
             >
-              <MessageSquare className="w-4 h-4 mr-2" />
+              <MessageSquare className="w-4 h-4 mb-1" />
               Feedback
+            </button>
+            <button
+              onClick={() => navigate('/privacy')}
+              className="flex flex-col items-center justify-center px-2 py-2 text-sm text-gray-500 hover:bg-gray-50 rounded-xl"
+            >
+              <Shield className="w-4 h-4 mb-1" />
+              Privacy
             </button>
           </div>
         </div>

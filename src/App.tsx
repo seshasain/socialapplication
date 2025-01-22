@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import PricingPage from './components/PricingPage';
+import PrivacyPolicy from './components/PrivacyPolicy';
 import { AuthProvider } from './context/AuthContext';
 import { initGA, initHotjar } from './utils/analytics';
 import { cleanupPublishedAndFailedMedia } from './utils/mediaCleanup';
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
           </Routes>
           <ToastContainer
             position="top-right"
