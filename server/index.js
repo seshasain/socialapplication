@@ -22,38 +22,10 @@ import { v4 as uuidv4 } from 'uuid';
 import mediaRoutes from './routes/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
-import compression from 'compression';
-import helmet from 'helmet';
 const prisma = new PrismaClient();
 const app = express();
 import { ensureAuthorized } from './storage/b2.js';
 
-// Add these middleware before other app.use() calls
-app.use(compression());
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https:"],
-    },
-  },
-  crossOriginEmbedderPolicy: false,
-}));
-
-// Add response time monitoring
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    if (duration > 1000) {
-      console.warn(`Slow response (${duration}ms): ${req.method} ${req.url}`);
-    }
-  });
-  next();
-});
 
 // Middleware
 app.use(cors());
@@ -126,7 +98,18 @@ await verifyB2Credentials();
 // Store OAuth tokens temporarily (in production, use Redis or another session store)
 const oauthTokens = new Map();
 
-app.use(cors());
+const allowedOrigins = ['crosspodium.web.app'];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 function authenticateToken(req, res, next) {

@@ -4,16 +4,17 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'ui-vendor': ['lucide-react', 'framer-motion'],
-          'form-vendor': ['react-dropzone', 'react-datepicker']
-        }
+    outDir: 'dist',
+    sourcemap: true
+  },
+  server: {
+    port: 5000,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
-    },
-    minify: 'terser',
-    sourcemap: false
+    }
   }
 });

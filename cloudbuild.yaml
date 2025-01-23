@@ -1,0 +1,29 @@
+steps:
+  # Install dependencies
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['install']
+
+  # Build the application
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['run', 'build']
+
+  # Start the server
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['start']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'crosspodium-api'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated' 
