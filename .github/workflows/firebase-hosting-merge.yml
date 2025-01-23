@@ -6,6 +6,7 @@ name: Deploy to Firebase Hosting on merge
   push:
     branches:
       - main
+      - testf
   workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 jobs:
