@@ -2,20 +2,39 @@
 # https://github.com/firebase/firebase-tools
 
 name: Deploy to Firebase Hosting on PR
-on: pull_request
-permissions:
-  checks: write
-  contents: read
-  pull-requests: write
+'on': pull_request
+
 jobs:
   build_and_preview:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: npm ci && npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CROSSPODIUM }}
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_RECAPTCHA_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_SITE_KEY }}
+          VITE_B2_APPLICATION_KEY_ID: ${{ secrets.VITE_B2_APPLICATION_KEY_ID }}
+          VITE_B2_APPLICATION_KEY: ${{ secrets.VITE_B2_APPLICATION_KEY }}
+          VITE_B2_BUCKET_ID: ${{ secrets.VITE_B2_BUCKET_ID }}
+          VITE_B2_BUCKET_NAME: ${{ secrets.VITE_B2_BUCKET_NAME }}
+          VITE_B2_ENDPOINT_URL: ${{ secrets.VITE_B2_ENDPOINT_URL }}
+          VITE_B2_REGION: ${{ secrets.VITE_B2_REGION }}
+          VITE_B2_PUBLIC_URL: ${{ secrets.VITE_B2_PUBLIC_URL }}
+
+      - name: Deploy to Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CROSSPODIUM }}'
           projectId: crosspodium
