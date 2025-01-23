@@ -42,7 +42,7 @@ export default function LandingPage() {
                     <Layout className="h-8 w-8 text-white" />
                   </div>
                   <span className="ml-3 text-2xl font-bold text-gray-900">
-                    SocialSync
+                    CrossPodium
                   </span>
                 </div>
                 <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
@@ -126,7 +126,7 @@ export default function LandingPage() {
                 <div className="flex-1 flex justify-center">
                   <div className="px-4 py-1 bg-white rounded-md shadow-sm text-sm text-gray-600 flex items-center">
                     <Layout className="w-4 h-4 mr-2 text-blue-600" />
-                    SocialSync Dashboard
+                    CrossPodium Dashboard
                   </div>
                 </div>
               </div>
@@ -513,7 +513,7 @@ export default function LandingPage() {
               Trusted by leading brands worldwide
             </h2>
             <p className="mt-3 max-w-2xl mx-auto text-xl text-gray-500 sm:mt-4">
-              Join thousands of businesses that trust SocialSync to manage their
+              Join thousands of businesses that trust CrossPodium to manage their
               social media presence
             </p>
           </div>
@@ -522,7 +522,7 @@ export default function LandingPage() {
             {[
               {
                 quote:
-                  "SocialSync has transformed our social media strategy. We've seen a 200% increase in engagement since switching.",
+                  "CrossPodium has transformed our social media strategy. We've seen a 200% increase in engagement since switching.",
                 author: 'Sarah Johnson',
                 role: 'Marketing Director',
                 company: 'Tech Innovators Inc.',
@@ -617,14 +617,14 @@ export default function LandingPage() {
         </div>
       </div>
       <div className="hidden" aria-hidden="true">
-  <h1>SocialSync - All-in-One Social Media Management & Publishing Platform</h1>
+  <h1>CrossPodium - All-in-One Social Media Management & Publishing Platform</h1>
   <h2>
     Smart Social Media Publishing, Scheduling, Analytics & Team Collaboration Platform for Business Growth
   </h2>
   
   {/* Primary Description */}
   <p>
-    SocialSync is an enterprise-grade social media management platform that unifies content publishing, 
+    CrossPodium is an enterprise-grade social media management platform that unifies content publishing, 
     analytics, and team collaboration. Schedule and auto-publish content across Instagram, Facebook, 
     Twitter, and LinkedIn from a single dashboard. Leverage AI-powered scheduling, real-time analytics, 
     and streamlined approval workflows to maximize your social media impact.
@@ -680,7 +680,7 @@ export default function LandingPage() {
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "SocialSync",
+        "name": "CrossPodium",
         "applicationCategory": "Social Media Management Platform",
         "operatingSystem": "Web-based",
         "offers": {

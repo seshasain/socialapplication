@@ -16,7 +16,7 @@ export default function Navbar() {
             <Link to="/" className="flex items-center">
               <Layout className="h-8 w-8 text-blue-600" />
               <span className="ml-2 text-xl font-bold text-gray-900">
-                SocialSync
+                CrossPodium
               </span>
             </Link>
             <div className="hidden md:flex ml-10 space-x-8">
@@ -58,7 +58,7 @@ export default function Navbar() {
                 {showUserMenu && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-10">
                     <Link
-                      to="/settings"
+                      to="/dashboard?view=settings"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       Settings
