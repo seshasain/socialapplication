@@ -9,21 +9,16 @@ steps:
     entrypoint: npm
     args: ['run', 'build']
 
-  # Start the server
-  - name: 'node:18'
-    entrypoint: npm
-    args: ['start']
-
   # Deploy to Cloud Run
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     args:
       - 'run'
       - 'deploy'
       - 'crosspodium-api'
-      - '--image'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}'
+      - '--source'
+      - '.'
       - '--region'
-      - '${_REGION}'
+      - 'us-central1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated' 

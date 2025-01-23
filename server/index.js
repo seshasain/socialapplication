@@ -22,15 +22,46 @@ import { v4 as uuidv4 } from 'uuid';
 import mediaRoutes from './routes/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
-const prisma = new PrismaClient();
-const app = express();
 import { ensureAuthorized } from './storage/b2.js';
 
+dotenv.config();
+
+const prisma = new PrismaClient();
+const app = express();
+const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'https://crosspodium.web.app',
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Basic health check endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Server is running'
+  });
+});
+
+// Initialize B2 without blocking server start
+(async () => {
+  try {
+    await verifyB2Credentials();
+    console.log('✅ B2 credentials verified successfully');
+  } catch (error) {
+    console.error('⚠️ B2 credentials verification failed:', error);
+    // Continue server startup even if B2 verification fails
+  }
+})();
+
+// Start server
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server is running on port ${port}`);
+});
 
 // Configure multer for memory storage
 // const upload = multer({
@@ -98,18 +129,7 @@ await verifyB2Credentials();
 // Store OAuth tokens temporarily (in production, use Redis or another session store)
 const oauthTokens = new Map();
 
-const allowedOrigins = ['crosspodium.web.app'];
-
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 function authenticateToken(req, res, next) {
