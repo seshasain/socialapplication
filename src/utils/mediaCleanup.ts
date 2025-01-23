@@ -1,7 +1,4 @@
 import B2 from 'backblaze-b2';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 // Initialize B2 client
 const b2 = new B2({
@@ -43,7 +40,6 @@ async function deleteFromB2(fileName: string) {
       delimiter: '', 
     });
 
-
     if (response.data.files.length > 0) {
       const file = response.data.files[0];
       await b2.deleteFileVersion({
@@ -59,6 +55,8 @@ async function deleteFromB2(fileName: string) {
     throw new Error(`Failed to delete file from B2: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
+
+export { deleteFromB2 };
 
 import { APP_URL } from '../config/api';
 

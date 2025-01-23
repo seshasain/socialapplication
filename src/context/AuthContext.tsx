@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '../types/user';
+import { auth } from '../utils/api';
 
 interface AuthContextType {
   user: User | null;
@@ -25,28 +26,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const fetchUserData = async (token: string) => {
-    const response = await fetch('http://localhost:5000/api/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch user data');
-    }
-
-    const userData = await response.json();
-    const formattedUser: User = {
-      ...userData,
-      subscription: userData.subscription || {
-        planId: 'free',
-        status: 'active'
-      }
-    };
-    return formattedUser;
-  };
-
   const refreshUser = async () => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -56,8 +35,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const userData = await fetchUserData(token);
-      setUser(userData);
+      const response = await auth.me();
+      const userData = response.data;
+      const formattedUser: User = {
+        ...userData,
+        subscription: userData.subscription || {
+          planId: 'free',
+          status: 'active'
+        }
+      };
+      setUser(formattedUser);
       setIsAuthenticated(true);
     } catch (error) {
       console.error('Failed to refresh user data:', error);
@@ -68,49 +55,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const userData = await fetchUserData(token);
-          setUser(userData);
-          setIsAuthenticated(true);
-        } catch (error) {
-          console.error('Auth check failed:', error);
-          localStorage.removeItem('token');
-          setUser(null);
-          setIsAuthenticated(false);
-        }
-      }
-    };
-
-    checkAuth();
+    refreshUser();
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('http://localhost:5000/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
+    try {
+      const response = await auth.login({ email, password });
+      const data = response.data;
+      const formattedUser: User = {
+        ...data.user,
+        subscription: data.user.subscription || {
+          planId: 'free',
+          status: 'active'
+        }
+      };
+      localStorage.setItem('token', data.token);
+      setUser(formattedUser);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Login failed:', error);
       throw new Error('Login failed');
     }
-
-    const data = await response.json();
-    const formattedUser: User = {
-      ...data.user,
-      subscription: data.user.subscription || {
-        planId: 'free',
-        status: 'active'
-      }
-    };
-    localStorage.setItem('token', data.token);
-    setUser(formattedUser);
-    setIsAuthenticated(true);
   };
 
   const logout = () => {
@@ -120,36 +85,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signup = async ({ email, password, name, redirectUrl, captchaToken }: SignupData) => {
-    const response = await fetch('http://localhost:5000/api/auth/signup', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
+    try {
+      const response = await auth.signup({ 
         email, 
         password, 
         name,
         redirectUrl,
         captchaToken 
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Signup failed');
+      });
+      const data = response.data;
+      const formattedUser: User = {
+        ...data.user,
+        subscription: data.user.subscription || {
+          planId: 'free',
+          status: 'active'
+        }
+      };
+      localStorage.setItem('token', data.token);
+      setUser(formattedUser);
+      setIsAuthenticated(true);
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Signup failed');
     }
-
-    const data = await response.json();
-    const formattedUser: User = {
-      ...data.user,
-      subscription: data.user.subscription || {
-        planId: 'free',
-        status: 'active'
-      }
-    };
-    localStorage.setItem('token', data.token);
-    setUser(formattedUser);
-    setIsAuthenticated(true);
   };
 
   const signInWithGoogle = async () => {
