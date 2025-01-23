@@ -28,40 +28,91 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
-const port = process.env.PORT || 5000;
+const port = parseInt(process.env.PORT) || 5000;
+
+// Verify database connection
+async function verifyDatabaseConnection() {
+  try {
+    await prisma.$connect();
+    console.log('✅ Database connection successful');
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    return false;
+  }
+}
 
 // Middleware
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'https://crosspodium.web.app',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Basic health check endpoint
-app.get('/', (req, res) => {
+// Enhanced health check endpoint
+app.get('/', async (req, res) => {
+  const dbConnected = await verifyDatabaseConnection();
   res.json({ 
-    status: 'ok', 
-    message: 'Server is running'
+    status: dbConnected ? 'ok' : 'database_error', 
+    message: 'Server is running',
+    port: port,
+    env: process.env.NODE_ENV,
+    database: dbConnected ? 'connected' : 'disconnected',
+    databaseUrl: process.env.DATABASE_URL?.replace(/:[^:@]*@/, ':****@') // Hide password
   });
 });
 
-// Initialize B2 without blocking server start
+// Initialize services without blocking server start
 (async () => {
   try {
+    // Verify database connection first
+    const dbConnected = await verifyDatabaseConnection();
+    if (!dbConnected) {
+      console.error('⚠️ Server started but database connection failed');
+    }
+
+    // Verify B2 credentials
     await verifyB2Credentials();
     console.log('✅ B2 credentials verified successfully');
   } catch (error) {
-    console.error('⚠️ B2 credentials verification failed:', error);
-    // Continue server startup even if B2 verification fails
+    console.error('⚠️ Service initialization error:', error);
   }
 })();
 
-// Start server
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is running on port ${port}`);
+// Error handling for unhandled promises
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+// Start server
+let server;
+try {
+  server = app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+  });
+
+  // Add graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    server.close(async () => {
+      console.log('HTTP server closed');
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+  });
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+}
 
 // Configure multer for memory storage
 // const upload = multer({
