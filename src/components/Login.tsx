@@ -21,7 +21,10 @@ export default function Login() {
 
     try {
       await login(formData.email, formData.password);
-      navigate('/dashboard');
+      // Check for redirect path
+      const redirectPath = localStorage.getItem('redirectPath') || '/dashboard';
+      localStorage.removeItem('redirectPath'); // Clean up
+      navigate(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
     }
@@ -30,7 +33,10 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      navigate('/dashboard');
+      // Check for redirect path
+      const redirectPath = localStorage.getItem('redirectPath') || '/dashboard';
+      localStorage.removeItem('redirectPath'); // Clean up
+      navigate(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Failed to sign in with Google');
     }
@@ -60,6 +66,7 @@ export default function Login() {
               name="email"
               type="email"
               required
+              autoComplete="username"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -75,6 +82,7 @@ export default function Login() {
               name="password"
               type="password"
               required
+              autoComplete="current-password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

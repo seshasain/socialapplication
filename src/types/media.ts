@@ -1,13 +1,17 @@
+export type MediaType = 'image' | 'video';
+
 export interface MediaFile {
   id: string;
-  userId: string;
   url: string;
+  type: MediaType;
   filename: string;
-  type: string;
   size: number;
-  s3Key: string;
-  createdAt: string;
-  updatedAt: string;
+  userId?: string;
+  s3Key?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  status?: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
 }
 
 export interface DeleteFileResponse {
@@ -23,14 +27,21 @@ export interface DeleteFilesResponse {
 }
 
 export interface UploadProgress {
-  id: string;
-  progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error';
-  error?: string;
+  loaded: number;
+  total: number;
+  percentage: number;
 }
 
-export interface UploadResponse extends MediaFile {
-  error?: string;
+export interface UploadResponse {
+  id: string;
+  url: string;
+  filename: string;
+  type: MediaType;
+  size: number;
+  s3Key?: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface UploadConfig {
@@ -40,7 +51,7 @@ export interface UploadConfig {
 }
 
 export interface UploadCallbacks {
-  onProgress?: (fileId: string, progress: number) => void;
-  onComplete?: (fileId: string) => void;
-  onError?: (fileId: string, error: Error) => void;
+  onProgress?: (filename: string, progress: number) => void;
+  onComplete?: (filename: string) => void;
+  onError?: (filename: string, error: Error) => void;
 }

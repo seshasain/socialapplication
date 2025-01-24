@@ -1,102 +1,209 @@
 import { FileValidationError } from '../types/errors';
 
-export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-export const ACCEPTED_IMAGE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'image/x-icon'
-];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+const MAX_IMAGE_DIMENSIONS = { width: 4096, height: 4096 };
+const MAX_VIDEO_DURATION = 300; // 5 minutes in seconds
 
-export const ACCEPTED_VIDEO_TYPES = [
-  'video/mp4',
-  'video/quicktime',
-  'video/webm',
-  'video/x-msvideo'
-];
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
 
-export function validateFile(file: File | { type: string; size: number; name?: string }): void {
-  if (!file) {
-    throw new FileValidationError('No file provided');
-  }
+interface FileValidationResult {
+  valid: boolean;
+  type: 'image' | 'video';
+  dimensions?: ImageDimensions;
+  duration?: number;
+  error?: string;
+}
 
-  // Log file information for debugging
-  console.log('Validating file:', {
-    name: 'name' in file ? file.name : 'unknown',
-    type: file.type,
-    size: file.size
-  });
-
-  // Get proper MIME type
-  let mimeType = file.type;
-  if (!mimeType || mimeType === 'image' || mimeType === 'video') {
-    if ('name' in file && file.name) {
-      const extension = file.name.split('.').pop()?.toLowerCase();
-      switch (extension) {
-        case 'jpg':
-        case 'jpeg':
-          mimeType = 'image/jpeg';
-          break;
-        case 'png':
-          mimeType = 'image/png';
-          break;
-        case 'gif':
-          mimeType = 'image/gif';
-          break;
-        case 'webp':
-          mimeType = 'image/webp';
-          break;
-        case 'svg':
-          mimeType = 'image/svg+xml';
-          break;
-        case 'ico':
-          mimeType = 'image/x-icon';
-          break;
-        case 'mp4':
-          mimeType = 'video/mp4';
-          break;
-        case 'mov':
-          mimeType = 'video/quicktime';
-          break;
-        case 'webm':
-          mimeType = 'video/webm';
-          break;
-        case 'avi':
-          mimeType = 'video/x-msvideo';
-          break;
-        default:
-          throw new FileValidationError('Unsupported file type');
-      }
-    } else {
-      throw new FileValidationError('File type not detected');
-    }
-  }
-
-  if (!isAcceptedFileType(mimeType)) {
-    throw new FileValidationError(`File type "${mimeType}" is not supported`);
-  }
-
+export async function validateFile(file: File): Promise<FileValidationResult> {
+  // Check file size
   if (file.size > MAX_FILE_SIZE) {
-    throw new FileValidationError(`File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`);
+    throw new FileValidationError(
+      `File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`
+    );
   }
 
-  // Attach the proper MIME type to the file object if it's a File instance
-  if (file instanceof File && file.type !== mimeType) {
-    Object.defineProperty(file, 'type', {
-      writable: true,
-      value: mimeType
+  // Check file type
+  const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+  const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+
+  if (!isImage && !isVideo) {
+    throw new FileValidationError(
+      'Invalid file type. Supported formats: JPG, PNG, GIF, WEBP, MP4, MOV, WEBM'
+    );
+  }
+
+  try {
+    if (isImage) {
+      const dimensions = await getImageDimensions(file);
+      if (dimensions.width > MAX_IMAGE_DIMENSIONS.width || 
+          dimensions.height > MAX_IMAGE_DIMENSIONS.height) {
+        throw new FileValidationError(
+          `Image dimensions exceed maximum limit of ${MAX_IMAGE_DIMENSIONS.width}x${MAX_IMAGE_DIMENSIONS.height}`
+        );
+      }
+
+      return {
+        valid: true,
+        type: 'image',
+        dimensions
+      };
+    } else {
+      const duration = await getVideoDuration(file);
+      if (duration > MAX_VIDEO_DURATION) {
+        throw new FileValidationError(
+          `Video duration exceeds maximum limit of ${MAX_VIDEO_DURATION} seconds`
+        );
+      }
+
+      return {
+        valid: true,
+        type: 'video',
+        duration
+      };
+    }
+  } catch (error) {
+    if (error instanceof FileValidationError) {
+      throw error;
+    }
+    throw new FileValidationError('Failed to validate file');
+  }
+}
+
+function getImageDimensions(file: File): Promise<ImageDimensions> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({
+        width: img.width,
+        height: img.height
+      });
+    };
+    img.onerror = () => {
+      reject(new FileValidationError('Failed to load image'));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function getVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src);
+      reject(new FileValidationError('Failed to load video'));
+    };
+    
+    video.src = URL.createObjectURL(file);
+  });
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+export async function compressImage(file: File, maxWidth = 2048): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new FileValidationError('Failed to compress image'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new FileValidationError('Failed to compress image'));
+            return;
+          }
+          resolve(blob);
+        },
+        'image/jpeg',
+        0.8
+      );
+    };
+
+    img.onerror = () => {
+      reject(new FileValidationError('Failed to load image for compression'));
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+export async function generateThumbnail(file: File, maxWidth = 400): Promise<string> {
+  if (file.type.startsWith('image/')) {
+    const blob = await compressImage(file, maxWidth);
+    return URL.createObjectURL(blob);
+  }
+
+  if (file.type.startsWith('video/')) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      
+      video.onloadeddata = () => {
+        video.currentTime = 1; // Seek to 1 second
+      };
+      
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new FileValidationError('Failed to generate thumbnail'));
+          return;
+        }
+        
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(video.src);
+        
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        reject(new FileValidationError('Failed to generate video thumbnail'));
+      };
+      
+      video.src = URL.createObjectURL(file);
     });
   }
-}
 
-export function isAcceptedFileType(type: string): boolean {
-  return [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES].includes(type);
-}
-
-export function getFileTypeCategory(type: string): 'image' | 'video' | 'unknown' {
-  if (ACCEPTED_IMAGE_TYPES.includes(type)) return 'image';
-  if (ACCEPTED_VIDEO_TYPES.includes(type)) return 'video';
-  return 'unknown';
+  throw new FileValidationError('Unsupported file type for thumbnail generation');
 }

@@ -1,14 +1,7 @@
-export interface MediaFile {
-  id: string;
-  userId: string;
-  url: string;
-  type: string;
-  filename: string;
-  size: number;
-  s3Key: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { MediaFile, MediaType } from './media';
+
+// Re-export MediaFile from media.ts
+export type { MediaFile } from './media';
 
 export interface PostPlatform {
   id: string;
@@ -24,28 +17,17 @@ export interface Post {
   id: string;
   caption: string;
   scheduledDate: string;
-  platforms: PostPlatform[];
-  hashtags: string;
-  visibility: 'public' | 'private' | 'draft';
   mediaFiles: MediaFile[];
-  engagementRate?: number;
-  likes?: number;
-  comments?: number;
-  shares?: number;
+  platforms: PostPlatform[];
+  status: 'draft' | 'scheduled' | 'published' | 'failed';
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PostFormData {
   caption: string;
-  scheduledDate: string;
-  scheduledTime: string;
-  platforms: Array<{
-    platform: string;
-    postType: string;
-    settings?: Record<string, any>;
-  }>;
-  hashtags: string;
-  visibility: string;
-  mediaFiles: File[];
+  scheduledDate?: string;
+  platforms: string[];
+  mediaFiles: string[];
+  settings?: Record<string, any>;
 }

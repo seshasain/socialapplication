@@ -1,9 +1,5 @@
 import axios from 'axios';
-
-const isDevelopment = import.meta.env.MODE === 'development';
-const API_URL = isDevelopment 
-  ? 'http://localhost:5000'
-  : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
+import { API_URL, API_ROUTES } from '../config/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -39,8 +35,11 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
-      return Promise.reject(error);
+      // Don't redirect here, let the ProtectedRoute handle it
+      const customError: CustomError = new Error('Authentication required');
+      customError.status = 401;
+      customError.response = error.response;
+      return Promise.reject(customError);
     }
     
     // For 400 Bad Request, extract the error message
@@ -98,22 +97,39 @@ export const auth = {
 
 // Posts endpoints
 export const posts = {
-  create: (data: any) => api.post('/api/posts', data),
-  list: (params?: any) => api.get('/api/posts', { params }),
-  get: (id: string) => api.get(`/api/posts/${id}`),
-  update: (id: string, data: any) => api.put(`/api/posts/${id}`, data),
-  delete: (id: string) => api.delete(`/api/posts/${id}`),
+  create: (data: any) => api.post(API_ROUTES.posts.list, data),
+  list: (params?: any) => api.get(API_ROUTES.posts.list, { params }),
+  calendar: () => api.get(API_ROUTES.posts.calendar),
+  get: (id: string) => api.get(`${API_ROUTES.posts.list}/${id}`),
+  update: (id: string, data: any) => api.put(`${API_ROUTES.posts.list}/${id}`, data),
+  delete: (id: string) => api.delete(`${API_ROUTES.posts.list}/${id}`),
+  history: (params?: any) => api.get(API_ROUTES.posts.history, { params }),
+  scheduled: () => api.get(API_ROUTES.posts.scheduled),
+  retry: (id: string) => api.post(API_ROUTES.posts.retry(id)),
+  status: (id: string) => api.get(API_ROUTES.posts.status(id)),
 };
 
 // Social accounts endpoints
 export const socialAccounts = {
-  list: () => api.get('/api/social-accounts'),
-  connect: (platform: string) => api.post('/api/social-accounts/connect', { platform }),
-  disconnect: (id: string) => api.delete(`/api/social-accounts/${id}`),
+  list: () => api.get(API_ROUTES.socialAccounts.list),
+  connect: (platform: string) => api.post(API_ROUTES.socialAccounts.connect, { platform }),
+  disconnect: (id: string) => api.delete(API_ROUTES.socialAccounts.disconnect(id)),
 };
 
 // Analytics endpoints
 export const analytics = {
-  overview: (params?: any) => api.get('/api/analytics/overview', { params }),
-  stats: () => api.get('/api/overview/stats'),
+  overview: (params?: any) => api.get(API_ROUTES.analytics.overview, { params }),
+  stats: () => api.get(API_ROUTES.analytics.stats),
+};
+
+export const team = {
+  list: () => api.get(API_ROUTES.team),
+};
+
+export const user = {
+  getProfile: () => api.get(API_ROUTES.user.profile),
+  updateProfile: (data: any) => api.put(API_ROUTES.user.profile, data),
+  updateSettings: (data: any) => api.put(API_ROUTES.user.settings, data),
+  updatePassword: (data: { currentPassword: string; newPassword: string }) => 
+    api.post(API_ROUTES.user.password, data),
 }; 

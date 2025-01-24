@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import type { Post, MediaFile } from '../../../types/posts';
+import type { Post } from '../../../types/posts';
+import type { MediaFile } from '../../../types/media';
 import type { SocialAccount } from '../../../types/overview';
 import { uploadMedia } from '../../../api/posts';
 import PlatformSelector from './PlatformSelector';
@@ -12,7 +13,7 @@ import SuccessStatus from './SuccessStatus';
 import { validatePlatformContent } from '../../../utils/platformValidation';
 import { useFileCleanup } from '../../../hooks/useFileCleanup';
 import { deleteFile } from '../../../service/fileCleanupService';
-import { APP_URL } from '../../../config/api';
+import { API_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
 import PostStatusModal from '../PostStatusModal';
@@ -27,34 +28,47 @@ export type PostType =
   | 'poll'
   | 'event';
 
-  interface NewPostModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onPostSubmit: (statuses: Array<{
-      id: string;
-      platform: string;
-      status: 'published' | 'scheduled' | 'failed' | 'processing';
-      error?: string;
-      publishedAt?: string;
-      scheduledFor?: string;
-    }>) => void;
-    onSave: (post: Post) => void;
-    initialData?: Post;
-    connectedAccounts: SocialAccount[];
-  }
+interface NewPostModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onPostSubmit: (statuses: Array<{
+    id: string;
+    platform: string;
+    status: 'published' | 'scheduled' | 'failed' | 'processing';
+    error?: string;
+    publishedAt?: string;
+    scheduledFor?: string;
+  }>) => void;
+  onSave: (post: Post) => void;
+  initialData?: Post;
+  connectedAccounts: SocialAccount[];
+  defaultScheduledDate?: Date;
+  defaultScheduleEnabled?: boolean;
+}
+
+interface PostData {
+  caption: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  platformSpecificData: Record<string, any>;
+  hashtags: string;
+  visibility: string;
+}
+
 export default function NewPostModal({
   isOpen,
   onClose,
   onPostSubmit,
   initialData,
   connectedAccounts = [],
+  defaultScheduledDate,
+  defaultScheduleEnabled,
 }: NewPostModalProps) {
   const [step, setStep] = useState<'platform' | 'type' | 'content'>('platform');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Array<{ platform: string; message: string }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [publishNow, setPublishNow] = useState(true);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedPostType, setSelectedPostType] = useState<PostType>('post');
   const [postSuccess, setPostSuccess] = useState<{ [key: string]: boolean }>({});
@@ -64,28 +78,31 @@ export default function NewPostModal({
   const [threadMedia, setThreadMedia] = useState<Record<string, MediaFile[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
-const [platformStatuses, setPlatformStatuses] = useState<Array<{
-  id: string;
-  platform: string;
-  status: 'published' | 'scheduled' | 'failed' | 'processing';
-  error?: string;
-  publishedAt?: string;
-  scheduledFor?: string;
-}>>([]);
+  const [platformStatuses, setPlatformStatuses] = useState<Array<{
+    id: string;
+    platform: string;
+    status: 'published' | 'scheduled' | 'failed' | 'processing';
+    error?: string;
+    publishedAt?: string;
+    scheduledFor?: string;
+  }>>([]);
 
   // Initialize with a date 1 hour from now for better default scheduling
-  const defaultDate = new Date();
-  defaultDate.setHours(defaultDate.getHours() + 1);
+  const defaultDate = defaultScheduledDate || new Date(Date.now() + 60 * 60 * 1000);
 
   // Get current date and time for defaults
-  const now = new Date();
-  const [postData, setPostData] = useState({
+  const now = defaultScheduledDate || new Date();
+  const [postData, setPostData] = useState<PostData>({
     caption: '',
     scheduledDate: now.toISOString().split('T')[0],
     scheduledTime: now.toTimeString().slice(0, 5),
-    platformSpecificData: {} as Record<string, any>,
+    platformSpecificData: {},
+    hashtags: '',
+    visibility: 'public'
   });
   const [uploadedFiles, setUploadedFiles] = useState<MediaFile[]>([]);
+
+  const [publishNow, setPublishNow] = useState(!defaultScheduleEnabled);
 
   // Use the file cleanup hook with disabled flag during submission
   const { cleanupFiles, isCleaningUp, isFilePendingCleanup } = useFileCleanup({
@@ -152,6 +169,8 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
         scheduledDate: now.toISOString().split('T')[0],
         scheduledTime: now.toTimeString().slice(0, 5),
         platformSpecificData: {},
+        hashtags: '',
+        visibility: 'public'
       });
       setSelectedPlatforms([]);
       setSelectedPostType('post');
@@ -161,110 +180,110 @@ const [platformStatuses, setPlatformStatuses] = useState<Array<{
     }
   }, [isOpen]);
 
-// Update the handleSubmit function:
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setValidationErrors([]);
+  // Update the handleSubmit function:
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationErrors([]);
 
-  if (!validateForm()) {
-    return;
-  }
-
-  try {
-    setIsSubmitting(true);
-    setError(null);
-
-    let scheduledDateTime: Date;
-    if (publishNow) {
-      scheduledDateTime = new Date();
-      scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
-    } else {
-      const [year, month, day] = postData.scheduledDate.split('-').map(Number);
-      const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
-      scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
+    if (!validateForm()) {
+      return;
     }
 
-    const token = localStorage.getItem('token');
-    if (!token) throw new Error('No authentication token');
+    try {
+      setIsSubmitting(true);
+      setError(null);
 
-    // Format thread content and media
-    const formattedThreads = selectedPostType === 'thread' ? 
-      threadContent.map((content, index) => ({
-        content: content.trim(),
-        mediaFiles: threadMedia[`thread-${index}`] || []
-      })).filter(thread => thread.content || thread.mediaFiles.length > 0) : [];
+      let scheduledDateTime: Date;
+      if (publishNow) {
+        scheduledDateTime = new Date();
+        scheduledDateTime.setMinutes(scheduledDateTime.getMinutes() + 1);
+      } else {
+        const [year, month, day] = postData.scheduledDate.split('-').map(Number);
+        const [hours, minutes] = postData.scheduledTime.split(':').map(Number);
+        scheduledDateTime = new Date(year, month - 1, day, hours, minutes);
+      }
 
-    // Get all media files from threads
-    const allMediaFiles = selectedPostType === 'thread' ?
-      formattedThreads.reduce((acc, thread) => [...acc, ...thread.mediaFiles], [] as MediaFile[]) :
-      uploadedFiles;
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token');
 
-    const mediaFileIds = allMediaFiles.map(file => file.id);
+      // Format thread content and media
+      const formattedThreads = selectedPostType === 'thread' ? 
+        threadContent.map((content, index) => ({
+          content: content.trim(),
+          mediaFiles: threadMedia[`thread-${index}`] || []
+        })).filter(thread => thread.content || thread.mediaFiles.length > 0) : [];
 
-    const requestBody = {
-      caption: selectedPostType === 'thread' ? formattedThreads[0]?.content : postData.caption,
-      scheduledDate: scheduledDateTime.toISOString(),
-      platforms: selectedPlatforms.map(id => {
-        const platform = connectedAccounts.find(acc => acc.id === id);
-        return {
-          id,
-          platform: platform?.platform || '',
-          postType: selectedPostType,
-          settings: {
-            ...postData.platformSpecificData[id],
-            threadContent: selectedPostType === 'thread' ? 
-              formattedThreads.map(thread => ({
-                text: thread.content,
-                mediaFiles: thread.mediaFiles.map(file => file.id)
-              })) : undefined
-          }
-        };
-      }),
-      mediaFiles: mediaFileIds,
-      threadContent: selectedPostType === 'thread' ? 
-        formattedThreads.map(thread => thread.content) : undefined,
-      publishNow
-    };
+      // Get all media files from threads
+      const allMediaFiles = selectedPostType === 'thread' ?
+        formattedThreads.reduce((acc, thread) => [...acc, ...thread.mediaFiles], [] as MediaFile[]) :
+        uploadedFiles;
 
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+      const mediaFileIds = allMediaFiles.map(file => file.id);
 
-    const response = await fetch(`${APP_URL}/api/posts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
+      const requestBody = {
+        caption: selectedPostType === 'thread' ? formattedThreads[0]?.content : postData.caption,
+        scheduledDate: scheduledDateTime.toISOString(),
+        platforms: selectedPlatforms.map(id => {
+          const platform = connectedAccounts.find(acc => acc.id === id);
+          return {
+            id,
+            platform: platform?.platform || '',
+            postType: selectedPostType,
+            settings: {
+              ...postData.platformSpecificData[id],
+              threadContent: selectedPostType === 'thread' ? 
+                formattedThreads.map(thread => ({
+                  text: thread.content,
+                  mediaFiles: thread.mediaFiles.map(file => file.id)
+                })) : undefined
+            }
+          };
+        }),
+        mediaFiles: mediaFileIds,
+        threadContent: selectedPostType === 'thread' ? 
+          formattedThreads.map(thread => thread.content) : undefined,
+        publishNow
+      };
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('API Error Response:', errorData);
-      throw new Error(errorData.message || errorData.error || 'Failed to create post');
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
+      const response = await fetch(`${API_URL}/api/posts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API Error Response:', errorData);
+        throw new Error(errorData.message || errorData.error || 'Failed to create post');
+      }
+
+      const responseData = await response.json();
+      const statuses = responseData.platforms.map((platform: any) => ({
+        id: platform.id,
+        platform: platform.platform,
+        status: platform.status === 'published' ? 'published' 
+          : platform.status === 'scheduled' ? 'scheduled'
+          : platform.status === 'failed' ? 'failed'
+          : 'processing',
+        error: platform.error,
+        publishedAt: platform.publishedAt,
+        scheduledFor: platform.scheduledFor
+      }));
+
+      onPostSubmit(statuses);
+      onClose();
+    } catch (err) {
+      console.error('Post creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create post');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const responseData = await response.json();
-    const statuses = responseData.platforms.map((platform: any) => ({
-      id: platform.id,
-      platform: platform.platform,
-      status: platform.status === 'published' ? 'published' 
-        : platform.status === 'scheduled' ? 'scheduled'
-        : platform.status === 'failed' ? 'failed'
-        : 'processing',
-      error: platform.error,
-      publishedAt: platform.publishedAt,
-      scheduledFor: platform.scheduledFor
-    }));
-
-    onPostSubmit(statuses);
-    onClose();
-  } catch (err) {
-    console.error('Post creation error:', err);
-    setError(err instanceof Error ? err.message : 'Failed to create post');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   // Update the validateForm function:
   
@@ -330,6 +349,8 @@ const handleSubmit = async (e: React.FormEvent) => {
         scheduledDate: defaultDate.toISOString().split('T')[0],
         scheduledTime: defaultDate.toTimeString().slice(0, 5),
         platformSpecificData: {},
+        hashtags: '',
+        visibility: 'public'
       });
       // Clear thread-specific data
       setThreadContent(['']);
@@ -500,7 +521,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             const token = localStorage.getItem('token');
             if (!token) throw new Error('No authentication token');
   
-            const response = await fetch(`${APP_URL}/api/posts/retry/${platformId}`, {
+            const response = await fetch(`${API_URL}/api/posts/retry/${platformId}`, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${token}`
@@ -520,7 +541,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   
             // Fetch updated status after a short delay
             setTimeout(async () => {
-              const statusResponse = await fetch(`${APP_URL}/api/posts/status/${platformId}`, {
+              const statusResponse = await fetch(`${API_URL}/api/posts/status/${platformId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
               });
               

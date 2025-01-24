@@ -575,59 +575,16 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       where: { id: req.user.id },
       include: {
         settings: true,
-        subscription: {
-          include: {
-            plan: true,
-          },
-        },
-        socialAccounts: {
-          select: {
-            id: true,
-            platform: true,
-            username: true,
-            profileUrl: true,
-            followerCount: true,
-          },
-        },
-      },
+        subscription: { include: { plan: true } },
+        socialAccounts: true
+      }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Format user data
-    const userData = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      subscription: user.subscription ? {
-        planId: user.subscription.plan.name.toLowerCase(),
-        status: user.subscription.status,
-        currentPeriodEnd: user.subscription.currentPeriodEnd,
-        cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
-      } : {
-        planId: 'free',
-        status: 'active',
-      },
-      settings: user.settings || {
-        emailNotifications: true,
-        pushNotifications: true,
-        smsNotifications: false,
-        language: 'en',
-        theme: 'light',
-        autoSchedule: true,
-        defaultVisibility: 'public',
-      },
-      timezone: user.timezone || 'UTC',
-      bio: user.bio || '',
-      avatar: user.avatar,
-      socialAccounts: user.socialAccounts,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-
+    const { password, ...userData } = user;
     res.json(userData);
   } catch (error) {
     console.error('Auth check error:', error);

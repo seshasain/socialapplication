@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { APP_URL } from '../../config/api';
+import { API_URL } from '../../config/api';
 import type { SocialAccount } from '../../types/social';
 
 interface ConnectAccountModalProps {
@@ -137,7 +137,7 @@ export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, o
         navigate('/login', { state: { from: '/dashboard' } });
         return;
       }
-      const response = await fetch(`${APP_URL}/api/auth/${platform.toLowerCase()}`, {
+      const response = await fetch(`${API_URL}/api/auth/${platform.toLowerCase()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error(`Failed to initialize ${platform} authentication`);
@@ -156,7 +156,7 @@ export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, o
       setLoadingStates(prev => ({ ...prev, [platform]: true }));
       setError(null);
       
-      const response = await fetch(`${APP_URL}/api/social-accounts/${accountId}`, {
+      const response = await fetch(`${API_URL}/api/social-accounts/${accountId}`, {
         method: 'DELETE',
         headers: { 
           'Authorization': `Bearer ${localStorage.getItem('token')}`,

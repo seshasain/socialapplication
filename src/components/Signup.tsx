@@ -236,6 +236,7 @@ export default function Signup() {
                   name="password"
                   type={showPassword ? "text" : "password"}
                   required
+                  autoComplete="new-password"
                   value={formData.password}
                   onChange={handlePasswordChange}
                   className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 pr-10"
@@ -310,6 +311,7 @@ export default function Signup() {
                   name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   required
+                  autoComplete="new-password"
                   value={formData.confirmPassword}
                   onChange={(e) =>
                     setFormData({ ...formData, confirmPassword: e.target.value })

@@ -15,7 +15,7 @@ router.get('/twitter', async (req, res) => {
     });
 
     const authLink = await client.generateAuthLink(
-      `${process.env.APP_URL}/api/auth/twitter/callback`,
+      `${process.env.API_URL}/api/auth/twitter/callback`,
       { 
         linkMode: 'authorize',
         // Request all required scopes

@@ -4,46 +4,67 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
 import LandingPage from './components/LandingPage';
-import Dashboard from './components/Dashboard';
+import Dashboard from './components/dashboard/Dashboard';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import PricingPage from './components/PricingPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import AccountDeletion from './components/AccountDeletion';
 import AccountReactivation from './components/AccountReactivation';
-import { AuthProvider } from './context/AuthContext';
-import { initGA, initHotjar } from './utils/analytics';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { initGA, initHotjar } from './utils/analytics.tsx';
 import { cleanupPublishedAndFailedMedia } from './utils/mediaCleanup';
 import ProtectedRoute from './components/ProtectedRoute';
+import { AppRoot } from './context/AppStateContext';
+import { Toaster } from 'react-hot-toast';
+import { Routes as NewRoutes } from 'react-router-dom';
 
-export default function App() {
+function AppContent() {
+  const { isAuthenticated, isLoading } = useAuth();
+
   useEffect(() => {
-    // Initialize analytics
-    initGA();
-    initHotjar();
+    // Only initialize analytics if authenticated
+    if (isAuthenticated) {
+      initGA();
+      initHotjar();
+    }
+  }, [isAuthenticated]);
 
-    // Run media cleanup in the background
-    const cleanup = async () => {
-      try {
-        await cleanupPublishedAndFailedMedia();
-      } catch (error) {
-        // Log error but don't break the app
-        console.error('Background media cleanup failed:', error);
-        // Only show toast for non-auth related errors
-        if (error instanceof Error && !error.message.includes('No authentication token')) {
-          toast.error('Media cleanup failed. Some temporary files may remain.');
+  useEffect(() => {
+    // Only run cleanup when authenticated and not loading
+    if (isAuthenticated && !isLoading) {
+      const cleanup = async () => {
+        try {
+          await cleanupPublishedAndFailedMedia();
+        } catch (error) {
+          // Log error but don't break the app
+          console.error('Background media cleanup failed:', error);
+          // Only show toast for non-auth related errors
+          if (error instanceof Error && !error.message.includes('No authentication token')) {
+            toast.error('Media cleanup failed. Some temporary files may remain.');
+          }
         }
-      }
-    };
-    cleanup();
-  }, []);
+      };
+      cleanup();
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Don't render anything while loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <AuthProvider>
-      <Router>
+    <Router>
+      <AppRoot>
+        <Toaster position="top-right" />
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
           <Navbar />
-          <Routes>
+          <NewRoutes>
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
@@ -88,7 +109,7 @@ export default function App() {
                 <Dashboard />
               </ProtectedRoute>
             } />
-          </Routes>
+          </NewRoutes>
           <ToastContainer
             position="top-right"
             autoClose={3000}
@@ -114,7 +135,15 @@ export default function App() {
             }}
           />
         </div>
-      </Router>
+      </AppRoot>
+    </Router>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
     </AuthProvider>
   );
 }

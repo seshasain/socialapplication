@@ -49,9 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       setUser(formattedUser);
       setIsAuthenticated(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to refresh user data:', error);
-      localStorage.removeItem('token');
+      // Only remove token if it's an authentication error
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+      }
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -60,6 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     refreshUser();
   }, []);
 

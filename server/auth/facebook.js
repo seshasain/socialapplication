@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 router.get('/facebook', async (req, res) => {
   try {
-    const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
+    const redirectUri = `${process.env.API_URL}/api/auth/facebook/callback`;
     const scope = ['pages_manage_posts', 'pages_read_engagement', 'instagram_basic', 'instagram_content_publish'];
     
     const authUrl = `https://www.facebook.com/v12.0/dialog/oauth?client_id=${
@@ -23,7 +23,7 @@ router.get('/facebook', async (req, res) => {
 router.get('/facebook/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
+    const redirectUri = `${process.env.API_URL}/api/auth/facebook/callback`;
     
     // Exchange code for access token
     const tokenResponse = await fetch(

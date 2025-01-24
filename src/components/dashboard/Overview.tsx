@@ -5,8 +5,7 @@ import SocialConnectBanner from './overview/SocialConnectBanner';
 import UpcomingPosts from './overview/UpcomingPosts';
 import ConnectAccountModal from '../modals/ConnectAccountModal';
 import LoadingSpinner from '../common/LoadingSpinner';
-import type { Post } from '../../types/posts';
-import type { SocialAccount } from '../../types/overview';
+import type { Post, SocialAccount } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import api, { socialAccounts as socialAccountsApi } from '../../utils/api';
 

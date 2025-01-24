@@ -25,12 +25,12 @@ import {
   X,
 } from 'lucide-react';
 import NewPostModal from '../modals/NewPostModal';
-import type { Post, PostPlatform } from '../../types/posts';
-import { SocialAccount } from '../../types/overview';
+import type { Post, PostPlatform, SocialAccount } from '../../types';
 import { posts, socialAccounts } from '../../utils/api';
 import PostStatusModal from '../modals/PostStatusModal';
+import { API_ROUTES } from '../../config/api';
 
-interface CalendarPost extends Post {
+interface CalendarPost extends Omit<Post, 'scheduledDate'> {
   title: string;
   start: string;
   backgroundColor: string;
@@ -152,7 +152,7 @@ export default function CalendarView() {
     try {
       setLoading(true);
       
-      const response = await posts.list();
+      const response = await posts.scheduled();
       const data: Post[] = response.data;
       
       const filteredData = filter === 'all' 
@@ -167,26 +167,22 @@ export default function CalendarView() {
           )
         : filteredData;
 
-      const calendarPosts: CalendarPost[] = searchedData.map((post) => {
-        const colors = getPostColor(post.platforms);
-        
-        return {
-          ...post,
-          title: post.caption,
-          start: post.scheduledDate,
-          backgroundColor: colors.bg,
-          borderColor: colors.border,
-          textColor: '#FFFFFF',
-          extendedProps: {
-            platform: post.platforms[0]?.platform.toLowerCase() || 'default',
-            status: getPostStatus(post.platforms),
-            color: colors.bg,
-            caption: post.caption
-          },
-          display: 'block',
-          classNames: ['calendar-event']
-        };
-      });
+      const calendarPosts: CalendarPost[] = searchedData.map((post) => ({
+        ...post,
+        title: post.caption.substring(0, 30) + (post.caption.length > 30 ? '...' : ''),
+        start: post.scheduledDate || post.createdAt,
+        backgroundColor: getPostColor(post.platforms).bg,
+        borderColor: getPostColor(post.platforms).border,
+        textColor: '#ffffff',
+        extendedProps: {
+          platform: post.platforms[0]?.platform || 'unknown',
+          status: getPostStatus(post.platforms),
+          color: getPostColor(post.platforms).bg,
+          caption: post.caption
+        },
+        display: 'block',
+        classNames: ['cursor-pointer', 'hover:opacity-90']
+      }));
 
       setCalendarPosts(calendarPosts);
       setError(null);
@@ -217,22 +213,19 @@ export default function CalendarView() {
     setIsModalOpen(true);
   };
 
-  const handleEventClick = (arg: { event: any }) => {
-    const foundPost = calendarPosts.find((p) => p.id === arg.event.id);
-    if (foundPost) {
-      const status = getPostStatus(foundPost.platforms);
-      if (status === 'failed') {
-        setRetryPost(foundPost);
-        setShowRetryModal(true);
-        return;
+  const handleEventClick = async (info: any) => {
+    const postId = info.event.id;
+    try {
+      const response = await posts.get(postId);
+      const foundPost = response.data;
+      if (foundPost) {
+        setSelectedPost(foundPost);
+        setSelectedDate(new Date(foundPost.scheduledDate || foundPost.createdAt));
+        setIsModalOpen(true);
       }
-      if (status === 'published') {
-        setError('Published posts cannot be edited.');
-        return;
-      }
-      setSelectedPost(foundPost);
-      setSelectedDate(new Date(foundPost.scheduledDate));
-      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching post:', error);
+      setError('Failed to load post details');
     }
   };
 
@@ -550,12 +543,13 @@ export default function CalendarView() {
             setSelectedDate(null);
           }}
           onPostSubmit={(statuses) => {
-            // Handle post submission statuses
             console.log('Post submission statuses:', statuses);
-            fetchPosts(); // Refresh posts after submission
+            fetchPosts();
           }}
           initialData={selectedPost || undefined}
           connectedAccounts={connectedAccounts}
+          defaultScheduledDate={selectedDate ?? undefined}
+          defaultScheduleEnabled={true}
         />
       )}
 
@@ -570,7 +564,7 @@ export default function CalendarView() {
             ...p,
             publishedAt: p.publishedAt || undefined
           }))}
-          onRetry={async (platformId) => {
+          onRetry={async () => {
             if (retryPost) {
               await handleRetryPost(retryPost.id);
               setShowRetryModal(false);

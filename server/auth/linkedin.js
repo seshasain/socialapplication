@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 router.get('/', async (req, res) => {
   try {
-    const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
+    const redirectUri = `${process.env.API_URL}/api/auth/linkedin/callback`;
     const scope = ['r_liteprofile', 'w_member_social'];
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 router.get('/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
+    const redirectUri = `${process.env.API_URL}/api/auth/linkedin/callback`;
 
     // Exchange code for access token
     const tokenResponse = await fetch(

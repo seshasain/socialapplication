@@ -16,7 +16,7 @@ import {
   Shield,
   Headphones,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import PricingModal from '../modals/PricingModal';
 import SupportModal from '../modals/SupportModal';
 import FeedbackModal from '../modals/FeedbackModal';
@@ -50,6 +50,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const isPremium = user?.subscription?.planId !== 'free';
   const viewChange = false;
@@ -62,6 +63,29 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const handleViewChange = (view: View) => {
     onViewChange(view);
     setIsMobileMenuOpen(false);
+    // Update URL based on view
+    switch (view) {
+      case 'settings':
+        navigate('/settings');
+        break;
+      case 'overview':
+        navigate('/dashboard');
+        break;
+      case 'calendar':
+        navigate('/dashboard?view=calendar');
+        break;
+      case 'analytics':
+        navigate('/dashboard?view=analytics');
+        break;
+      case 'team':
+        navigate('/dashboard?view=team');
+        break;
+      case 'history':
+        navigate('/dashboard?view=history');
+        break;
+      default:
+        break;
+    }
   };
 
   const fetchUsageStats = async () => {

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-interface Platform {
+export interface Platform {
   id: string;
   platform: string;
   status: 'published' | 'scheduled' | 'failed' | 'processing';
@@ -48,7 +48,7 @@ export default function PostStatusModal({
       case 'facebook':
         return <Facebook className="w-5 h-5 text-blue-600" />;
       case 'twitter':
-        return <Twitter className="w-5 h-5 text-sky-500" />;
+        return <Twitter className="w-5 h-5 text-blue-400" />;
       case 'linkedin':
         return <Linkedin className="w-5 h-5 text-blue-700" />;
       case 'youtube':
@@ -108,8 +108,10 @@ export default function PostStatusModal({
     }
   };
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleString('en-US', {
+  const formatDate = (date: string | undefined) => {
+    if (!date) return 'Unknown';
+    const parsedDate = new Date(date as string);
+    return parsedDate.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',

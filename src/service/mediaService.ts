@@ -5,7 +5,7 @@ import type {
   UploadCallbacks,
   MediaFile 
 } from '../types/media';
-import { APP_URL } from '../config/api';
+import { API_URL } from '../config/api';
 import { validateFile } from '../utils/fileValidation';
 
 class UploadService {
@@ -28,7 +28,7 @@ class UploadService {
       }
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${APP_URL}/api/media/upload`);
+      xhr.open('POST', `${API_URL}/api/media/upload`);
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
       // Track upload progress with throttling

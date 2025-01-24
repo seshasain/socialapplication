@@ -17,7 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../utils/api';
+import { user } from '../../utils/api';
 import { toast } from 'react-hot-toast';
 
 interface UserSettings {
@@ -82,42 +82,38 @@ export default function SettingsView() {
 
   const fetchUserData = async () => {
     try {
-      const [userResponse, paymentResponse] = await Promise.all([
-        api.get('/api/user/profile'),
-        api.get('/api/billing/payment-method')
-      ]);
+      const response = await user.getProfile();
+      const userData = response.data;
       
       setProfile({
-        name: userResponse.data.name || '',
-        email: userResponse.data.email || '',
-        timezone: userResponse.data.timezone || 'UTC',
-        bio: userResponse.data.bio || '',
-        avatar: userResponse.data.avatar || '',
-        role: userResponse.data.role || 'USER',
+        name: userData.name || '',
+        email: userData.email || '',
+        timezone: userData.timezone || 'UTC',
+        bio: userData.bio || '',
+        avatar: userData.avatar || '',
+        role: userData.role || 'USER',
       });
 
-      if (userResponse.data.settings) {
-        setSettings(userResponse.data.settings);
+      if (userData.settings) {
+        setSettings(userData.settings);
       }
 
-      // Fetch subscription data if exists
-      if (userResponse.data.subscription) {
-        setSubscription(userResponse.data.subscription);
-        
-        // Fetch payment method if subscription exists
-        setPaymentMethod(paymentResponse.data);
+      if (userData.subscription) {
+        setSubscription(userData.subscription);
       }
 
       setError(null);
+      setLoading(false);
     } catch (err) {
       console.error('Error fetching user data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch user data');
+      setLoading(false);
     }
   };
 
   const updateProfile = async (data: any) => {
     try {
-      const response = await api.put('/api/user/profile', data);
+      const response = await user.updateProfile(data);
       setProfile(response.data);
       setError(null);
       toast.success('Profile updated successfully');
@@ -130,7 +126,7 @@ export default function SettingsView() {
 
   const updateSettings = async (data: any) => {
     try {
-      const response = await api.put('/api/user/settings', data);
+      const response = await user.updateSettings(data);
       setSettings(response.data);
       setError(null);
       toast.success('Settings updated successfully');
@@ -143,7 +139,7 @@ export default function SettingsView() {
 
   const updatePassword = async (data: any) => {
     try {
-      await api.put('/api/auth/password', data);
+      await user.updatePassword(data);
       setError(null);
       toast.success('Password updated successfully');
     } catch (err) {

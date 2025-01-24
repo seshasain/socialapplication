@@ -1,6 +1,6 @@
 // src/service/fileCleanupService.ts
 
-import { APP_URL } from '../config/api';
+import { API_URL } from '../config/api';
 
 export async function deleteFile(fileId: string): Promise<void> {
   if (!fileId) {
@@ -8,15 +8,17 @@ export async function deleteFile(fileId: string): Promise<void> {
     return;
   }
 
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No authentication token');
-
   try {
-    const response = await fetch(`${APP_URL}/api/media/${fileId}`, {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+
+    const response = await fetch(`${API_URL}/api/media/${fileId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
-      }
+        Authorization: `Bearer ${token}`,
+      },
     });
 
     // Don't throw error for 404 - file is already gone

@@ -1,4 +1,5 @@
 import B2 from 'backblaze-b2';
+import { API_URL } from '../config/api';
 
 // Initialize B2 client
 const b2 = new B2({
@@ -58,8 +59,6 @@ async function deleteFromB2(fileName: string) {
 
 export { deleteFromB2 };
 
-import { APP_URL } from '../config/api';
-
 export async function cleanupPublishedAndFailedMedia() {
   try {
     const token = localStorage.getItem('token');
@@ -67,7 +66,7 @@ export async function cleanupPublishedAndFailedMedia() {
       throw new Error('No authentication token');
     }
 
-    const response = await fetch(`${APP_URL}/api/media/cleanup`, {
+    const response = await fetch(`${API_URL}/api/media/cleanup`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
