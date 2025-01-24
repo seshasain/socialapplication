@@ -52,8 +52,7 @@ export default function Signup() {
   }, []);
 
   React.useEffect(() => {
-    const referrer = document.referrer || '/pricing';
-    setRedirectUrl(referrer);
+    setRedirectUrl('/dashboard');
   }, []);
 
   const getPasswordStrength = (score: number) => {
@@ -103,29 +102,34 @@ export default function Signup() {
     setIsSubmitting(true);
 
     try {
-      if (!validatePassword(formData.password)) {
-        setError('Please choose a stronger password');
-        return;
-      }
-
+      // Validate passwords match
       if (formData.password !== formData.confirmPassword) {
-        setError('Passwords do not match');
-        return;
+        throw new Error('Passwords do not match');
       }
 
-      // Execute reCAPTCHA and get token
-      const captchaToken = await executeRecaptcha();
+      // Validate password strength
+      if (!validatePassword(formData.password)) {
+        throw new Error('Please choose a stronger password');
+      }
 
+      // Get reCAPTCHA token
+      const captchaToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, {
+        action: 'signup'
+      });
+
+      // Call signup function from AuthContext with the correct interface
       await signup({
         email: formData.email,
         password: formData.password,
         name: formData.name,
-        redirectUrl,
+        redirectUrl: redirectUrl,
         captchaToken
       });
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create an account');
+      
+      // Navigate to dashboard on success
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setIsSubmitting(false);
     }
@@ -133,10 +137,11 @@ export default function Signup() {
 
   const handleGoogleSignIn = async () => {
     try {
+      setError('');
       await signInWithGoogle();
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
     }
   };
 

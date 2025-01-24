@@ -1,13 +1,17 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
+const isDevelopment = import.meta.env.MODE === 'development';
+const API_URL = isDevelopment 
+  ? 'http://localhost:5000'
+  : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
 
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: false
+  withCredentials: true,
+  timeout: 10000, // 10 seconds
 });
 
 // Add auth token to requests if available
