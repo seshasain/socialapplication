@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import PricingModal from '../modals/PricingModal';
 import PerformanceGraph from './analytics/PerformanceGraph';
 import PostsList from './analytics/PostsList';
+import { analytics } from '../../utils/api';
 
 interface AnalyticsData {
   timeRange: string;
@@ -85,29 +86,17 @@ export default function Analytics() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch(
-        `http://localhost:5000/api/analytics/overview?timeRange=${timeRange}&platform=${platformFilter}&performance=${performanceFilter}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch analytics');
-      }
-
-      const data = await response.json();
-      setAnalyticsData(data);
+      
+      const response = await analytics.overview({
+        timeRange,
+        platform: platformFilter,
+        performance: performanceFilter
+      });
+      
+      setAnalyticsData(response.data);
       setError(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to fetch analytics'
-      );
+      setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
     } finally {
       setLoading(false);
     }

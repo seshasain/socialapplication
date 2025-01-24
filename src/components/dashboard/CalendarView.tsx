@@ -27,6 +27,7 @@ import {
 import NewPostModal from '../modals/NewPostModal';
 import type { Post, PostPlatform } from '../../types/posts';
 import { SocialAccount } from '../../types/overview';
+import { posts } from '../../utils/api';
 
 interface CalendarPost extends Post {
   title: string;
@@ -246,20 +247,10 @@ export default function CalendarView() {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/posts/history', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch posts');
-      }
-
-      const data: Post[] = await response.json();
+      
+      const response = await posts.list();
+      const data: Post[] = response.data;
+      
       const filteredData = filter === 'all' 
         ? data 
         : data.filter(post => 
@@ -297,6 +288,7 @@ export default function CalendarView() {
       setError(null);
       setCalendarKey(prev => prev + 1);
     } catch (err) {
+      console.error('Error fetching posts:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch posts');
     } finally {
       setLoading(false);

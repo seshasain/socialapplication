@@ -20,6 +20,8 @@ import NewPostModal from './modals/NewPostModal';
 import type { Post } from '../types/posts';
 import { SocialAccount } from '../types/overview';
 import PostStatusModal from './modals/PostStatusModal';
+import { socialAccounts } from '../utils/api';
+
 type View =
   | 'overview'
   | 'calendar'
@@ -42,7 +44,7 @@ export default function Dashboard() {
     publishedAt?: string;
     scheduledFor?: string;
   }>>([]);
-
+  const [error, setError] = useState<string | null>(null);
 
   // Get the current view from URL search params or default to 'overview'
   const searchParams = new URLSearchParams(location.search);
@@ -60,30 +62,21 @@ export default function Dashboard() {
 
   const fetchSocialAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/social-accounts', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch social accounts');
-      }
-
-      const accounts = await response.json();
-      setSocialAccounts(accounts);
-    } catch (error) {
-      console.error('Error fetching social accounts:', error);
+      const response = await socialAccounts.list();
+      setSocialAccounts(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching social accounts:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch social accounts');
     }
   };
+
   const handlePostSubmit = (statuses: typeof platformStatuses) => {
     setShowNewPostModal(false);
     setPlatformStatuses(statuses);
     setShowStatusModal(true);
   };
+
   const handleNewPost = async (post: Post) => {
     // try {
     //   const token = localStorage.getItem('token');

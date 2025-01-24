@@ -21,6 +21,7 @@ import PricingModal from '../modals/PricingModal';
 import SupportModal from '../modals/SupportModal';
 import FeedbackModal from '../modals/FeedbackModal';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../utils/api';
 
 type View =
   | 'overview'
@@ -46,6 +47,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
     daysLeft: number;
     daysLimit: number;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -64,21 +66,12 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
   const fetchUsageStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:5000/api/user/usage', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch usage stats');
-
-      const data = await response.json();
-      setUsageStats(data);
-    } catch (error) {
-      console.error('Error fetching usage stats:', error);
+      const response = await api.get('/api/user/usage');
+      setUsageStats(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching usage stats:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch usage stats');
     }
   };
 

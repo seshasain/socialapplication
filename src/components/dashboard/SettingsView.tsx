@@ -17,6 +17,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import api from '../../utils/api';
+import { toast } from 'react-hot-toast';
 
 interface UserSettings {
   id: string;
@@ -75,57 +77,79 @@ export default function SettingsView() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchData();
+    fetchUserData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchUserData = async () => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      // Fetch user profile and settings
-      const userResponse = await fetch('http://localhost:5000/api/user/profile', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!userResponse.ok) throw new Error('Failed to fetch user data');
-
-      const userData = await userResponse.json();
+      const [userResponse, paymentResponse] = await Promise.all([
+        api.get('/api/user/profile'),
+        api.get('/api/billing/payment-method')
+      ]);
       
       setProfile({
-        name: userData.name || '',
-        email: userData.email || '',
-        timezone: userData.timezone || 'UTC',
-        bio: userData.bio || '',
-        avatar: userData.avatar || '',
-        role: userData.role || 'USER',
+        name: userResponse.data.name || '',
+        email: userResponse.data.email || '',
+        timezone: userResponse.data.timezone || 'UTC',
+        bio: userResponse.data.bio || '',
+        avatar: userResponse.data.avatar || '',
+        role: userResponse.data.role || 'USER',
       });
 
-      if (userData.settings) {
-        setSettings(userData.settings);
+      if (userResponse.data.settings) {
+        setSettings(userResponse.data.settings);
       }
 
       // Fetch subscription data if exists
-      if (userData.subscription) {
-        setSubscription(userData.subscription);
+      if (userResponse.data.subscription) {
+        setSubscription(userResponse.data.subscription);
         
         // Fetch payment method if subscription exists
-        const paymentResponse = await fetch('http://localhost:5000/api/billing/payment-method', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (paymentResponse.ok) {
-          const paymentData = await paymentResponse.json();
-          setPaymentMethod(paymentData);
-        }
+        setPaymentMethod(paymentResponse.data);
       }
 
       setError(null);
     } catch (err) {
+      console.error('Error fetching user data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch user data');
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const updateProfile = async (data: any) => {
+    try {
+      const response = await api.put('/api/user/profile', data);
+      setProfile(response.data);
+      setError(null);
+      toast.success('Profile updated successfully');
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      toast.error('Failed to update profile');
+    }
+  };
+
+  const updateSettings = async (data: any) => {
+    try {
+      const response = await api.put('/api/user/settings', data);
+      setSettings(response.data);
+      setError(null);
+      toast.success('Settings updated successfully');
+    } catch (err) {
+      console.error('Error updating settings:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update settings');
+      toast.error('Failed to update settings');
+    }
+  };
+
+  const updatePassword = async (data: any) => {
+    try {
+      await api.put('/api/auth/password', data);
+      setError(null);
+      toast.success('Password updated successfully');
+    } catch (err) {
+      console.error('Error updating password:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update password');
+      toast.error('Failed to update password');
     }
   };
 
@@ -133,20 +157,7 @@ export default function SettingsView() {
     e.preventDefault();
     try {
       setSaveStatus('saving');
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/user/profile', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(profile),
-      });
-
-      if (!response.ok) throw new Error('Failed to update profile');
-
+      await updateProfile(profile);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
@@ -158,20 +169,7 @@ export default function SettingsView() {
   const handleSaveSettings = async () => {
     try {
       setSaveStatus('saving');
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/user/settings', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings),
-      });
-
-      if (!response.ok) throw new Error('Failed to update settings');
-
+      await updateSettings(settings);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
@@ -189,23 +187,10 @@ export default function SettingsView() {
 
     try {
       setSaveStatus('saving');
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/auth/password', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword,
-        }),
+      await updatePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
       });
-
-      if (!response.ok) throw new Error('Failed to update password');
-
       setSaveStatus('saved');
       setShowChangePassword(false);
       setPasswordData({
