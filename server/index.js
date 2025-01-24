@@ -31,13 +31,6 @@ const prisma = new PrismaClient({
     db: {
       url: process.env.DATABASE_URL
     }
-  },
-  // Add connection pool configuration
-  connection: {
-    pool: {
-      min: 2,
-      max: 10
-    }
   }
 });
 const app = express();
@@ -51,12 +44,25 @@ async function verifyDatabaseConnection() {
 
   while (retries < maxRetries) {
     try {
+      console.log(`Attempting to connect to database (attempt ${retries + 1}/${maxRetries})...`);
+      console.log(`Database URL: ${process.env.DATABASE_URL.replace(/:[^:@]*@/, ':****@')}`);
+      
       await prisma.$connect();
       console.log('✅ Database connection successful');
+      
+      // Test query to verify full connectivity
+      const testQuery = await prisma.$queryRaw`SELECT 1`;
+      console.log('✅ Database query successful');
+      
       return true;
     } catch (error) {
       retries++;
-      console.error(`❌ Database connection attempt ${retries} failed:`, error);
+      console.error(`❌ Database connection attempt ${retries} failed:`, {
+        error: error.message,
+        code: error.code,
+        meta: error.meta
+      });
+      
       if (retries < maxRetries) {
         console.log(`Retrying in ${retryDelay/1000} seconds...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -70,7 +76,9 @@ async function verifyDatabaseConnection() {
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://crosspodium.web.app',
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'https://crosspodium.web.app'
+    : ['http://localhost:5173', 'http://localhost:3000', 'https://crosspodium.web.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
