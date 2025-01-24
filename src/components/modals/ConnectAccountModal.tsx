@@ -93,9 +93,10 @@ const PLATFORMS = [
 ] as const;
 
 const PLANS = {
-  free: { name: 'Free', platforms: 3 },
-  basic: { name: 'Basic', icon: Zap, platforms: 5 },
-  pro: { name: 'Pro', icon: Crown, platforms: 'Unlimited' },
+  free: { name: 'Free', platforms: 1 },
+  basic: { name: 'Basic', icon: Zap, platforms: 3 },
+  pro: { name: 'Pro', icon: Crown, platforms: 10 },
+  business: { name: 'Business', icon: Crown, platforms: 'Unlimited' }
 } as const;
 
 function PlanBadge({ plan }: { plan: 'basic' | 'pro' }) {
@@ -115,81 +116,54 @@ function PlanBadge({ plan }: { plan: 'basic' | 'pro' }) {
 }
 
 export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, onAccountConnect, onAccountDisconnect }: ConnectAccountModalProps) {
-  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
+  const { user } = useAuth();
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const { user, isAuthenticated, refreshUser } = useAuth();
+  const [showPricingModal, setShowPricingModal] = useState(false);
+
   const userPlan = user?.subscription?.planId || 'free';
-  const connectedAccounts = socialAccounts || [];
+  const connectedAccountsCount = user?.socialAccounts?.length || 0;
+  const planLimit = PLANS[userPlan as keyof typeof PLANS]?.platforms || 1;
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login', { state: { from: '/dashboard' } });
+  const canConnectMore = typeof planLimit === 'string' || connectedAccountsCount < planLimit;
+
+  const handleConnect = async (platform: string) => {
+    if (!canConnectMore) {
+      setShowPricingModal(true);
+      return;
     }
-  }, [isAuthenticated, navigate]);
 
-  const initializeOAuth = async (platform: string) => {
     try {
-      setLoadingStates(prev => ({ ...prev, [platform]: true }));
+      setLoading(true);
       setError(null);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login', { state: { from: '/dashboard' } });
-        return;
-      }
-      const response = await fetch(`${API_URL}/api/auth/${platform.toLowerCase()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error(`Failed to initialize ${platform} authentication`);
-      const data = await response.json();
-      if (!data.authUrl) throw new Error('Invalid authentication URL received');
-      window.location.href = data.authUrl;
+      await onAccountConnect(platform);
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to connect ${platform} account`);
+      console.error('Failed to connect account:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect account');
     } finally {
-      setLoadingStates(prev => ({ ...prev, [platform]: false }));
+      setLoading(false);
     }
   };
 
   const handleDisconnect = async (accountId: string, platform: string) => {
     try {
-      setLoadingStates(prev => ({ ...prev, [platform]: true }));
+      setLoading(true);
       setError(null);
       
-      const response = await fetch(`${API_URL}/api/social-accounts/${accountId}`, {
-        method: 'DELETE',
-        headers: { 
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to disconnect ${platform} account`);
-      }
-
-      // Refresh user data to update the connected accounts list
-      await refreshUser();
+      await onAccountDisconnect(accountId);
       
-      setLoadingStates(prev => ({ ...prev, [platform]: false }));
+      setLoading(false);
       setError(null);
 
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to disconnect account');
-      setLoadingStates(prev => ({ ...prev, [platform]: false }));
+      setLoading(false);
     }
   };
 
-  const handleConnect = async (platformId: string, minPlan: string) => {
-    if (minPlan !== 'free' && userPlan === 'free' || (minPlan === 'pro' && userPlan !== 'pro')) {
-      navigate('/pricing');
-      return;
-    }
-    await initializeOAuth(platformId);
-  };
-
-  if (!isOpen || !isAuthenticated) return null;
+  if (!isOpen || !user) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -213,15 +187,15 @@ export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, o
           )}
 
           {/* Connected Accounts */}
-          {connectedAccounts.length > 0 && (
+          {socialAccounts.length > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-700 mb-3">Connected Accounts</h3>
               <div className="space-y-3">
-                {connectedAccounts.map((account) => {
+                {socialAccounts.map((account) => {
                   const platform = PLATFORMS.find(p => p.id === account.platform.toLowerCase());
                   if (!platform) return null;
                   const Icon = platform.icon;
-                  const isLoading = loadingStates[platform.id];
+                  const isLoading = loading;
 
                   return (
                     <div key={account.id} 
@@ -264,17 +238,17 @@ export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, o
             <h3 className="text-sm font-medium text-gray-700 mb-3">Available Platforms</h3>
             <div className="space-y-3">
               {PLATFORMS.filter(platform => 
-                !connectedAccounts.some(account => account.platform.toLowerCase() === platform.id)
+                !socialAccounts.some(account => account.platform.toLowerCase() === platform.id)
               ).map((platform) => {
                 const Icon = platform.icon;
                 const isLocked = (platform.minPlan === 'basic' && userPlan === 'free') ||
                                (platform.minPlan === 'pro' && userPlan !== 'pro');
-                const isLoading = loadingStates[platform.id];
+                const isLoading = loading;
 
                 return (
                   <button
                     key={platform.id}
-                    onClick={() => handleConnect(platform.id, platform.minPlan)}
+                    onClick={() => handleConnect(platform.id)}
                     disabled={isLoading || isLocked}
                     className={`w-full text-left flex items-center justify-between p-4 rounded-xl border
                       ${isLocked 
@@ -312,7 +286,7 @@ export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, o
 
           {userPlan !== 'pro' && (
             <button
-              onClick={() => navigate('/pricing')}
+              onClick={() => setShowPricingModal(true)}
               className="mt-6 w-full p-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white 
                 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all shadow-md
                 flex items-center justify-center gap-3 group"

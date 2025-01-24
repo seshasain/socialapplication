@@ -52,7 +52,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isPremium = user?.subscription?.planId !== 'free';
+  const isPremium = user?.subscription?.planId === 'pro' || user?.subscription?.planId === 'business';
   const viewChange = false;
 
   useEffect(() => {
