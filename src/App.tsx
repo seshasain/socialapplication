@@ -17,7 +17,13 @@ import { cleanupPublishedAndFailedMedia } from './utils/mediaCleanup';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AppRoot } from './context/AppStateContext';
 import { Toaster } from 'react-hot-toast';
-import { Routes as NewRoutes } from 'react-router-dom';
+import Overview from './components/dashboard/Overview';
+import CalendarView from './components/dashboard/CalendarView';
+import Analytics from './components/dashboard/Analytics';
+import TeamView from './components/dashboard/context/TeamView';
+import SettingsView from './components/dashboard/SettingsView';
+import HistoryView from './components/dashboard/HistoryView';
+import ExtensionRequest from './components/trial/ExtensionRequest';
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -64,7 +70,7 @@ function AppContent() {
         <Toaster position="top-right" />
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
           <Navbar />
-          <NewRoutes>
+          <Routes>
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
@@ -109,7 +115,12 @@ function AppContent() {
                 <Dashboard />
               </ProtectedRoute>
             } />
-          </NewRoutes>
+            <Route path="/trial/extend" element={
+              <ProtectedRoute>
+                <ExtensionRequest />
+              </ProtectedRoute>
+            } />
+          </Routes>
           <ToastContainer
             position="top-right"
             autoClose={3000}

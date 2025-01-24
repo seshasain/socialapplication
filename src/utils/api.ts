@@ -82,17 +82,26 @@ interface SignupData {
 
 // Auth endpoints
 export const auth = {
-  login: (data: LoginData) => 
-    api.post('/api/auth/login', data),
+  login: async (data: LoginData) => {
+    console.log('Login request:', { url: API_ROUTES.auth.login, data });
+    try {
+      const response = await api.post(API_ROUTES.auth.login, data);
+      console.log('Login response:', response.data);
+      return response;
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  },
   signup: (data: SignupData) => 
-    api.post('/api/auth/signup', data),
-  me: () => api.get('/api/auth/me'),
+    api.post(API_ROUTES.auth.signup, data),
+  me: () => api.get(API_ROUTES.auth.me),
   deactivate: (reason?: string) => 
-    api.post('/api/auth/deactivate', { reason }),
+    api.post(API_ROUTES.auth.deactivate, { reason }),
   reactivate: (data: { email: string; password: string }) => 
-    api.post('/api/auth/reactivate', data),
+    api.post(API_ROUTES.auth.reactivate, data),
   delete: (password: string) => 
-    api.post('/api/auth/delete', { password }),
+    api.post(API_ROUTES.auth.delete, { password }),
 };
 
 // Posts endpoints

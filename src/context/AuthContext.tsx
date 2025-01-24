@@ -42,9 +42,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = response.data;
       const formattedUser: User = {
         ...userData,
-        subscription: userData.subscription || {
-          planId: 'free',
-          status: 'active'
+        subscription: {
+          planId: userData.subscription?.planId || 'free',
+          status: userData.subscription?.status || 'active',
+          currentPeriodStart: userData.subscription?.currentPeriodStart,
+          currentPeriodEnd: userData.subscription?.currentPeriodEnd,
+          cancelAtPeriodEnd: userData.subscription?.cancelAtPeriodEnd || false
         }
       };
       setUser(formattedUser);
@@ -73,8 +76,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('AuthContext: Attempting login...');
       const response = await auth.login({ email, password });
+      console.log('AuthContext: Login response received:', response.data);
+      
       const data = response.data;
+      if (!data.token) {
+        throw new Error('No token received from server');
+      }
+      
       const formattedUser: User = {
         ...data.user,
         subscription: data.user.subscription || {
@@ -82,12 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           status: 'active'
         }
       };
+      
       localStorage.setItem('token', data.token);
       setUser(formattedUser);
       setIsAuthenticated(true);
+      console.log('AuthContext: Login successful, user set');
     } catch (error) {
-      console.error('Login failed:', error);
-      throw new Error('Login failed');
+      console.error('AuthContext: Login failed:', error);
+      throw error;
     }
   };
 

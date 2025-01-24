@@ -1,30 +1,40 @@
 import React, { useState } from 'react';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import Overview from './Overview';
 import CalendarView from './CalendarView';
 import Analytics from './Analytics';
-import TeamView from './context/TeamView';
+import TeamView from './TeamView';
 import SettingsView from './SettingsView';
 import HistoryView from './HistoryView';
 import NewPostModal from '../modals/NewPostModal';
 import PostStatusModal from '../modals/PostStatusModal';
+import TrialDashboard from './TrialDashboard';
+import TrialBanner from '../TrialBanner';
 import api from '../../utils/api';
 import type { Platform } from '../modals/PostStatusModal';
 import Sidebar from './Sidebar';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 
 type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const location = useLocation();
-  const initialView = location.pathname === '/settings' ? 'settings' : 'overview';
-  const [currentView, setCurrentView] = useState<View>(initialView);
+  const navigate = useNavigate();
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = new URLSearchParams(location.search);
+  const currentView = (searchParams.get('view') as View) || 'overview';
   
   const { posts, socialAccounts, refreshData } = useAppState();
+
+  const handleViewChange = (view: View) => {
+    searchParams.set('view', view);
+    navigate({ search: searchParams.toString() });
+  };
 
   const handleNewPost = async (post: any) => {
     try {
@@ -80,22 +90,24 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
-      <main className="flex-1 p-8 overflow-auto">
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
-            {error}
-            <button
-              onClick={() => setError(null)}
-              className="float-right text-red-500 hover:text-red-700"
-            >
-              ×
-            </button>
+    <div className="min-h-screen bg-gray-50">
+      {user?.subscription?.status === 'trial' && <TrialBanner />}
+      <div className="flex">
+        <Sidebar currentView={currentView} onViewChange={handleViewChange} />
+        <main className="flex-1 p-6">
+          <div className="max-w-7xl mx-auto">
+            {error && (
+              <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg">
+                {error}
+              </div>
+            )}
+            {user?.subscription?.status === 'trial' && currentView === 'overview' && (
+              <TrialDashboard />
+            )}
+            {renderView()}
           </div>
-        )}
-        {renderView()}
-      </main>
+        </main>
+      </div>
 
       {showNewPostModal && (
         <NewPostModal

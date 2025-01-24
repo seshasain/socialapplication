@@ -8,11 +8,20 @@ export const API_URL = isDevelopment
 
 // Define all API routes
 export const API_ROUTES = {
+  auth: {
+    login: '/api/auth/login',
+    signup: '/api/auth/signup',
+    me: '/api/auth/me',
+    deactivate: '/api/auth/deactivate',
+    reactivate: '/api/auth/reactivate',
+    delete: '/api/auth/delete',
+  },
   posts: {
     list: '/api/posts',
     history: '/api/posts/history',
     scheduled: '/api/posts/scheduled',
     overview: '/api/posts/overview',
+    calendar: '/api/posts/calendar',
     retry: (id: string) => `/api/posts/retry/${id}`,
     status: (id: string) => `/api/posts/status/${id}`,
   },

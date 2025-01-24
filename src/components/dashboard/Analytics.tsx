@@ -19,12 +19,14 @@ import {
   TrendingDown,
   Loader2,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PricingModal from '../modals/PricingModal';
 import PerformanceGraph from './analytics/PerformanceGraph';
 import PostsList from './analytics/PostsList';
 import { analytics } from '../../utils/api';
+import { TRIAL_LIMITS } from '../../types/trial';
 
 interface ChartDataset {
   label: string;
@@ -73,6 +75,20 @@ interface AnalyticsData {
     engagement: number;
     shares: number;
   };
+  engagementRate: number;
+  totalReach: number;
+  totalImpressions: number;
+  topPosts: {
+    id: string;
+    content: string;
+    engagement: number;
+    platform: string;
+  }[];
+  platformStats: {
+    platform: string;
+    followers: number;
+    engagement: number;
+  }[];
 }
 
 const transformChartData = (analyticsData: AnalyticsData | null): ChartData | null => {
@@ -134,20 +150,15 @@ export default function Analytics() {
   const [comparisonMetric, setComparisonMetric] = useState('engagement');
   const { user } = useAuth();
 
-  const hasAnalyticsAccess = () => {
-    const subscription = user?.subscription;
-    return subscription?.planId !== 'free' && subscription?.status === 'active';
-  };
-
-  const isFreeTier = !hasAnalyticsAccess();
+  const isTrialUser = user?.subscription?.status === 'trial';
 
   useEffect(() => {
-    if (!isFreeTier) {
+    if (!isTrialUser) {
       fetchAnalytics();
     } else {
       setLoading(false);
     }
-  }, [timeRange, platformFilter, performanceFilter, isFreeTier]);
+  }, [timeRange, platformFilter, performanceFilter, isTrialUser]);
 
   const fetchAnalytics = async () => {
     try {
@@ -217,7 +228,7 @@ export default function Analytics() {
     </div>
   );
 
-  if (isFreeTier) {
+  if (isTrialUser) {
     return (
       <div className="relative">
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50 backdrop-blur-sm rounded-xl">
@@ -226,11 +237,10 @@ export default function Analytics() {
               <Crown className="w-8 h-8 text-white" />
             </div>
             <h3 className="text-2xl font-bold text-white mb-4">
-              Unlock Advanced Analytics
+              Trial Account Limitations
             </h3>
             <p className="text-gray-200 mb-6">
-              Get detailed insights into your social media performance,
-              engagement metrics, and audience growth with our Premium plan.
+              Trial accounts are limited to {TRIAL_LIMITS.maxAnalyticsDays} days of analytics history.
             </p>
             <button
               onClick={() => setShowPricingModal(true)}
@@ -321,6 +331,108 @@ export default function Analytics() {
             />
           </>
         )}
+      </div>
+
+      {/* Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Engagement Rate</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {analyticsData?.engagementRate}%
+              </p>
+            </div>
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Reach</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {analyticsData?.totalReach.toLocaleString()}
+              </p>
+            </div>
+            <div className="p-3 bg-green-100 rounded-lg">
+              <Users className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Impressions</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {analyticsData?.totalImpressions.toLocaleString()}
+              </p>
+            </div>
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <BarChart2 className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Stats */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Platform Performance</h2>
+          <div className="space-y-4">
+            {analyticsData?.platformStats.map((stat) => (
+              <div key={stat.platform} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900 capitalize">
+                    {stat.platform}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {stat.followers.toLocaleString()} followers
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full"
+                    style={{ width: `${(stat.engagement / 5) * 100}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500">
+                  {stat.engagement}% engagement rate
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Top Posts */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Posts</h2>
+          <div className="space-y-4">
+            {analyticsData?.topPosts.map((post) => (
+              <div
+                key={post.id}
+                className="flex items-center justify-between p-4 border border-gray-100 rounded-lg"
+              >
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">{post.content}</p>
+                  <p className="text-xs text-gray-500 mt-1 capitalize">
+                    {post.platform} • {post.engagement} engagements
+                  </p>
+                </div>
+                <div className="ml-4">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Top Post
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

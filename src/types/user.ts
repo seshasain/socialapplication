@@ -1,13 +1,19 @@
+import { PlanType } from './plans';
+
 export interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
   subscription: {
-    planId: string;
-    status: string;
-    currentPeriodEnd?: string | null;
+    planId: PlanType;
+    status: 'active' | 'inactive' | 'cancelled' | 'trial';
+    currentPeriodStart?: Date;
+    currentPeriodEnd?: Date;
     cancelAtPeriodEnd?: boolean;
+    trialStart: Date | null;
+    trialEnd: Date | null;
+    isInTrial: boolean;
   };
   settings?: {
     emailNotifications: boolean;
@@ -28,6 +34,7 @@ export interface User {
     profileUrl?: string;
     followerCount: number;
   }>;
-  createdAt?: string;
-  updatedAt?: string;
+  emailVerified?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }

@@ -3,66 +3,84 @@ import {
   Calendar, Instagram, Facebook, Twitter, Linkedin, Youtube, Search, Filter,
   ArrowUp, ArrowDown, Eye, Heart, MessageCircle, Share2, Loader2,
   MoreHorizontal, Edit2, RefreshCw, Calendar as CalendarIcon,
-  AlertTriangle, Send, Trash2
+  AlertTriangle, Send, Trash2, Check, X
 } from 'lucide-react';
 import { toRelative } from '../../utils/dateUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewPostModal from '../modals/NewPostModal';
-import type { Post, PostPlatform } from '../../types/posts';
+import type { Post as BasePost, PostPlatform } from '../../types/posts';
+import { useAuth } from '../../context/AuthContext';
 
-const AVAILABLE_PLATFORMS = [
-  { platform: 'instagram', id: 'instagram' },
-  { platform: 'facebook', id: 'facebook' },
-  { platform: 'twitter', id: 'twitter' },
-  { platform: 'linkedin', id: 'linkedin' },
-  { platform: 'youtube', id: 'youtube' }
+interface Post extends BasePost {
+  error?: string;
+}
+
+interface SocialAccount {
+  id: string;
+  platform: string;
+  followerCount: number;
+  accessToken: string;
+}
+
+const AVAILABLE_PLATFORMS: SocialAccount[] = [
+  { id: 'instagram', platform: 'instagram', followerCount: 0, accessToken: '' },
+  { id: 'facebook', platform: 'facebook', followerCount: 0, accessToken: '' },
+  { id: 'twitter', platform: 'twitter', followerCount: 0, accessToken: '' },
+  { id: 'linkedin', platform: 'linkedin', followerCount: 0, accessToken: '' },
+  { id: 'youtube', platform: 'youtube', followerCount: 0, accessToken: '' }
 ];
 
+interface PostHistory {
+  id: string;
+  content: string;
+  platform: string;
+  status: 'published' | 'failed';
+  publishedAt: Date;
+  error?: string;
+}
+
 export default function HistoryView() {
+  const { user } = useAuth();
+  const [history, setHistory] = useState<PostHistory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPost, setSelectedPost] = useState<string | null>(null);
-  const [showAnalytics, setShowAnalytics] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('7d');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [selectedPost, setSelectedPost] = useState<string | null>(null);
 
-  // Get overall post status based on platform statuses
-  const getPostStatus = (platforms: PostPlatform[]) => {
-    if (!platforms || platforms.length === 0) return 'draft';
+  useEffect(() => {
+    // Mock data - replace with actual API call
+    setHistory([
+      {
+        id: '1',
+        content: 'Sample post content',
+        platform: 'twitter',
+        status: 'published',
+        publishedAt: new Date(Date.now() - 86400000) // Yesterday
+      },
+      {
+        id: '2',
+        content: 'Another sample post',
+        platform: 'facebook',
+        status: 'failed',
+        publishedAt: new Date(Date.now() - 172800000), // 2 days ago
+        error: 'API rate limit exceeded'
+      }
+    ]);
+    setIsLoading(false);
+  }, []);
 
-    const statuses = platforms.map(p => p.status);
-    
-    if (statuses.every(status => status === 'published')) {
-      return 'published';
-    }
-    if (statuses.some(status => status === 'failed')) {
-      return 'failed';
-    }
-    if (statuses.some(status => status === 'publishing')) {
-      return 'publishing';
-    }
-    if (statuses.every(status => status === 'scheduled')) {
-      return 'scheduled';
-    }
-    
-    return 'draft';
-  };
-
-  const filteredPosts = posts.filter(post => {
-    if (searchQuery) {
-      return post.caption.toLowerCase().includes(searchQuery.toLowerCase());
-    }
-    if (filter !== 'all') {
-      const postStatus = getPostStatus(post.platforms);
-      return postStatus === filter;
-    }
+  const filteredHistory = history.filter(item => {
+    if (filter !== 'all' && item.status !== filter) return false;
+    if (searchQuery && !item.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
@@ -200,7 +218,6 @@ export default function HistoryView() {
 
     setEditingPost(post);
     setIsEditModalOpen(true);
-    setSelectedPost(null);
   };
 
   const handleSaveEdit = async (updatedPost: Post) => {
@@ -258,7 +275,6 @@ export default function HistoryView() {
       }
 
       setPosts(posts => posts.filter(post => post.id !== postId));
-      setSelectedPost(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete post');
     }
@@ -281,7 +297,6 @@ export default function HistoryView() {
       }
 
       fetchPosts();
-      setSelectedPost(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry post');
     }
@@ -328,6 +343,16 @@ export default function HistoryView() {
     }
 
     return actions;
+  };
+
+  const getPostStatus = (platforms: PostPlatform[]) => {
+    if (!platforms || platforms.length === 0) return 'draft';
+    const statuses = platforms.map(p => p.status);
+    if (statuses.every(status => status === 'published')) return 'published';
+    if (statuses.some(status => status === 'failed')) return 'failed';
+    if (statuses.some(status => status === 'processing')) return 'processing';
+    if (statuses.every(status => status === 'scheduled')) return 'scheduled';
+    return 'draft';
   };
 
   return (
@@ -418,7 +443,7 @@ export default function HistoryView() {
             <div className="col-span-2 flex justify-center items-center py-12">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
             </div>
-          ) : filteredPosts.length === 0 ? (
+          ) : posts.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -430,7 +455,7 @@ export default function HistoryView() {
               <p className="text-gray-500">Try adjusting your filters or search query</p>
             </motion.div>
           ) : (
-            filteredPosts.map((post) => (
+            posts.map((post) => (
               <motion.div
                 key={post.id}
                 layout
@@ -499,6 +524,9 @@ export default function HistoryView() {
             setEditingPost(null);
           }}
           onSave={handleSaveEdit}
+          onPostSubmit={() => {
+            fetchPosts();
+          }}
           initialData={editingPost}
           connectedAccounts={AVAILABLE_PLATFORMS}
         />

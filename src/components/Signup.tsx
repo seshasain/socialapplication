@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Mail, AlertCircle, Check, X, Eye, EyeOff } from 'lucide-react';
+import { Mail, AlertCircle, Check, X, Eye, EyeOff, Clock } from 'lucide-react';
 import zxcvbn from 'zxcvbn';
+import { PLANS, SocialPlatform } from '../types/plans';
 
 declare global {
   interface Window {
@@ -57,7 +58,14 @@ export default function Signup() {
   }, [RECAPTCHA_SITE_KEY]);
 
   React.useEffect(() => {
-    setRedirectUrl('/dashboard');
+    // Check for plan in URL parameters
+    const params = new URLSearchParams(window.location.search);
+    const selectedPlan = params.get('plan');
+    if (selectedPlan) {
+      setRedirectUrl(`/dashboard/billing?plan=${selectedPlan}`);
+    } else {
+      setRedirectUrl('/dashboard');
+    }
   }, []);
 
   const getPasswordStrength = (score: number) => {
@@ -171,8 +179,24 @@ export default function Signup() {
               Create your account
             </h2>
             <p className="mt-2 text-gray-600">
-              Start managing your social media presence
+              Start your 7-day free trial today
             </p>
+          </div>
+
+          {/* Trial Benefits Section */}
+          <div className="mt-6 bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center space-x-2 text-blue-700 font-medium">
+              <Clock className="w-5 h-5" />
+              <span>7-Day Free Trial Includes:</span>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {PLANS.trial.features.map((feature: SocialPlatform, index) => (
+                <li key={index} className="flex items-center text-gray-700">
+                  <Check className="w-4 h-4 text-green-500 mr-2" />
+                  {feature.replace('_', ' ')}
+                </li>
+              ))}
+            </ul>
           </div>
 
           {error && (
@@ -377,6 +401,52 @@ export default function Signup() {
               Sign in
             </Link>
           </p>
+
+          <div className="mt-4 text-center text-sm text-gray-600">
+            By signing up, you agree to our{' '}
+            <Link to="/terms" className="text-blue-600 hover:text-blue-500">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy" className="text-blue-600 hover:text-blue-500">
+              Privacy Policy
+            </Link>
+          </div>
+        </div>
+
+        {/* Trial Info Sidebar */}
+        <div className="hidden lg:block ml-8 w-80">
+          <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Available Platforms
+            </h3>
+            <div className="mt-4 space-y-4">
+              <div>
+                <h4 className="font-medium text-gray-700">Free Trial & Basic:</h4>
+                <ul className="mt-2 space-y-1">
+                  {PLANS.basic.features.map((platform: SocialPlatform) => (
+                    <li key={platform} className="flex items-center text-gray-600">
+                      <Check className="w-4 h-4 text-green-500 mr-2" />
+                      {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-700">Pro Plan Features:</h4>
+                <ul className="mt-2 space-y-1">
+                  {PLANS.pro.features
+                    .filter((p: SocialPlatform) => !PLANS.basic.features.includes(p))
+                    .map((platform: SocialPlatform) => (
+                      <li key={platform} className="flex items-center text-gray-600">
+                        <Check className="w-4 h-4 text-blue-500 mr-2" />
+                        {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div className="text-center text-xs text-gray-500 mt-4">

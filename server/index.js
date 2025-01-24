@@ -266,12 +266,29 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
     if (err) {
+      console.error('Token verification error:', err);
       return res.status(403).json({ error: 'Invalid token' });
     }
-    req.user = user;
-    next();
+
+    try {
+      // Verify user exists in database
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id }
+      });
+
+      if (!user) {
+        console.error('User not found for token:', decoded.id);
+        return res.status(401).json({ error: 'User not found' });
+      }
+
+      req.user = decoded;
+      next();
+    } catch (error) {
+      console.error('Database error in auth middleware:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   });
 }
 
@@ -571,17 +588,19 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
+    console.log('Fetching user data for ID:', req.user.id);
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: {
         settings: true,
-        subscription: { include: { plan: true } },
+        subscription: true,
         socialAccounts: true
       }
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      console.error('User not found:', req.user.id);
+      return res.status(401).json({ error: 'Unauthorized - User not found' });
     }
 
     const { password, ...userData } = user;
@@ -799,6 +818,8 @@ app.post('/api/auth/signup', async (req, res) => {
         status: 'active',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(new Date().setDate(new Date().getDate() + 7)),
+        trialStart: new Date(),
+        trialEnd: new Date(new Date().setDate(new Date().getDate() + 7))
       },
     });
     console.log('Subscription created successfully');
@@ -816,6 +837,9 @@ app.post('/api/auth/signup', async (req, res) => {
       subscription: {
         planId: 'free',
         status: 'active',
+        trialStart: subscription.trialStart,
+        trialEnd: subscription.trialEnd,
+        isInTrial: true
       },
       settings: user.settings,
       timezone: 'UTC',

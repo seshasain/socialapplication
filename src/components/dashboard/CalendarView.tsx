@@ -29,6 +29,8 @@ import type { Post, PostPlatform, SocialAccount } from '../../types';
 import { posts, socialAccounts } from '../../utils/api';
 import PostStatusModal from '../modals/PostStatusModal';
 import { API_ROUTES } from '../../config/api';
+import { useAuth } from '../../context/AuthContext';
+import { TRIAL_LIMITS } from '../../types/trial';
 
 interface CalendarPost extends Omit<Post, 'scheduledDate'> {
   title: string;
@@ -46,7 +48,16 @@ interface CalendarPost extends Omit<Post, 'scheduledDate'> {
   classNames: string[];
 }
 
+interface ScheduledPost {
+  id: string;
+  content: string;
+  platforms: string[];
+  scheduledDate: Date;
+  status: 'scheduled' | 'processing' | 'published' | 'failed';
+}
+
 export default function CalendarView() {
+  const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -61,6 +72,25 @@ export default function CalendarView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [connectedAccounts, setConnectedAccounts] = useState<SocialAccount[]>([]);
   const [calendarPosts, setCalendarPosts] = useState<CalendarPost[]>([]);
+  const [currentDate, setCurrentDate] = React.useState(new Date());
+  const [scheduledPosts, setScheduledPosts] = React.useState<ScheduledPost[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  const isTrialUser = user?.subscription?.status === 'trial';
+  const scheduledPostCount = scheduledPosts.length;
+  const isPostLimitReached = isTrialUser && scheduledPostCount >= TRIAL_LIMITS.maxScheduledPosts;
+
+  const daysInMonth = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth() + 1,
+    0
+  ).getDate();
+
+  const firstDayOfMonth = new Date(
+    currentDate.getFullYear(),
+    currentDate.getMonth(),
+    1
+  ).getDay();
 
   const getPostStatus = (platforms: PostPlatform[]) => {
     if (!platforms || platforms.length === 0) return 'draft';
@@ -255,6 +285,25 @@ export default function CalendarView() {
     }
   };
 
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)));
+  };
+
+  const getDayPosts = (day: number) => {
+    return scheduledPosts.filter(post => {
+      const postDate = new Date(post.scheduledDate);
+      return (
+        postDate.getDate() === day &&
+        postDate.getMonth() === currentDate.getMonth() &&
+        postDate.getFullYear() === currentDate.getFullYear()
+      );
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -276,6 +325,27 @@ export default function CalendarView() {
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl flex items-center">
           <Check className="w-5 h-5 mr-2" />
           {successMessage}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Content Calendar</h1>
+        <button
+          disabled={isPostLimitReached}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Calendar className="w-4 h-4 mr-2" />
+          Schedule Post
+        </button>
+      </div>
+
+      {isTrialUser && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+          <p className="flex items-center">
+            <Calendar className="w-4 h-4 mr-2" />
+            Trial accounts are limited to {TRIAL_LIMITS.maxScheduledPosts} scheduled posts
+            ({scheduledPostCount} used)
+          </p>
         </div>
       )}
 
@@ -574,6 +644,86 @@ export default function CalendarView() {
           scheduledDate={retryPost.scheduledDate}
         />
       )}
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {currentDate.toLocaleString('default', {
+                month: 'long',
+                year: 'numeric'
+              })}
+            </h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={handlePrevMonth}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <button
+                onClick={handleNextMonth}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronRight className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-px bg-gray-200">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+            <div
+              key={day}
+              className="bg-gray-50 p-2 text-center text-sm font-medium text-gray-500"
+            >
+              {day}
+            </div>
+          ))}
+
+          {Array.from({ length: firstDayOfMonth }).map((_, index) => (
+            <div key={`empty-${index}`} className="bg-white p-4 min-h-[120px]" />
+          ))}
+
+          {Array.from({ length: daysInMonth }).map((_, index) => {
+            const day = index + 1;
+            const dayPosts = getDayPosts(day);
+            const isToday =
+              day === new Date().getDate() &&
+              currentDate.getMonth() === new Date().getMonth() &&
+              currentDate.getFullYear() === new Date().getFullYear();
+
+            return (
+              <div
+                key={day}
+                className={`bg-white p-4 min-h-[120px] ${
+                  isToday ? 'bg-blue-50' : ''
+                }`}
+              >
+                <span
+                  className={`inline-block w-6 h-6 rounded-full text-center text-sm ${
+                    isToday
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700'
+                  }`}
+                >
+                  {day}
+                </span>
+                <div className="mt-2 space-y-1">
+                  {dayPosts.map((post) => (
+                    <div
+                      key={post.id}
+                      className="text-xs p-1 rounded bg-blue-100 text-blue-700"
+                    >
+                      {post.content.substring(0, 20)}...
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

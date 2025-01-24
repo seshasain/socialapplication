@@ -67,6 +67,8 @@ model Subscription {
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean      @default(false)
+  trialStart        DateTime?
+  trialEnd          DateTime?
   paymentMethod     PaymentMethod?
   invoices          Invoice[]
   usageRecords      UsageRecord[]
