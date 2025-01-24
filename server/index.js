@@ -2964,3 +2964,143 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something broke!' });
 });
+
+// Account deactivation endpoint
+app.post('/api/auth/deactivate', authenticateToken, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const userId = req.user.id;
+
+    // Update user status
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        status: 'deactivated',
+        deactivatedAt: new Date(),
+        deactivationReason: reason || null
+      }
+    });
+
+    // Schedule account deletion after 30 days
+    const deletionDate = new Date();
+    deletionDate.setDate(deletionDate.getDate() + 30);
+    
+    // Store the scheduled deletion date
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        scheduledDeletionDate: deletionDate
+      }
+    });
+
+    // Clear auth token
+    res.clearCookie('token');
+    
+    res.json({ 
+      message: 'Account deactivated successfully. You have 30 days to reactivate your account before permanent deletion.',
+      deletionDate
+    });
+  } catch (error) {
+    console.error('Account deactivation error:', error);
+    res.status(500).json({ error: 'Failed to deactivate account' });
+  }
+});
+
+// Account reactivation endpoint
+app.post('/api/auth/reactivate', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user || user.status !== 'deactivated') {
+      return res.status(400).json({ error: 'Account not found or not deactivated' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Reactivate account
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: 'active',
+        deactivatedAt: null,
+        deactivationReason: null,
+        scheduledDeletionDate: null
+      }
+    });
+
+    // Generate new token
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
+
+    res.json({ 
+      message: 'Account reactivated successfully',
+      token
+    });
+  } catch (error) {
+    console.error('Account reactivation error:', error);
+    res.status(500).json({ error: 'Failed to reactivate account' });
+  }
+});
+
+// Permanent account deletion endpoint
+app.post('/api/auth/delete', authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const userId = req.user.id;
+
+    // Verify password
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Get user's media files
+    const mediaFiles = await prisma.mediaFile.findMany({
+      where: { userId }
+    });
+
+    // Delete all user-related data
+    await Promise.all([
+      // Delete all user data
+      prisma.socialAccount.deleteMany({ where: { userId } }),
+      prisma.userSettings.deleteMany({ where: { userId } }),
+      prisma.teamMember.deleteMany({ where: { userId } }),
+      prisma.analytics.deleteMany({ where: { userId } }),
+      prisma.mediaFile.deleteMany({ where: { userId } }),
+      prisma.post.deleteMany({ where: { userId } }),
+      prisma.feedback.deleteMany({ where: { userId } }),
+      prisma.supportTicket.deleteMany({ where: { userId } }),
+      prisma.subscription.deleteMany({ where: { userId } }),
+      
+      // Delete media files from storage
+      ...mediaFiles.map(file => deleteFromB2(file.s3Key))
+    ]);
+
+    // Finally, delete the user
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+
+    // Clear auth token
+    res.clearCookie('token');
+    
+    res.json({ message: 'Account and all associated data permanently deleted' });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});

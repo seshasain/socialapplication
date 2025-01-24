@@ -9,9 +9,12 @@ import Login from './components/Login';
 import Signup from './components/Signup';
 import PricingPage from './components/PricingPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
+import AccountDeletion from './components/AccountDeletion';
+import AccountReactivation from './components/AccountReactivation';
 import { AuthProvider } from './context/AuthContext';
 import { initGA, initHotjar } from './utils/analytics';
 import { cleanupPublishedAndFailedMedia } from './utils/mediaCleanup';
+import ProtectedRoute from './components/ProtectedRoute';
 
 export default function App() {
   useEffect(() => {
@@ -41,12 +44,50 @@ export default function App() {
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
           <Navbar />
           <Routes>
+            {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
-            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/account/reactivate" element={<AccountReactivation />} />
+            
+            {/* Protected Routes */}
+            <Route path="/dashboard/*" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/account/delete" element={
+              <ProtectedRoute>
+                <AccountDeletion />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/posts/*" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/analytics" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/team" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
           </Routes>
           <ToastContainer
             position="top-right"

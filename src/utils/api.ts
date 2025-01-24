@@ -24,20 +24,45 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+interface CustomError extends Error {
+  response?: any;
+  status?: number;
+}
+
 // Handle response errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.code === 'ECONNABORTED') {
-      // Handle timeout error
       throw new Error('Server request timed out. Please try again.');
     }
+    
     if (error.response?.status === 401) {
-      // Handle unauthorized access
       localStorage.removeItem('token');
       window.location.href = '/login';
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+    
+    // For 400 Bad Request, extract the error message
+    if (error.response?.status === 400) {
+      const errorMessage = error.response.data?.message || 
+                          error.response.data?.error || 
+                          'Invalid request';
+      const customError: CustomError = new Error(errorMessage);
+      customError.status = 400;
+      customError.response = error.response;
+      return Promise.reject(customError);
+    }
+    
+    // For other errors
+    const errorMessage = error.response?.data?.message || 
+                        error.response?.data?.error || 
+                        error.message || 
+                        'An error occurred';
+    
+    const customError: CustomError = new Error(errorMessage);
+    customError.response = error.response;
+    return Promise.reject(customError);
   }
 );
 
@@ -63,6 +88,12 @@ export const auth = {
   signup: (data: SignupData) => 
     api.post('/api/auth/signup', data),
   me: () => api.get('/api/auth/me'),
+  deactivate: (reason?: string) => 
+    api.post('/api/auth/deactivate', { reason }),
+  reactivate: (data: { email: string; password: string }) => 
+    api.post('/api/auth/reactivate', data),
+  delete: (password: string) => 
+    api.post('/api/auth/delete', { password }),
 };
 
 // Posts endpoints

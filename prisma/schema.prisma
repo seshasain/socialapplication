@@ -28,6 +28,9 @@ model User {
   country        String           @default("")
   supportTickets SupportTicket[]
   feedback       Feedback[]
+  deactivatedAt  DateTime?
+  deactivationReason String?
+  status         String          @default("active") // active, deactivated, deleted
 }
 
 model Analytics {
@@ -260,8 +263,6 @@ model TeamMember {
 
   @@index([userId])
 }
-
-
 
 model SupportTicket {
   id          String   @id @default(cuid())

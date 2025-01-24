@@ -5,6 +5,7 @@ import { auth } from '../utils/api';
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   signup: (data: SignupData) => Promise<{ token: string; user: User; redirectUrl: string }>;
@@ -25,12 +26,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = async () => {
     const token = localStorage.getItem('token');
     if (!token) {
       setUser(null);
       setIsAuthenticated(false);
+      setIsLoading(false);
       return;
     }
 
@@ -51,6 +54,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('token');
       setUser(null);
       setIsAuthenticated(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -114,13 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return response.data;
     } catch (error: any) {
-      console.error('Signup error:', error);
-      // Get the error message from the response if available
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.error || 
-                          error.message || 
-                          'Failed to create account';
-      throw new Error(errorMessage);
+      // Log the error but don't include the full error object
+      console.error('Signup error:', error.message);
+      // Rethrow the error with just the message
+      throw error;
     }
   };
 
@@ -133,7 +135,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{ 
         user, 
-        isAuthenticated, 
+        isAuthenticated,
+        isLoading,
         login, 
         logout, 
         signup, 
