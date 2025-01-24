@@ -8,6 +8,12 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import type { Post } from '../../types/posts';
 import type { SocialAccount } from '../../types/overview';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../utils/api';
+
+const isDevelopment = import.meta.env.MODE === 'development';
+const API_URL = isDevelopment 
+  ? 'http://localhost:5000'
+  : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
 
 interface OverviewProps {
   onNewPost: () => void;
@@ -37,50 +43,16 @@ export default function Overview({ onNewPost }: OverviewProps) {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
 
-      // Fetch stats
-      const statsResponse = await fetch('http://localhost:5000/api/overview/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [statsResponse, accountsResponse, postsResponse] = await Promise.all([
+        api.get('/api/overview/stats'),
+        api.get('/api/social-accounts'),
+        api.get('/api/posts/scheduled')
+      ]);
 
-      if (!statsResponse.ok) {
-        throw new Error('Failed to fetch stats');
-      }
-
-      const statsData = await statsResponse.json();
-      setStats(statsData);
-
-      // Fetch social accounts
-      const accountsResponse = await fetch('http://localhost:5000/api/social-accounts', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!accountsResponse.ok) {
-        throw new Error('Failed to fetch social accounts');
-      }
-
-      const accountsData = await accountsResponse.json();
-      setSocialAccounts(accountsData);
-
-      // Fetch scheduled posts
-      const postsResponse = await fetch('http://localhost:5000/api/posts/scheduled', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!postsResponse.ok) {
-        throw new Error('Failed to fetch scheduled posts');
-      }
-
-      const postsData = await postsResponse.json();
-      setScheduledPosts(postsData);
+      setStats(statsResponse.data);
+      setSocialAccounts(accountsResponse.data);
+      setScheduledPosts(postsResponse.data);
 
     } catch (err) {
       console.error('Error loading data:', err);
@@ -92,24 +64,8 @@ export default function Overview({ onNewPost }: OverviewProps) {
 
   const handleConnectAccount = async (platform: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/social-accounts/connect', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ platform }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to connect account');
-      }
-
-      const newAccount = await response.json();
-      setSocialAccounts((prev) => [...prev, newAccount]);
+      const response = await api.post('/api/social-accounts/connect', { platform });
+      setSocialAccounts((prev) => [...prev, response.data]);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect account');
@@ -119,20 +75,7 @@ export default function Overview({ onNewPost }: OverviewProps) {
 
   const handleDisconnectAccount = async (accountId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch(`http://localhost:5000/api/social-accounts/${accountId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to disconnect account');
-      }
-
+      await api.delete(`/api/social-accounts/${accountId}`);
       setSocialAccounts((prev) => prev.filter((account) => account.id !== accountId));
       setError(null);
     } catch (err) {
