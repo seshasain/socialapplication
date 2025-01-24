@@ -29,10 +29,15 @@ export default function Signup() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Your actual reCAPTCHA v3 site key
-  const RECAPTCHA_SITE_KEY = "6LdXzXgqAAAAAKOU92xe7WQyRIFcHBK4T3ruI8fz";
+  // Get reCAPTCHA site key from environment variable
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY) {
+      console.error('reCAPTCHA site key not found');
+      return;
+    }
+
     // Load reCAPTCHA v3 script
     const script = document.createElement('script');
     script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
@@ -46,10 +51,10 @@ export default function Signup() {
 
     return () => {
       // Cleanup script and style when component unmounts
-      document.body.removeChild(script);
-      document.head.removeChild(style);
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (style.parentNode) style.parentNode.removeChild(style);
     };
-  }, []);
+  }, [RECAPTCHA_SITE_KEY]);
 
   React.useEffect(() => {
     setRedirectUrl('/dashboard');
