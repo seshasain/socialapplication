@@ -26,20 +26,46 @@ import { ensureAuthorized } from './storage/b2.js';
 
 dotenv.config();
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  },
+  // Add connection pool configuration
+  connection: {
+    pool: {
+      min: 2,
+      max: 10
+    }
+  }
+});
 const app = express();
 const port = parseInt(process.env.PORT) || 5000;
 
 // Verify database connection
 async function verifyDatabaseConnection() {
-  try {
-    await prisma.$connect();
-    console.log('✅ Database connection successful');
-    return true;
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
-    return false;
+  const maxRetries = 5;
+  const retryDelay = 5000; // 5 seconds
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    try {
+      await prisma.$connect();
+      console.log('✅ Database connection successful');
+      return true;
+    } catch (error) {
+      retries++;
+      console.error(`❌ Database connection attempt ${retries} failed:`, error);
+      if (retries < maxRetries) {
+        console.log(`Retrying in ${retryDelay/1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
   }
+  
+  console.error('❌ Failed to connect to database after maximum retries');
+  return false;
 }
 
 // Middleware
@@ -1452,11 +1478,6 @@ app.delete('/api/team/:id', authenticateToken, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
 // Store scheduled jobs in memory
 const scheduledJobs = new Map();
 
