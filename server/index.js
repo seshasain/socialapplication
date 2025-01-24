@@ -36,6 +36,12 @@ const prisma = new PrismaClient({
 const app = express();
 const port = parseInt(process.env.PORT) || 5000;
 
+// Define allowed origins globally
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://crosspodium.web.app'
+];
+
 // Verify database connection
 async function verifyDatabaseConnection() {
   const maxRetries = 5;
@@ -74,29 +80,26 @@ async function verifyDatabaseConnection() {
   return false;
 }
 
-// Middleware
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL || 'https://crosspodium.web.app'
-    : 'http://localhost:5173',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Requested-With',
-    'Accept',
-    'Origin'
-  ],
-  exposedHeaders: ['Set-Cookie'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-};
-
-app.use(cors(corsOptions));
-
-// Trust proxy headers in production
-app.set('trust proxy', true);
+// Middleware for CORS
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+    );
+  }
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  
+  next();
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -228,8 +231,32 @@ await verifyB2Credentials();
 // Store OAuth tokens temporarily (in production, use Redis or another session store)
 const oauthTokens = new Map();
 
-app.use(cors());
+// Single CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const allowedOrigins = ['http://localhost:5173', 'https://crosspodium.web.app'];
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -688,16 +715,28 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.set('trust proxy', true); // Trust proxy headers in production
 app.post('/api/auth/signup', async (req, res) => {
+  console.log('Received signup request:', {
+    email: req.body.email,
+    name: req.body.name,
+    redirectUrl: req.body.redirectUrl,
+    hasCaptcha: !!req.body.captchaToken
+  });
+
   try {
     const { email, password, name, redirectUrl, captchaToken } = req.body;
 
     // Verify reCAPTCHA
     if (!captchaToken) {
-      return res.status(400).json({ error: 'reCAPTCHA verification required' });
+      console.log('No captcha token provided');
+      return res.status(400).json({ 
+        error: 'reCAPTCHA verification required',
+        message: 'Please complete the reCAPTCHA verification.'
+      });
     }
 
     // Verify the captcha token with Google
     try {
+      console.log('Verifying reCAPTCHA token...');
       const recaptchaResponse = await axios.post(
         'https://www.google.com/recaptcha/api/siteverify',
         null,
@@ -710,26 +749,47 @@ app.post('/api/auth/signup', async (req, res) => {
       );
 
       if (!recaptchaResponse.data.success) {
-        return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+        console.log('reCAPTCHA verification failed:', recaptchaResponse.data);
+        return res.status(400)
+          .set(res.corsHeaders)
+          .json({ 
+            error: 'reCAPTCHA verification failed',
+            message: 'reCAPTCHA verification failed. Please try again.'
+          });
       }
+      console.log('reCAPTCHA verification successful');
     } catch (error) {
       console.error('reCAPTCHA verification error:', error);
-      return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+      return res.status(400)
+        .set(res.corsHeaders)
+        .json({ 
+          error: 'reCAPTCHA verification failed',
+          message: 'Failed to verify reCAPTCHA. Please try again.'
+        });
     }
 
     // Check if user exists
+    console.log('Checking if user exists...');
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
+      console.log('User already exists:', email);
+      return res.status(400)
+        .set(res.corsHeaders)
+        .json({ 
+          error: 'EMAIL_EXISTS',
+          message: 'This email is already registered. Please try signing in instead.'
+        });
     }
 
     // Hash password
+    console.log('Hashing password...');
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user with default settings
+    console.log('Creating new user...');
     const user = await prisma.user.create({
       data: {
         email,
@@ -756,16 +816,25 @@ app.post('/api/auth/signup', async (req, res) => {
         socialAccounts: true,
       },
     });
+    console.log('User created successfully:', user.id);
 
     // Create subscription with free plan
+    console.log('Finding free plan...');
     const freePlan = await prisma.plan.findUnique({
       where: { name: 'free' },
     });
 
     if (!freePlan) {
-      return res.status(400).json({ error: 'Free plan not found' });
+      console.log('Free plan not found');
+      return res.status(400)
+        .set(res.corsHeaders)
+        .json({ 
+          error: 'PLAN_NOT_FOUND',
+          message: 'Unable to create account. Please contact support.'
+        });
     }
 
+    console.log('Creating subscription...');
     const subscription = await prisma.subscription.create({
       data: {
         userId: user.id,
@@ -775,8 +844,10 @@ app.post('/api/auth/signup', async (req, res) => {
         currentPeriodEnd: new Date(new Date().setDate(new Date().getDate() + 7)),
       },
     });
+    console.log('Subscription created successfully');
 
     // Generate JWT token
+    console.log('Generating JWT token...');
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
 
     // Format user data
@@ -799,15 +870,12 @@ app.post('/api/auth/signup', async (req, res) => {
       updatedAt: user.updatedAt,
     };
 
-    // Set cookie with JWT token
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    // Send response
+    console.log('Sending successful response...');
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
     res.status(201).json({
       token,
       user: userData,
@@ -815,7 +883,15 @@ app.post('/api/auth/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Signup failed' });
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+    res.status(500).json({ 
+      error: 'SIGNUP_FAILED',
+      message: 'Failed to create account. Please try again.'
+    });
   }
 });
 // Settings endpoints

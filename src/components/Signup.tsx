@@ -118,7 +118,7 @@ export default function Signup() {
       });
 
       // Call signup function from AuthContext with the correct interface
-      await signup({
+      const response = await signup({
         email: formData.email,
         password: formData.password,
         name: formData.name,
@@ -126,9 +126,11 @@ export default function Signup() {
         captchaToken
       });
       
-      // Navigate to dashboard on success
-      navigate('/dashboard', { replace: true });
+      // Navigate to the redirect URL from the response or dashboard
+      const redirectTo = response.redirectUrl || '/dashboard';
+      navigate(redirectTo, { replace: true });
     } catch (err) {
+      console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setIsSubmitting(false);

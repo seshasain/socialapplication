@@ -7,7 +7,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  signup: (data: SignupData) => Promise<void>;
+  signup: (data: SignupData) => Promise<{ token: string; user: User; redirectUrl: string }>;
   signInWithGoogle: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -93,19 +93,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         redirectUrl,
         captchaToken 
       });
-      const data = response.data;
+      
+      const { token, user: userData } = response.data;
+      
+      // Store token
+      localStorage.setItem('token', token);
+      
+      // Format and set user data
       const formattedUser: User = {
-        ...data.user,
-        subscription: data.user.subscription || {
+        ...userData,
+        subscription: userData.subscription || {
           planId: 'free',
           status: 'active'
         }
       };
-      localStorage.setItem('token', data.token);
+      
+      // Update auth state
       setUser(formattedUser);
       setIsAuthenticated(true);
+      
+      return response.data;
     } catch (error: any) {
-      throw new Error(error.response?.data?.message || 'Signup failed');
+      console.error('Signup error:', error);
+      // Get the error message from the response if available
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to create account';
+      throw new Error(errorMessage);
     }
   };
 

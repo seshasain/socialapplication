@@ -11,7 +11,8 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true,
-  timeout: 10000, // 10 seconds
+  timeout: 30000, // Increase timeout to 30 seconds
+  timeoutErrorMessage: 'Server request timed out. Please try again.',
 });
 
 // Add auth token to requests if available
@@ -27,6 +28,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (error.code === 'ECONNABORTED') {
+      // Handle timeout error
+      throw new Error('Server request timed out. Please try again.');
+    }
     if (error.response?.status === 401) {
       // Handle unauthorized access
       localStorage.removeItem('token');
