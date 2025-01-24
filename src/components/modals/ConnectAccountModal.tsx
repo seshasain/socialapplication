@@ -7,9 +7,14 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { APP_URL } from '../../config/api';
+import type { SocialAccount } from '../../types/social';
+
 interface ConnectAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
+  socialAccounts: SocialAccount[];
+  onAccountConnect: (platform: string) => Promise<void>;
+  onAccountDisconnect: (accountId: string) => Promise<void>;
 }
 
 const PLATFORMS = [
@@ -109,13 +114,13 @@ function PlanBadge({ plan }: { plan: 'basic' | 'pro' }) {
   );
 }
 
-export default function ConnectAccountModal({ isOpen, onClose }: ConnectAccountModalProps) {
+export default function ConnectAccountModal({ isOpen, onClose, socialAccounts, onAccountConnect, onAccountDisconnect }: ConnectAccountModalProps) {
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user, isAuthenticated, refreshUser } = useAuth();
   const userPlan = user?.subscription?.planId || 'free';
-  const connectedAccounts = user?.socialAccounts || [];
+  const connectedAccounts = socialAccounts || [];
 
   useEffect(() => {
     if (!isAuthenticated) {

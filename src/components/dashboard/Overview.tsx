@@ -7,12 +7,14 @@ import ConnectAccountModal from '../modals/ConnectAccountModal';
 import LoadingSpinner from '../common/LoadingSpinner';
 import type { Post } from '../../types/posts';
 import type { SocialAccount } from '../../types/overview';
+import { useAuth } from '../../context/AuthContext';
 
 interface OverviewProps {
   onNewPost: () => void;
 }
 
 export default function Overview({ onNewPost }: OverviewProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [stats, setStats] = useState<{
     totalPosts: number;
@@ -26,8 +28,10 @@ export default function Overview({ onNewPost }: OverviewProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isAuthenticated && !authLoading) {
+      loadData();
+    }
+  }, [isAuthenticated, authLoading]);
 
   const loadData = async () => {
     try {
@@ -193,7 +197,7 @@ export default function Overview({ onNewPost }: OverviewProps) {
       <ConnectAccountModal
         isOpen={isConnectModalOpen}
         onClose={() => setIsConnectModalOpen(false)}
-        connectedAccounts={socialAccounts}
+        socialAccounts={socialAccounts}
         onAccountConnect={handleConnectAccount}
         onAccountDisconnect={handleDisconnectAccount}
       />
