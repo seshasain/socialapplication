@@ -20,7 +20,7 @@ import NewPostModal from './modals/NewPostModal';
 import type { Post } from '../types/posts';
 import { SocialAccount } from '../types/overview';
 import PostStatusModal from './modals/PostStatusModal';
-import { socialAccounts } from '../utils/api';
+import api, { posts, socialAccounts as socialAccountsApi } from '../utils/api';
 
 type View =
   | 'overview'
@@ -62,7 +62,7 @@ export default function Dashboard() {
 
   const fetchSocialAccounts = async () => {
     try {
-      const response = await socialAccounts.list();
+      const response = await socialAccountsApi.list();
       setSocialAccounts(response.data);
       setError(null);
     } catch (err) {
@@ -78,29 +78,17 @@ export default function Dashboard() {
   };
 
   const handleNewPost = async (post: Post) => {
-    // try {
-    //   const token = localStorage.getItem('token');
-    //   if (!token) throw new Error('No authentication token');
-
-    //   const response = await fetch('http://localhost:5000/api/posts', {
-    //     method: 'POST',
-    //     headers: {
-    //       Authorization: `Bearer ${token}`,
-    //       'Content-Type': 'application/json',
-    //     },
-    //     body: JSON.stringify(post),
-    //   });
-
-    //   if (!response.ok) {
-    //     throw new Error('Failed to create post');
-    //   }
-
-    //   setShowNewPostModal(false);
-    //   // Optionally refresh data or show success message
-    // } catch (error) {
-    //   console.error('Error creating post:', error);
-    //   // Handle error (show error message, etc.)
-    // }
+    try {
+      await posts.create(post);
+      setShowNewPostModal(false);
+      // Refresh data in Overview component
+      if (currentView === 'overview') {
+        window.dispatchEvent(new CustomEvent('refreshOverview'));
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create post');
+    }
   };
 
   return (
@@ -147,6 +135,7 @@ export default function Dashboard() {
         isOpen={showNewPostModal}
         onClose={() => setShowNewPostModal(false)}
         onPostSubmit={handlePostSubmit}
+        onSave={handleNewPost}
         connectedAccounts={socialAccounts}
       />
       <PostStatusModal
@@ -155,21 +144,8 @@ export default function Dashboard() {
         platforms={platformStatuses}
         onRetry={async (platformId) => {
           try {
-            const token = localStorage.getItem('token');
-            if (!token) throw new Error('No authentication token');
-
-            const response = await fetch(`${APP_URL}/api/posts/retry/${platformId}`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-
-            if (!response.ok) {
-              throw new Error('Failed to retry post');
-            }
-
-            // Update the status for this platform
+            // Use the API instance directly for retry and status endpoints
+            await api.post(`/api/posts/retry/${platformId}`);
             setPlatformStatuses(prev => prev.map(p => 
               p.id === platformId 
                 ? { ...p, status: 'processing', error: undefined }
@@ -178,19 +154,14 @@ export default function Dashboard() {
 
             // Fetch updated status after a short delay
             setTimeout(async () => {
-              const statusResponse = await fetch(`${APP_URL}/api/posts/status/${platformId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              
-              if (statusResponse.ok) {
-                const updatedStatus = await statusResponse.json();
-                setPlatformStatuses(prev => prev.map(p => 
-                  p.id === platformId ? { ...p, ...updatedStatus } : p
-                ));
-              }
+              const statusResponse = await api.get(`/api/posts/status/${platformId}`);
+              setPlatformStatuses(prev => prev.map(p => 
+                p.id === platformId ? { ...p, ...statusResponse.data } : p
+              ));
             }, 2000);
           } catch (error) {
             console.error('Failed to retry post:', error);
+            setError(error instanceof Error ? error.message : 'Failed to retry post');
           }
         }}
       />

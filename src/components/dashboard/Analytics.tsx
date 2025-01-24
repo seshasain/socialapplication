@@ -18,12 +18,40 @@ import {
   Award,
   TrendingDown,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PricingModal from '../modals/PricingModal';
 import PerformanceGraph from './analytics/PerformanceGraph';
 import PostsList from './analytics/PostsList';
 import { analytics } from '../../utils/api';
+
+interface ChartDataset {
+  label: string;
+  data: number[];
+  borderColor: string;
+  backgroundColor: string;
+  fill: boolean;
+  tension: number;
+}
+
+interface ChartData {
+  labels: string[];
+  datasets: ChartDataset[];
+}
+
+interface AnalyticsPost {
+  id: string;
+  caption: string;
+  platform: string;
+  engagement: number;
+  reach: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  date: string;
+  createdAt: string;
+}
 
 interface AnalyticsData {
   timeRange: string;
@@ -38,17 +66,7 @@ interface AnalyticsData {
     comments: number;
     postId?: string;
   }[];
-  posts: {
-    id: string;
-    caption: string;
-    platform: string;
-    engagement: number;
-    reach: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    date: string;
-  }[];
+  posts: AnalyticsPost[];
   totals: {
     reach: number;
     impressions: number;
@@ -56,6 +74,54 @@ interface AnalyticsData {
     shares: number;
   };
 }
+
+const transformChartData = (analyticsData: AnalyticsData | null): ChartData | null => {
+  if (!analyticsData?.analytics) return null;
+
+  const dates = [...new Set(analyticsData.analytics.map(item => 
+    new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  ))];
+
+  const datasets: ChartDataset[] = [];
+  const metrics = ['engagement', 'reach', 'impressions'] as const;
+  const colors = {
+    engagement: {
+      line: 'rgb(99, 102, 241)',
+      fill: 'rgba(99, 102, 241, 0.1)',
+    },
+    reach: {
+      line: 'rgb(16, 185, 129)',
+      fill: 'rgba(16, 185, 129, 0.1)',
+    },
+    impressions: {
+      line: 'rgb(245, 158, 11)',
+      fill: 'rgba(245, 158, 11, 0.1)',
+    },
+  };
+
+  metrics.forEach(metric => {
+    const data = dates.map(date => {
+      const dayData = analyticsData.analytics.filter(
+        item => new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) === date
+      );
+      return dayData.reduce((sum, item) => sum + (item[metric] || 0), 0);
+    });
+
+    datasets.push({
+      label: metric.charAt(0).toUpperCase() + metric.slice(1),
+      data,
+      borderColor: colors[metric].line,
+      backgroundColor: colors[metric].fill,
+      fill: true,
+      tension: 0.4,
+    });
+  });
+
+  return {
+    labels: dates,
+    datasets
+  };
+};
 
 export default function Analytics() {
   const [timeRange, setTimeRange] = useState('7d');
@@ -86,6 +152,7 @@ export default function Analytics() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
+      setError(null); // Clear any previous errors
       
       const response = await analytics.overview({
         timeRange,
@@ -94,60 +161,12 @@ export default function Analytics() {
       });
       
       setAnalyticsData(response.data);
-      setError(null);
     } catch (err) {
+      console.error('Error fetching analytics:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
     } finally {
       setLoading(false);
     }
-  };
-
-  const getChartData = () => {
-    if (!analyticsData?.analytics) return null;
-
-    const dates = [...new Set(analyticsData.analytics.map(item => 
-      new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    ))];
-
-    const datasets = [];
-    const metrics = ['engagement', 'reach', 'impressions'];
-    const colors = {
-      engagement: {
-        line: 'rgb(99, 102, 241)',
-        fill: 'rgba(99, 102, 241, 0.1)',
-      },
-      reach: {
-        line: 'rgb(16, 185, 129)',
-        fill: 'rgba(16, 185, 129, 0.1)',
-      },
-      impressions: {
-        line: 'rgb(245, 158, 11)',
-        fill: 'rgba(245, 158, 11, 0.1)',
-      },
-    };
-
-    metrics.forEach(metric => {
-      const data = dates.map(date => {
-        const dayData = analyticsData.analytics.filter(
-          item => new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) === date
-        );
-        return dayData.reduce((sum, item) => sum + (item[metric as keyof typeof item] as number || 0), 0);
-      });
-
-      datasets.push({
-        label: metric.charAt(0).toUpperCase() + metric.slice(1),
-        data,
-        borderColor: colors[metric as keyof typeof colors].line,
-        backgroundColor: colors[metric as keyof typeof colors].fill,
-        fill: true,
-        tension: 0.4,
-      });
-    });
-
-    return {
-      labels: dates,
-      datasets
-    };
   };
 
   const renderPerformanceFilters = () => (
@@ -232,6 +251,13 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
+          <AlertTriangle className="w-5 h-5 mr-2" />
+          {error}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
         <div className="flex flex-wrap gap-4 items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
@@ -275,19 +301,22 @@ export default function Analytics() {
 
         {loading ? (
           <div className="h-64 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : (
           <>
             <div className="mb-8">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Performance Overview</h3>
-              {getChartData() && (
-                <PerformanceGraph data={getChartData()} height={400} />
+              {analyticsData && (
+                <PerformanceGraph data={transformChartData(analyticsData)} height={400} />
               )}
             </div>
 
             <PostsList
-              posts={analyticsData?.posts || []}
+              posts={analyticsData?.posts.map(post => ({
+                ...post,
+                createdAt: post.date
+              })) || []}
               metric={comparisonMetric}
             />
           </>

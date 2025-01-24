@@ -8,7 +8,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import type { Post } from '../../types/posts';
 import type { SocialAccount } from '../../types/overview';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../utils/api';
+import api, { socialAccounts as socialAccountsApi } from '../../utils/api';
 
 const isDevelopment = import.meta.env.MODE === 'development';
 const API_URL = isDevelopment 
@@ -46,7 +46,7 @@ export default function Overview({ onNewPost }: OverviewProps) {
 
       const [statsResponse, accountsResponse, postsResponse] = await Promise.all([
         api.get('/api/overview/stats'),
-        api.get('/api/social-accounts'),
+        socialAccountsApi.list(),
         api.get('/api/posts/scheduled')
       ]);
 

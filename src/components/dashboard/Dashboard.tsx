@@ -59,7 +59,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {currentView === 'overview' && <Overview />}
+          {currentView === 'overview' && <Overview onNewPost={() => setShowNewPostModal(true)} />}
           {currentView === 'calendar' && <CalendarView />}
           {currentView === 'analytics' && <Analytics />}
           {currentView === 'team' && <TeamView />}

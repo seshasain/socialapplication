@@ -10,18 +10,21 @@ export interface MediaFile {
   updatedAt: string;
 }
 
+export interface PostPlatform {
+  id: string;
+  platform: string;
+  status: 'published' | 'scheduled' | 'failed' | 'processing';
+  publishedAt: string | null;
+  error?: string;
+  externalId?: string;
+  settings?: Record<string, any>;
+}
+
 export interface Post {
   id: string;
   caption: string;
   scheduledDate: string;
-  platforms: Array<{
-    platform: string;
-    status: string;
-    publishedAt: string | null;
-    error?: string;
-    externalId?: string;
-    settings?: Record<string, any>;
-  }>;
+  platforms: PostPlatform[];
   hashtags: string;
   visibility: 'public' | 'private' | 'draft';
   mediaFiles: MediaFile[];

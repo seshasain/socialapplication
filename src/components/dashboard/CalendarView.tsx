@@ -27,130 +27,47 @@ import {
 import NewPostModal from '../modals/NewPostModal';
 import type { Post, PostPlatform } from '../../types/posts';
 import { SocialAccount } from '../../types/overview';
-import { posts } from '../../utils/api';
+import { posts, socialAccounts } from '../../utils/api';
+import PostStatusModal from '../modals/PostStatusModal';
 
 interface CalendarPost extends Post {
   title: string;
   start: string;
-  end?: string;
-  backgroundColor?: string;
-  borderColor?: string;
-  textColor?: string;
+  backgroundColor: string;
+  borderColor: string;
+  textColor: string;
   extendedProps: {
     platform: string;
     status: string;
     color: string;
     caption: string;
   };
+  display: string;
+  classNames: string[];
 }
 
-interface RetryModalProps {
-  post: Post;
-  onClose: () => void;
-  onRetry: () => Promise<void>;
-}
-const RetryModal: React.FC<RetryModalProps> = ({ post, onClose, onRetry }) => {
-  const [loading, setLoading] = useState(false);
-
-  const getPlatformStatusColor = (status: string) => {
-    switch (status) {
-      case 'published':
-        return 'bg-green-100 text-green-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const handleRetry = async () => {
-    try {
-      setLoading(true);
-      await onRetry();
-      onClose();
-    } catch (error) {
-      console.error('Retry failed:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Retry Failed Post</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Would you like to retry publishing this post on failed platforms?
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <div className="mt-4 bg-gray-50 rounded-lg p-4">
-          <p className="text-sm text-gray-600">{post.caption}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {post.platforms.map((platform) => (
-              <span
-                key={platform.id}
-                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getPlatformStatusColor(platform.status)}`}
-              >
-                {platform.platform} - {platform.status}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end space-x-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:text-gray-900"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleRetry}
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center disabled:opacity-50"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            Retry Failed Posts
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
 export default function CalendarView() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
-  const [posts, setPosts] = useState<CalendarPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [retryPost, setRetryPost] = useState<Post | null>(null);
+  const [showRetryModal, setShowRetryModal] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [calendarKey, setCalendarKey] = useState(0);
   const [view, setView] = useState<'dayGridMonth' | 'timeGridWeek' | 'listWeek'>('dayGridMonth');
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [connectedAccounts, setConnectedAccounts] = useState<SocialAccount[]>([]);
-  const [calendarKey, setCalendarKey] = useState(0);
-  const [showRetryModal, setShowRetryModal] = useState(false);
-  const [retryPost, setRetryPost] = useState<Post | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [calendarPosts, setCalendarPosts] = useState<CalendarPost[]>([]);
 
   const getPostStatus = (platforms: PostPlatform[]) => {
     if (!platforms || platforms.length === 0) return 'draft';
     const statuses = platforms.map((p) => p.status);
     if (statuses.every((status) => status === 'published')) return 'published';
     if (statuses.some((status) => status === 'failed')) return 'failed';
-    if (statuses.some((status) => status === 'publishing')) return 'publishing';
+    if (statuses.some((status) => status === 'processing')) return 'processing';
     if (statuses.every((status) => status === 'scheduled')) return 'scheduled';
     return 'draft';
   };
@@ -172,14 +89,14 @@ export default function CalendarView() {
 
   const customButtons = {
     prev: {
-      text: <ChevronLeft className="w-4 h-4" />,
+      text: 'Prev',
       click: () => {
         const calendarApi = calendarRef.current?.getApi();
         calendarApi?.prev();
       }
     },
     next: {
-      text: <ChevronRight className="w-4 h-4" />,
+      text: 'Next',
       click: () => {
         const calendarApi = calendarRef.current?.getApi();
         calendarApi?.next();
@@ -224,21 +141,8 @@ export default function CalendarView() {
 
   const fetchConnectedAccounts = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token');
-
-      const response = await fetch('http://localhost:5000/api/social-accounts', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch social accounts');
-      }
-
-      const accounts = await response.json();
-      setConnectedAccounts(accounts);
+      const response = await socialAccounts.list();
+      setConnectedAccounts(response.data);
     } catch (error) {
       console.error('Error fetching social accounts:', error);
     }
@@ -284,7 +188,7 @@ export default function CalendarView() {
         };
       });
 
-      setPosts(calendarPosts);
+      setCalendarPosts(calendarPosts);
       setError(null);
       setCalendarKey(prev => prev + 1);
     } catch (err) {
@@ -314,11 +218,11 @@ export default function CalendarView() {
   };
 
   const handleEventClick = (arg: { event: any }) => {
-    const post = posts.find((p) => p.id === arg.event.id);
-    if (post) {
-      const status = getPostStatus(post.platforms);
+    const foundPost = calendarPosts.find((p) => p.id === arg.event.id);
+    if (foundPost) {
+      const status = getPostStatus(foundPost.platforms);
       if (status === 'failed') {
-        setRetryPost(post);
+        setRetryPost(foundPost);
         setShowRetryModal(true);
         return;
       }
@@ -326,8 +230,8 @@ export default function CalendarView() {
         setError('Published posts cannot be edited.');
         return;
       }
-      setSelectedPost(post);
-      setSelectedDate(new Date(post.scheduledDate));
+      setSelectedPost(foundPost);
+      setSelectedDate(new Date(foundPost.scheduledDate));
       setIsModalOpen(true);
     }
   };
@@ -594,7 +498,7 @@ export default function CalendarView() {
               right: '',
             }}
             customButtons={customButtons}
-            events={posts}
+            events={calendarPosts}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
             eventContent={renderEventContent}
@@ -639,30 +543,41 @@ export default function CalendarView() {
             setSelectedPost(null);
             setSelectedDate(null);
           }}
-          onSave={async () => {
+          onSave={async (post) => {
             await fetchPosts();
             setIsModalOpen(false);
             setSelectedPost(null);
             setSelectedDate(null);
           }}
+          onPostSubmit={(statuses) => {
+            // Handle post submission statuses
+            console.log('Post submission statuses:', statuses);
+            fetchPosts(); // Refresh posts after submission
+          }}
           initialData={selectedPost || undefined}
-          defaultDate={selectedDate || undefined}
           connectedAccounts={connectedAccounts}
         />
       )}
 
       {showRetryModal && retryPost && (
-        <RetryModal
-          post={retryPost}
+        <PostStatusModal
+          isOpen={showRetryModal}
           onClose={() => {
             setShowRetryModal(false);
             setRetryPost(null);
           }}
-          onRetry={async () => {
-            await handleRetryPost(retryPost.id);
-            setShowRetryModal(false);
-            setRetryPost(null);
+          platforms={retryPost.platforms.map(p => ({
+            ...p,
+            publishedAt: p.publishedAt || undefined
+          }))}
+          onRetry={async (platformId) => {
+            if (retryPost) {
+              await handleRetryPost(retryPost.id);
+              setShowRetryModal(false);
+              setRetryPost(null);
+            }
           }}
+          scheduledDate={retryPost.scheduledDate}
         />
       )}
     </div>
