@@ -9,12 +9,12 @@ import SettingsView from './SettingsView';
 import HistoryView from './HistoryView';
 import NewPostModal from '../modals/NewPostModal';
 import PostStatusModal from '../modals/PostStatusModal';
-import TrialDashboard from './TrialDashboard';
 import TrialBanner from '../TrialBanner';
 import api from '../../utils/api';
 import type { Platform } from '../modals/PostStatusModal';
 import Sidebar from './Sidebar';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 
 type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
 
@@ -90,20 +90,38 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {user?.subscription?.status === 'trial' && <TrialBanner />}
-      <div className="flex">
-        <Sidebar currentView={currentView} onViewChange={handleViewChange} />
-        <main className="flex-1 p-6">
-          <div className="max-w-7xl mx-auto">
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg">
-                {error}
-              </div>
+    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <Sidebar currentView={currentView} onViewChange={handleViewChange} />
+
+      <div className="flex-1 flex flex-col">
+        {user?.subscription?.status === 'trial' && <TrialBanner />}
+        <main className="flex-1 overflow-y-auto">
+          <div className="flex justify-between items-center px-8 pt-6 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {currentView.charAt(0).toUpperCase() + currentView.slice(1)}
+              </h1>
+              <p className="text-gray-600 mt-1">
+                {new Date().toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
+            </div>
+            {currentView === 'overview' && (
+              <button
+                onClick={() => setShowNewPostModal(true)}
+                className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Create New Post
+              </button>
             )}
-            {user?.subscription?.status === 'trial' && currentView === 'overview' && (
-              <TrialDashboard />
-            )}
+          </div>
+
+          <div className="px-8 pb-8">
             {renderView()}
           </div>
         </main>

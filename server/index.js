@@ -815,7 +815,7 @@ app.post('/api/auth/signup', async (req, res) => {
       data: {
         userId: user.id,
         planId: freePlan.id,
-        status: 'active',
+        status: 'trial',  // Changed from 'active' to 'trial'
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(new Date().setDate(new Date().getDate() + 7)),
         trialStart: new Date(),
@@ -836,7 +836,7 @@ app.post('/api/auth/signup', async (req, res) => {
       role: user.role,
       subscription: {
         planId: 'free',
-        status: 'active',
+        status: 'trial',  // Changed from 'active' to 'trial'
         trialStart: subscription.trialStart,
         trialEnd: subscription.trialEnd,
         isInTrial: true
@@ -3083,5 +3083,125 @@ app.post('/api/auth/delete', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Account deletion error:', error);
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// Add new endpoint to handle trial to paid transition
+app.post('/api/subscription/convert-trial', authenticateToken, async (req, res) => {
+  try {
+    const { planId } = req.body;
+    
+    // Get user's current subscription
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        subscription: true
+      }
+    });
+
+    if (!user || !user.subscription) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    // Verify user is in trial
+    if (user.subscription.status !== 'trial') {
+      return res.status(400).json({ error: 'User is not in trial period' });
+    }
+
+    // Get the selected plan
+    const plan = await prisma.plan.findUnique({
+      where: { id: planId }
+    });
+
+    if (!plan) {
+      return res.status(404).json({ error: 'Selected plan not found' });
+    }
+
+    // Update subscription
+    const updatedSubscription = await prisma.subscription.update({
+      where: { id: user.subscription.id },
+      data: {
+        planId: plan.id,
+        status: 'active',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        trialStart: null,
+        trialEnd: null
+      }
+    });
+
+    res.json({
+      message: 'Successfully converted trial to paid subscription',
+      subscription: updatedSubscription
+    });
+  } catch (error) {
+    console.error('Error converting trial:', error);
+    res.status(500).json({ error: 'Failed to convert trial subscription' });
+  }
+});
+
+// Add endpoint to check trial eligibility
+app.get('/api/subscription/trial-eligibility', authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        subscription: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user has never had a trial or their trial has expired
+    const isEligible = !user.subscription || 
+      (user.subscription.status !== 'trial' && !user.subscription.trialEnd);
+
+    res.json({ isEligible });
+  } catch (error) {
+    console.error('Error checking trial eligibility:', error);
+    res.status(500).json({ error: 'Failed to check trial eligibility' });
+  }
+});
+
+// Trial Stats Endpoint
+app.get('/api/trial/stats', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get today's posts count
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const postsToday = await prisma.post.count({
+      where: {
+        userId,
+        createdAt: {
+          gte: today
+        }
+      }
+    });
+
+    // Get scheduled posts count
+    const scheduledPosts = await prisma.post.count({
+      where: {
+        userId,
+        scheduledDate: {
+          gt: new Date()
+        }
+      }
+    });
+
+    // For now, return 1 as team members count since teams aren't implemented yet
+    const teamMembers = 1;
+
+    res.json({
+      postsToday,
+      scheduledPosts,
+      teamMembers
+    });
+  } catch (error) {
+    console.error('Error fetching trial stats:', error);
+    res.status(500).json({ error: 'Failed to fetch trial stats' });
   }
 });

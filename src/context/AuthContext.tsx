@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '../types/user';
 import { auth } from '../utils/api';
+import { subscription } from '../utils/api';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +12,10 @@ interface AuthContextType {
   signup: (data: SignupData) => Promise<{ token: string; user: User; redirectUrl: string }>;
   signInWithGoogle: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  startTrial: () => Promise<void>;
+  extendTrial: (days: number) => Promise<void>;
+  convertTrialToPaid: (planId: string) => Promise<void>;
+  checkTrialEligibility: () => Promise<boolean>;
 }
 
 interface SignupData {
@@ -40,21 +45,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await auth.me();
       const userData = response.data;
+      
+      // Format user data with proper trial status
       const formattedUser: User = {
         ...userData,
         subscription: {
-          planId: userData.subscription?.planId || 'free',
-          status: userData.subscription?.status || 'active',
-          currentPeriodStart: userData.subscription?.currentPeriodStart,
-          currentPeriodEnd: userData.subscription?.currentPeriodEnd,
-          cancelAtPeriodEnd: userData.subscription?.cancelAtPeriodEnd || false
+          ...userData.subscription,
+          isInTrial: userData.subscription?.status === 'trial',
         }
       };
+      
       setUser(formattedUser);
       setIsAuthenticated(true);
     } catch (error: any) {
       console.error('Failed to refresh user data:', error);
-      // Only remove token if it's an authentication error
       if (error.response?.status === 401) {
         localStorage.removeItem('token');
       }
@@ -151,6 +155,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     throw new Error('Not implemented');
   };
 
+  const startTrial = async () => {
+    try {
+      await auth.startTrial();
+      await refreshUser();
+    } catch (error) {
+      console.error('Failed to start trial:', error);
+      throw error;
+    }
+  };
+
+  const extendTrial = async (days: number) => {
+    try {
+      await auth.extendTrial(days);
+      await refreshUser();
+    } catch (error) {
+      console.error('Failed to extend trial:', error);
+      throw error;
+    }
+  };
+
+  const convertTrialToPaid = async (planId: string) => {
+    try {
+      await subscription.convertTrial(planId);
+      await refreshUser();
+    } catch (error) {
+      console.error('Failed to convert trial to paid:', error);
+      throw error;
+    }
+  };
+
+  const checkTrialEligibility = async () => {
+    try {
+      const response = await subscription.checkTrialEligibility();
+      return response.data.isEligible;
+    } catch (error) {
+      console.error('Failed to check trial eligibility:', error);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{ 
@@ -161,7 +205,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout, 
         signup, 
         signInWithGoogle,
-        refreshUser 
+        refreshUser,
+        startTrial,
+        extendTrial,
+        convertTrialToPaid,
+        checkTrialEligibility
       }}
     >
       {children}

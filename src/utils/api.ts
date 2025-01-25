@@ -93,15 +93,13 @@ export const auth = {
       throw error;
     }
   },
-  signup: (data: SignupData) => 
-    api.post(API_ROUTES.auth.signup, data),
+  signup: (data: SignupData) => api.post(API_ROUTES.auth.signup, data),
   me: () => api.get(API_ROUTES.auth.me),
-  deactivate: (reason?: string) => 
-    api.post(API_ROUTES.auth.deactivate, { reason }),
-  reactivate: (data: { email: string; password: string }) => 
-    api.post(API_ROUTES.auth.reactivate, data),
-  delete: (password: string) => 
-    api.post(API_ROUTES.auth.delete, { password }),
+  deactivate: (reason?: string) => api.post(API_ROUTES.auth.deactivate, { reason }),
+  reactivate: (data: { email: string; password: string }) => api.post(API_ROUTES.auth.reactivate, data),
+  delete: (password: string) => api.post(API_ROUTES.auth.delete, { password }),
+  startTrial: () => api.post('/api/auth/start-trial'),
+  extendTrial: (days: number) => api.post('/api/auth/extend-trial', { days }),
 };
 
 // Posts endpoints
@@ -141,4 +139,11 @@ export const user = {
   updateSettings: (data: any) => api.put(API_ROUTES.user.settings, data),
   updatePassword: (data: { currentPassword: string; newPassword: string }) => 
     api.post(API_ROUTES.user.password, data),
+};
+
+// Add new endpoints for trial management
+export const subscription = {
+  checkTrialEligibility: () => api.get('/api/subscription/trial-eligibility'),
+  convertTrial: (planId: string) => api.post('/api/subscription/convert-trial', { planId }),
+  // ... existing subscription endpoints
 }; 
