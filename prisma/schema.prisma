@@ -25,12 +25,18 @@ model User {
   mediaFiles     MediaFile[]
   analytics      Analytics[]
   teamMembers    TeamMember[]    
-  country        String           @default("")
+  country        String          @default("")
   supportTickets SupportTicket[]
   feedback       Feedback[]
   deactivatedAt  DateTime?
   deactivationReason String?
   status         String          @default("active") // active, deactivated, deleted
+  referredBy     String?         // ID of the user who referred this user
+  referrer       User?           @relation("UserReferrals", fields: [referredBy], references: [id])
+  referrals      User[]          @relation("UserReferrals")
+  trialExtensionRequests TrialExtensionRequest[]
+
+  @@index([referredBy])
 }
 
 model Analytics {
@@ -58,36 +64,45 @@ model Analytics {
 }
 
 model Subscription {
-  id                String         @id @default(cuid())
-  userId           String         @unique
-  user             User           @relation(fields: [userId], references: [id])
-  planId           String
-  plan             Plan           @relation(fields: [planId], references: [id])
-  status           String         @default("active")
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  planId             String
+  status             String    @default("active")
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean      @default(false)
-  trialStart        DateTime?
-  trialEnd          DateTime?
-  paymentMethod     PaymentMethod?
-  invoices          Invoice[]
-  usageRecords      UsageRecord[]
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  cancelAtPeriodEnd  Boolean   @default(false)
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  pauseStart         DateTime?
+  pauseEnd           DateTime?
+  metadata           Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id])
+  plan          Plan           @relation(fields: [planId], references: [id])
+  usageRecords  UsageRecord[]
+  invoices      Invoice[]
+  paymentMethod PaymentMethod?
+  monthlyUsage  MonthlyUsage[]
+  rolloverPosts RolloverPosts?
 
   @@index([userId])
   @@index([planId])
+  @@index([status])
 }
 
 model Plan {
   id              String        @id @default(cuid())
   name            String        @unique
+  displayName     String        @default("")
   description     String
   price           Float
   interval        String
   features        PlanFeature[]
   subscriptions   Subscription[]
   active          Boolean       @default(true)
+  isDefault       Boolean       @default(false)
   sortOrder       Int
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -95,6 +110,7 @@ model Plan {
   metadata        Json          @default("{}")
 
   @@index([name])
+  @@index([isDefault])
 }
 
 model PlanFeature {
@@ -115,7 +131,8 @@ model PlanLimit {
   planId      String
   plan        Plan     @relation(fields: [planId], references: [id])
   name        String
-  value       Int
+  value       Int      // Changed to Int since we're using numbers in the seed
+  type        String   @default("monthly")   // monthly, per_platform, etc.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -160,11 +177,13 @@ model UsageRecord {
   subscription   Subscription @relation(fields: [subscriptionId], references: [id])
   feature        String
   quantity       Int
+  platform       String?     // Track per-platform usage
   recordedAt     DateTime     @default(now())
   metadata       Json         @default("{}")
 
   @@index([subscriptionId])
   @@index([feature])
+  @@index([platform])
 }
 
 model Post {
@@ -303,6 +322,50 @@ model Feedback {
   status    String   @default("new") // new, reviewed, archived
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model MonthlyUsage {
+  id              String       @id @default(cuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id])
+  monthYear       String       // Format: YYYY-MM
+  postsUsed       Int         @default(0)
+  platformUsage   Json        @default("{}")
+  rolloverAmount  Int?
+  rolloverExpiresAt DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([subscriptionId])
+  @@index([monthYear])
+}
+
+model RolloverPosts {
+  id              String       @id @default(cuid())
+  subscriptionId  String       @unique
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id])
+  amount          String       @default("0")
+  expiresAt       DateTime
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([subscriptionId])
+}
+
+model TrialExtensionRequest {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  reason        String
+  requestedDays Int
+  status        String   @default("pending") // pending, approved, rejected
+  reviewedAt    DateTime?
+  reviewNotes   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([userId])
   @@index([status])

@@ -145,11 +145,37 @@ process.on('uncaughtException', (error) => {
 
 // Start server
 let server;
+const startServer = async (initialPort) => {
+  let currentPort = initialPort;
+  const maxAttempts = 10;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      server = app.listen(currentPort, () => {
+        console.log(`Server is running on port ${currentPort}`);
+        console.log(`Environment: ${process.env.NODE_ENV}`);
+      });
+      return true;
+    } catch (error) {
+      if (error.code === 'EADDRINUSE') {
+        console.log(`Port ${currentPort} is in use, trying ${currentPort + 1}...`);
+        currentPort++;
+      } else {
+        console.error('Failed to start server:', error);
+        return false;
+      }
+    }
+  }
+  console.error(`Could not find an available port after ${maxAttempts} attempts`);
+  return false;
+};
+
+// Start server
 try {
-  server = app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-    console.log(`Environment: ${process.env.NODE_ENV}`);
-  });
+  const success = await startServer(port);
+  if (!success) {
+    process.exit(1);
+  }
 
   // Add graceful shutdown
   process.on('SIGTERM', () => {
@@ -593,7 +619,16 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       where: { id: req.user.id },
       include: {
         settings: true,
-        subscription: true,
+        subscription: {
+          include: {
+            plan: {
+              include: {
+                features: true,
+                limits: true
+              }
+            }
+          }
+        },
         socialAccounts: true
       }
     });
@@ -603,7 +638,24 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized - User not found' });
     }
 
-    const { password, ...userData } = user;
+    // Format user data
+    const userData = {
+      ...user,
+      subscription: user.subscription ? {
+        ...user.subscription,
+        planId: user.subscription.plan.name.toLowerCase(),
+        status: user.subscription.status,
+        currentPeriodEnd: user.subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
+        features: user.subscription.plan.features,
+        limits: user.subscription.plan.limits
+      } : {
+        planId: 'free',
+        status: 'active'
+      },
+      password: undefined
+    };
+
     res.json(userData);
   } catch (error) {
     console.error('Auth check error:', error);
@@ -691,190 +743,132 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.set('trust proxy', true); // Trust proxy headers in production
 app.post('/api/auth/signup', async (req, res) => {
-  console.log('Received signup request:', {
-    email: req.body.email,
-    name: req.body.name,
-    redirectUrl: req.body.redirectUrl,
-    hasCaptcha: !!req.body.captchaToken
-  });
-
   try {
-    const { email, password, name, redirectUrl, captchaToken } = req.body;
+    console.log('Received signup request:', {
+      email: req.body.email,
+      name: req.body.name,
+      redirectUrl: req.body.redirectUrl,
+      hasCaptcha: !!req.body.captchaToken
+    });
 
-    // Verify reCAPTCHA
-    if (!captchaToken) {
-      console.log('No captcha token provided');
-      return res.status(400).json({ 
-        error: 'reCAPTCHA verification required',
-        message: 'Please complete the reCAPTCHA verification.'
-      });
+    // Verify reCAPTCHA token
+    console.log('Verifying reCAPTCHA token...');
+    if (process.env.NODE_ENV === 'production' && !req.body.captchaToken) {
+      return res.status(400).json({ error: 'reCAPTCHA verification required' });
     }
 
-    // Verify the captcha token with Google
-    try {
-      console.log('Verifying reCAPTCHA token...');
+    if (req.body.captchaToken) {
       const recaptchaResponse = await axios.post(
-        'https://www.google.com/recaptcha/api/siteverify',
-        null,
-        {
-          params: {
-            secret: process.env.RECAPTCHA_SECRET_KEY,
-            response: captchaToken,
-          },
-        }
+        `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${req.body.captchaToken}`
       );
 
       if (!recaptchaResponse.data.success) {
-        console.log('reCAPTCHA verification failed:', recaptchaResponse.data);
-        return res.status(400)
-          .set(res.corsHeaders)
-          .json({ 
-            error: 'reCAPTCHA verification failed',
-            message: 'reCAPTCHA verification failed. Please try again.'
-          });
+        return res.status(400).json({ error: 'reCAPTCHA verification failed' });
       }
       console.log('reCAPTCHA verification successful');
-    } catch (error) {
-      console.error('reCAPTCHA verification error:', error);
-      return res.status(400)
-        .set(res.corsHeaders)
-        .json({ 
-          error: 'reCAPTCHA verification failed',
-          message: 'Failed to verify reCAPTCHA. Please try again.'
-        });
     }
 
     // Check if user exists
     console.log('Checking if user exists...');
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: req.body.email }
     });
 
     if (existingUser) {
-      console.log('User already exists:', email);
-      return res.status(400)
-        .set(res.corsHeaders)
-        .json({ 
-          error: 'EMAIL_EXISTS',
-          message: 'This email is already registered. Please try signing in instead.'
-        });
+      return res.status(400).json({ error: 'Email already registered' });
     }
 
     // Hash password
     console.log('Hashing password...');
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
 
-    // Create user with default settings
+    // Create new user
     console.log('Creating new user...');
     const user = await prisma.user.create({
       data: {
-        email,
+        email: req.body.email,
         password: hashedPassword,
-        name,
-        role: 'USER',
-        settings: {
-          create: {
-            emailNotifications: true,
-            pushNotifications: true,
-            smsNotifications: false,
-            language: 'en',
-            theme: 'light',
-            autoSchedule: true,
-            defaultVisibility: 'public',
-          },
-        },
-        timezone: 'UTC',
-        country: 'US',
-      },
-      include: {
-        settings: true,
-        subscription: true,
-        socialAccounts: true,
+        name: req.body.name,
       },
     });
     console.log('User created successfully:', user.id);
 
-    // Create subscription with free plan
-    console.log('Finding free plan...');
-    const freePlan = await prisma.plan.findUnique({
-      where: { name: 'free' },
+    // Find trial plan
+    console.log('Finding trial plan...');
+    const trialPlan = await prisma.plan.findFirst({
+      where: {
+        name: 'trial',
+        isDefault: true,
+      },
     });
 
-    if (!freePlan) {
-      console.log('Free plan not found');
-      return res.status(400)
-        .set(res.corsHeaders)
-        .json({ 
-          error: 'PLAN_NOT_FOUND',
-          message: 'Unable to create account. Please contact support.'
-        });
+    if (!trialPlan) {
+      console.error('Trial plan not found');
+      return res.status(500).json({ error: 'Trial plan not found' });
     }
 
-    console.log('Creating subscription...');
+    // Calculate trial end date (14 days from now)
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 14);
+
+    // Create subscription with trial plan
     const subscription = await prisma.subscription.create({
       data: {
         userId: user.id,
-        planId: freePlan.id,
-        status: 'trial',  // Changed from 'active' to 'trial'
+        planId: trialPlan.id,
+        status: 'trial',
         currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(new Date().setDate(new Date().getDate() + 7)),
+        currentPeriodEnd: trialEnd,
         trialStart: new Date(),
-        trialEnd: new Date(new Date().setDate(new Date().getDate() + 7))
+        trialEnd: trialEnd,
       },
     });
-    console.log('Subscription created successfully');
+
+    // Create default user settings
+    await prisma.userSettings.create({
+      data: {
+        userId: user.id,
+        emailNotifications: true,
+        pushNotifications: false,
+        smsNotifications: false,
+        language: 'en',
+        theme: 'light',
+        autoSchedule: false,
+        defaultVisibility: 'public',
+      },
+    });
 
     // Generate JWT token
-    console.log('Generating JWT token...');
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    // Format user data
-    const userData = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      subscription: {
-        planId: 'free',
-        status: 'trial',  // Changed from 'active' to 'trial'
-        trialStart: subscription.trialStart,
-        trialEnd: subscription.trialEnd,
-        isInTrial: true
+    // Return user data and token
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        subscription: {
+          planId: subscription.planId,
+          status: subscription.status,
+          currentPeriodStart: subscription.currentPeriodStart,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          trialStart: subscription.trialStart,
+          trialEnd: subscription.trialEnd
+        },
       },
-      settings: user.settings,
-      timezone: 'UTC',
-      country: user.country,
-      bio: '',
-      avatar: null,
-      socialAccounts: [],
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-
-    console.log('Sending successful response...');
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
-    res.status(201).json({
       token,
-      user: userData,
-      redirectUrl: redirectUrl || '/dashboard',
     });
   } catch (error) {
     console.error('Signup error:', error);
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
-    res.status(500).json({ 
-      error: 'SIGNUP_FAILED',
-      message: 'Failed to create account. Please try again.'
-    });
+    res.status(500).json({ error: 'Failed to create account' });
   }
 });
+
 // Settings endpoints
 app.get('/api/settings', authenticateToken, async (req, res) => {
   try {
@@ -2393,13 +2387,15 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!user.subscription) {
+    if (!user.subscription?.plan) {
       return res.status(400).json({ error: 'User does not have an active subscription' });
     }
 
     // Get plan limits
-    const planLimits = user.subscription.plan.limits;
-    const postsLimit = planLimits.find(limit => limit.name === 'scheduled_posts')?.value || 10;
+    const planLimits = user.subscription.plan.limits.reduce((acc, limit) => {
+      acc[limit.name] = limit.value;
+      return acc;
+    }, {});
 
     // Count scheduled posts using proper schema relations
     const scheduledPosts = await prisma.postPlatform.count({
@@ -2424,22 +2420,21 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
     const totalPosts = scheduledPosts + publishedPosts;
 
     // Calculate days left in subscription
-    let daysLeft = 7;
+    let daysLeft = 30; // default to 30 days
     if (user.subscription.currentPeriodEnd) {
       const endDate = new Date(user.subscription.currentPeriodEnd);
       const now = new Date();
-      now.setDate(now.getDate());
-      daysLeft = Math.ceil( (new Date(user.subscription.currentPeriodEnd).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      daysLeft = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
     }
-      const now = new Date();
 
-    const daysLimit = planLimits.find(limit => limit.name === 'days_limit')?.value || 7;
+    // For trial users, use trial duration from plan limits
+    const daysLimit = user.subscription.status === 'trial' ? 14 : 30;
 
     res.json({
-      postsUsed: totalPosts,
-      postsLimit,
-      daysLeft,
-      daysLimit,
+      postsUsed: totalPosts || 0,
+      postsLimit: planLimits.monthlyPosts || 10,
+      daysLeft: daysLeft || 0,
+      daysLimit: daysLimit || 30,
     });
   } catch (error) {
     console.error('Usage stats error:', error);
@@ -3170,6 +3165,32 @@ app.get('/api/trial/stats', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
+    // Get user's subscription and plan limits
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        subscription: {
+          include: {
+            plan: {
+              include: {
+                limits: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user?.subscription?.plan) {
+      return res.status(400).json({ error: 'No active subscription found' });
+    }
+
+    // Get plan limits
+    const planLimits = user.subscription.plan.limits.reduce((acc, limit) => {
+      acc[limit.name] = limit.value;
+      return acc;
+    }, {});
+
     // Get today's posts count
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -3192,16 +3213,99 @@ app.get('/api/trial/stats', authenticateToken, async (req, res) => {
       }
     });
 
-    // For now, return 1 as team members count since teams aren't implemented yet
-    const teamMembers = 1;
+    // Get platform usage
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const posts = await prisma.post.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: monthStart
+        }
+      },
+      include: {
+        platforms: true
+      }
+    });
+
+    const platformUsage = posts.reduce((acc, post) => {
+      post.platforms.forEach(platform => {
+        if (platform.status === 'published') {
+          acc[platform.platform] = (acc[platform.platform] || 0) + 1;
+        }
+      });
+      return acc;
+    }, {});
+
+    // Get team members limit from plan
+    const teamMembers = planLimits.teamMembers || 1;
 
     res.json({
       postsToday,
       scheduledPosts,
-      teamMembers
+      teamMembers,
+      platformUsage,
+      limits: planLimits
     });
   } catch (error) {
     console.error('Error fetching trial stats:', error);
     res.status(500).json({ error: 'Failed to fetch trial stats' });
+  }
+});
+
+app.get('/api/posts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const posts = await prisma.post.findMany({
+      where: { userId },
+      include: {
+        mediaFiles: true,
+        platforms: {
+          include: {
+            analytics: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json(posts);
+  } catch (error) {
+    console.error('Posts fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+});
+
+// Social account disconnect endpoint
+app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Verify account ownership
+    const socialAccount = await prisma.socialAccount.findFirst({
+      where: {
+        id,
+        userId
+      }
+    });
+
+    if (!socialAccount) {
+      return res.status(404).json({ error: 'Social account not found' });
+    }
+
+    // Delete the social account
+    await prisma.socialAccount.delete({
+      where: { id }
+    });
+
+    res.status(200).json({ message: 'Social account disconnected successfully' });
+  } catch (error) {
+    console.error('Social account disconnect error:', error);
+    res.status(500).json({ error: 'Failed to disconnect social account' });
   }
 });

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Instagram, Facebook, Twitter, Linkedin, Youtube } from 'lucide-react';
+import { BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES } from '../../../types/plans';
+import { getPlatformIcon, PLATFORM_COLORS } from '../../../utils/platformUtils';
 
 interface SocialAccount {
   id: string;
@@ -11,27 +12,17 @@ interface SocialAccount {
 interface SocialConnectBannerProps {
   onConnect: () => void;
   socialAccounts: SocialAccount[];
+  userPlan: 'trial' | 'basic' | 'pro';
 }
 
 export default function SocialConnectBanner({
   onConnect,
   socialAccounts = [],
+  userPlan
 }: SocialConnectBannerProps) {
-  const platforms = [
-    { name: 'Instagram', icon: Instagram },
-    { name: 'Facebook', icon: Facebook },
-    { name: 'Twitter', icon: Twitter },
-    { name: 'LinkedIn', icon: Linkedin },
-    { name: 'YouTube', icon: Youtube },
-    {
-      name: 'TikTok',
-      icon: () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0011.14-4.02v-6.3a8.16 8.16 0 004.65 1.49v-3.39a4.85 4.85 0 01-1.2-1.19z" />
-        </svg>
-      ),
-    },
-  ];
+  const availablePlatforms = userPlan === 'pro' 
+    ? [...BASIC_PLATFORMS, ...PRO_PLATFORMS]
+    : BASIC_PLATFORMS;
 
   return (
     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-6 text-white">
@@ -53,22 +44,39 @@ export default function SocialConnectBanner({
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {platforms.map((platform) => {
+        {availablePlatforms.map((platform) => {
           const account = socialAccounts.find(
             (acc) =>
               acc.platform &&
-              acc.platform.toLowerCase() === platform.name.toLowerCase()
+              acc.platform.toLowerCase() === platform.toLowerCase()
           );
-          const Icon = platform.icon;
+          const icon = getPlatformIcon(platform);
+          const colors = PLATFORM_COLORS[platform];
+          const isProPlatform = PRO_PLATFORMS.includes(platform as any);
+          const isLocked = isProPlatform && userPlan !== 'pro';
+
           return (
             <div
-              key={platform.name}
-              className="flex items-center space-x-3 bg-white bg-opacity-10 rounded-lg p-4 backdrop-blur-sm"
+              key={platform}
+              className={`flex items-center space-x-3 bg-white bg-opacity-10 rounded-lg p-4 backdrop-blur-sm ${
+                isLocked ? 'opacity-50' : ''
+              }`}
             >
               <div className="flex items-center space-x-3 flex-1">
-                <Icon className="w-5 h-5 flex-shrink-0" />
+                <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${colors.bg} ${colors.text}`}>
+                  {icon}
+                </div>
                 <div className="min-w-0">
-                  <p className="font-medium truncate">{platform.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium truncate">
+                      {PLATFORM_NAMES[platform]}
+                    </p>
+                    {isProPlatform && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
+                        PRO
+                      </span>
+                    )}
+                  </div>
                   {account?.username && (
                     <p className="text-sm text-blue-100 truncate">
                       @{account.username}
@@ -79,11 +87,15 @@ export default function SocialConnectBanner({
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-2 h-2 rounded-full ${
-                    account ? 'bg-green-400' : 'bg-gray-300'
+                    account ? 'bg-green-400' : isLocked ? 'bg-yellow-400' : 'bg-gray-300'
                   }`}
                 />
                 <span className="text-sm">
-                  {account ? 'Connected' : 'Not Connected'}
+                  {account 
+                    ? 'Connected' 
+                    : isLocked 
+                      ? 'Pro Only' 
+                      : 'Not Connected'}
                 </span>
               </div>
             </div>

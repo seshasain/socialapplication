@@ -8,18 +8,14 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import type { Post, SocialAccount } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import api, { socialAccounts as socialAccountsApi } from '../../utils/api';
-
-const isDevelopment = import.meta.env.MODE === 'development';
-const API_URL = isDevelopment 
-  ? 'http://localhost:5000'
-  : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
+import { API_URL } from '../../config/api';
 
 interface OverviewProps {
   onNewPost: () => void;
 }
 
 export default function Overview({ onNewPost }: OverviewProps) {
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [stats, setStats] = useState<{
     totalPosts: number;
@@ -87,6 +83,8 @@ export default function Overview({ onNewPost }: OverviewProps) {
     return <LoadingSpinner size="lg" className="h-64" />;
   }
 
+  const userPlan = user?.subscription?.planId || 'trial';
+
   return (
     <div className="space-y-6">
       {error && (
@@ -98,6 +96,7 @@ export default function Overview({ onNewPost }: OverviewProps) {
       <SocialConnectBanner
         onConnect={() => setIsConnectModalOpen(true)}
         socialAccounts={socialAccounts}
+        userPlan={userPlan}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -142,6 +141,7 @@ export default function Overview({ onNewPost }: OverviewProps) {
         socialAccounts={socialAccounts}
         onAccountConnect={handleConnectAccount}
         onAccountDisconnect={handleDisconnectAccount}
+        userPlan={userPlan}
       />
     </div>
   );

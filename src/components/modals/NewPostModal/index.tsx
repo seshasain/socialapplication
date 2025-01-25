@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import type { Post } from '../../../types/posts';
+import type { Post, PostFormData, PostPlatform } from '../../../types/posts';
 import type { MediaFile } from '../../../types/media';
 import type { SocialAccount } from '../../../types/overview';
+import type { SocialPlatform } from '../../../types/plans';
 import { uploadMedia } from '../../../api/posts';
 import PlatformSelector from './PlatformSelector';
 import PostTypeSelector from './PostTypeSelector';
@@ -17,6 +18,7 @@ import { API_URL } from '../../../config/api';
 import PlatformSpecificOptions from './PlatformSpecificOptions';
 import SchedulingOptions from './SchedulingOptions';
 import PostStatusModal from '../PostStatusModal';
+import { useUsageTracking } from '../../../hooks/useUsageTracking';
 
 export type PostType =
   | 'post'
@@ -39,11 +41,12 @@ interface NewPostModalProps {
     publishedAt?: string;
     scheduledFor?: string;
   }>) => void;
-  onSave: (post: Post) => void;
+  onSave?: (post: Post) => void;
   initialData?: Post;
   connectedAccounts: SocialAccount[];
   defaultScheduledDate?: Date;
   defaultScheduleEnabled?: boolean;
+  userPlan: 'trial' | 'basic' | 'pro';
 }
 
 interface PostData {
@@ -59,10 +62,12 @@ export default function NewPostModal({
   isOpen,
   onClose,
   onPostSubmit,
+  onSave,
   initialData,
   connectedAccounts = [],
   defaultScheduledDate,
   defaultScheduleEnabled,
+  userPlan
 }: NewPostModalProps) {
   const [step, setStep] = useState<'platform' | 'type' | 'content'>('platform');
   const [loading, setLoading] = useState(false);
@@ -86,6 +91,18 @@ export default function NewPostModal({
     publishedAt?: string;
     scheduledFor?: string;
   }>>([]);
+
+  const {
+    usage,
+    loading: usageLoading,
+    error: usageError,
+    validatePostCreation,
+    trackPostCreation,
+    refreshUsage
+  } = useUsageTracking();
+
+  // Add usage warning state
+  const [usageWarnings, setUsageWarnings] = useState<string[]>([]);
 
   // Initialize with a date 1 hour from now for better default scheduling
   const defaultDate = defaultScheduledDate || new Date(Date.now() + 60 * 60 * 1000);
@@ -180,7 +197,80 @@ export default function NewPostModal({
     }
   }, [isOpen]);
 
-  // Update the handleSubmit function:
+  // Modify platform selection to check limits
+  const handlePlatformSelect = (platform: string) => {
+    const newPlatforms = selectedPlatforms.includes(platform)
+      ? selectedPlatforms.filter(p => p !== platform)
+      : [...selectedPlatforms, platform];
+
+    const validation = validatePostCreation(newPlatforms, selectedPostType);
+    
+    if (validation.warnings.length > 0) {
+      setUsageWarnings(validation.warnings);
+    }
+
+    if (validation.canPost) {
+      setSelectedPlatforms(newPlatforms);
+      setValidationErrors([]);
+    } else {
+      toast.error(validation.errors.join('\n'));
+    }
+  };
+
+  // Modify form validation
+  const validateForm = () => {
+    const validation = validatePostCreation(selectedPlatforms, selectedPostType);
+    
+    if (!validation.canPost) {
+      setValidationErrors(validation.errors.map(error => ({
+        platform: 'all',
+        message: error
+      })));
+      return false;
+    }
+
+    if (selectedPlatforms.length === 0) {
+      toast.error('Please select at least one platform');
+      return false;
+    }
+  
+    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
+      const scheduledDateTime = new Date(
+        `${postData.scheduledDate}T${postData.scheduledTime}`
+      );
+      if (scheduledDateTime <= new Date()) {
+        toast.error('Scheduled date must be in the future');
+        return false;
+      }
+    }
+
+    // All validations passed
+    return true;
+  };
+
+  // Handle save as draft functionality
+  const handleSave = () => {
+    if (onSave) {
+      const draftPost: Post = {
+        id: initialData?.id || '',
+        caption: postData.caption,
+        scheduledDate: postData.scheduledDate,
+        mediaFiles: uploadedFiles,
+        platforms: selectedPlatforms.map(platform => ({
+          id: '',
+          platform,
+          status: 'scheduled' as const,
+          publishedAt: null
+        })),
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      onSave(draftPost);
+    }
+  };
+
+  // Modify submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationErrors([]);
@@ -192,6 +282,12 @@ export default function NewPostModal({
     try {
       setIsSubmitting(true);
       setError(null);
+
+      // Track post creation before actual submission
+      const tracked = await trackPostCreation(selectedPlatforms, selectedPostType);
+      if (!tracked) {
+        throw new Error('Failed to track post usage');
+      }
 
       let scheduledDateTime: Date;
       if (publishNow) {
@@ -277,54 +373,16 @@ export default function NewPostModal({
 
       onPostSubmit(statuses);
       onClose();
+
+      // Refresh usage stats after successful post
+      await refreshUsage();
+
     } catch (err) {
       console.error('Post creation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create post');
-    } finally {
       setIsSubmitting(false);
     }
   };
-
-  // Update the validateForm function:
-  
-  const validateForm = () => {
-    // For Twitter threads, validate thread content
-    if (selectedPostType === 'thread') {
-      const validThreads = threadContent.filter(content => content.trim());
-      if (validThreads.length === 0) {
-        toast.error('At least one tweet in the thread is required');
-        return false;
-      }
-      
-      // Validate each thread's content length
-      const invalidThreads = validThreads.filter(content => content.length > 280);
-      if (invalidThreads.length > 0) {
-        toast.error('One or more tweets exceed the 280 character limit');
-        return false;
-      }
-    } else if (!postData.caption.trim() && selectedPostType !== 'story') {
-      toast.error('Caption is required for this post type');
-      return false;
-    }
-  
-    if (selectedPlatforms.length === 0) {
-      toast.error('Please select at least one platform');
-      return false;
-    }
-  
-    if (!publishNow && postData.scheduledDate && postData.scheduledTime) {
-      const scheduledDateTime = new Date(
-        `${postData.scheduledDate}T${postData.scheduledTime}`
-      );
-      if (scheduledDateTime <= new Date()) {
-        toast.error('Scheduled date must be in the future');
-        return false;
-      }
-    }
-  
-    return true;
-  };  
-  
 
   // Modify handleClose to only cleanup files for immediate posts
   const handleClose = async () => {
@@ -369,6 +427,66 @@ export default function NewPostModal({
       console.error('Failed to remove file:', error);
       toast.error('Failed to remove file. Please try again.');
     }
+  };
+
+  // Add usage stats display
+  const renderUsageStats = () => {
+    if (usageLoading) {
+      return <div className="text-sm text-gray-500">Loading usage stats...</div>;
+    }
+
+    if (usageError) {
+      return null;
+    }
+
+    if (!usage) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+        <h4 className="text-sm font-medium text-gray-700">Monthly Usage</h4>
+        <div className="mt-2 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>Posts remaining:</span>
+            <span className="font-medium">{usage.monthlyPosts.remaining}/{usage.monthlyPosts.total}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span>Scheduled posts:</span>
+            <span className="font-medium">{usage.scheduledPosts.remaining}/{usage.scheduledPosts.total}</span>
+          </div>
+          {usage.rolloverPosts && (
+            <div className="flex justify-between text-sm">
+              <span>Rollover posts:</span>
+              <span className="font-medium">{usage.rolloverPosts.amount} (expires {new Date(usage.rolloverPosts.expiresAt).toLocaleDateString()})</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Add usage warnings display
+  const renderUsageWarnings = () => {
+    if (usageWarnings.length === 0) return null;
+
+    return (
+      <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
+        <div className="flex">
+          <AlertCircle className="h-5 w-5 text-yellow-400" />
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-yellow-800">Usage Warnings</h3>
+            <div className="mt-2 text-sm text-yellow-700">
+              <ul className="list-disc pl-5 space-y-1">
+                {usageWarnings.map((warning, index) => (
+                  <li key={index}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (!isOpen) return null;
@@ -418,18 +536,11 @@ export default function NewPostModal({
   
               {step === 'platform' && (
                 <PlatformSelector
-                  platforms={connectedAccounts}
-                  selectedPlatforms={selectedPlatforms}
-                  onPlatformSelect={(platformId) => {
-                    setSelectedPlatforms(prev => {
-                      const index = prev.indexOf(platformId);
-                      if (index === -1) {
-                        return [...prev, platformId];
-                      }
-                      return prev.filter(id => id !== platformId);
-                    });
-                  }}
+                  userPlan={userPlan}
+                  selectedPlatforms={selectedPlatforms as SocialPlatform[]}
+                  onPlatformSelect={handlePlatformSelect}
                   onNext={() => setStep('type')}
+                  connectedPlatforms={connectedAccounts.map(acc => acc.platform as SocialPlatform)}
                 />
               )}
   
@@ -558,6 +669,10 @@ export default function NewPostModal({
           }
         }}
       />
+      <div className="space-y-4">
+        {renderUsageStats()}
+        {renderUsageWarnings()}
+      </div>
     </>
   );
 }

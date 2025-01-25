@@ -20,35 +20,37 @@ async function main() {
 
     // Create plans
     const plans = await Promise.all([
-      // Trial Plan
+      // Trial Plan (Free)
       prisma.plan.create({
         data: {
-          id: 'trial',
           name: 'trial',
-          displayName: 'Free Trial',
-          description: '14-day trial with essential features',
+          description: 'Try our platform for 14 days',
           price: 0,
-          interval: 'once',
+          interval: 'monthly',
           sortOrder: 0,
+          isDefault: true,
           features: {
             create: [
-              { name: 'facebook', description: 'Facebook Integration' },
-              { name: 'instagram', description: 'Instagram Integration' },
-              { name: 'threads', description: 'Threads Integration' },
-              { name: 'basic_analytics', description: 'Basic Analytics' },
-              { name: 'post_scheduling', description: 'Post Scheduling' },
-              { name: 'hashtag_suggestions', description: 'Hashtag Suggestions' }
-            ]
+              { name: 'facebook', included: true },
+              { name: 'instagram', included: true },
+              { name: 'threads', included: true },
+              { name: 'linkedin', included: true },
+              { name: 'basic_analytics', included: true },
+              { name: 'post_scheduling', included: true },
+              { name: 'hashtag_suggestions', included: true },
+            ],
           },
           limits: {
             create: [
-              { name: 'monthlyPosts', value: 30, type: 'monthly' },
-              { name: 'scheduledPosts', value: 10, type: 'total' },
-              { name: 'teamMembers', value: 1, type: 'total' },
-              { name: 'postsPerPlatform', value: 10, type: 'monthly' }
-            ]
-          }
-        }
+              { name: 'monthlyPosts', value: 30 },
+              { name: 'scheduledPosts', value: 10 },
+              { name: 'teamMembers', value: 1 },
+              { name: 'analyticsHistory', value: 7 },
+              { name: 'postsPerPlatform', value: 10 },
+              { name: 'trialDays', value: 14 }, // Explicitly set trial period
+            ],
+          },
+        },
       }),
       // Basic Plan ($9.99/month)
       prisma.plan.create({
@@ -103,29 +105,34 @@ async function main() {
               { name: 'youtube', included: true },
               { name: 'pinterest', included: true },
               { name: 'tiktok', included: true },
-              // Basic features
-              { name: 'basic_analytics', included: true },
+              // Advanced features
+              { name: 'advanced_analytics', included: true },
               { name: 'post_scheduling', included: true },
+              { name: 'priority_scheduling', included: true },
+              { name: 'ai_suggestions', included: true },
+              { name: 'ai_content_creation', included: true },
+              { name: 'team_collaboration', included: true },
+              { name: 'priority_support', included: true },
               { name: 'content_calendar', included: true },
               { name: 'hashtag_suggestions', included: true },
               { name: 'post_metrics', included: true },
-              { name: 'content_library', included: true },
-              // Pro features
-              { name: 'advanced_analytics', included: true },
-              { name: 'priority_scheduling', included: true },
-              { name: 'ai_suggestions', included: true },
-              { name: 'team_collaboration', included: true },
-              { name: 'priority_support', included: true },
               { name: 'bulk_scheduling', included: true },
+              { name: 'ab_testing', included: true },
+              { name: 'custom_reports', included: true },
+              { name: 'competitor_analysis', included: true },
+              { name: 'white_label_reports', included: true },
+              { name: 'api_access', included: true },
+              { name: 'advanced_social_inbox', included: true },
+              { name: 'unlimited_content_library', included: true },
             ],
           },
           limits: {
             create: [
-              { name: 'monthlyPosts', value: -1 },
-              { name: 'scheduledPosts', value: -1 },
+              { name: 'monthlyPosts', value: -1 }, // unlimited
+              { name: 'scheduledPosts', value: -1 }, // unlimited
               { name: 'teamMembers', value: 10 },
               { name: 'analyticsHistory', value: 365 },
-              { name: 'postsPerPlatform', value: -1 },
+              { name: 'postsPerPlatform', value: -1 }, // unlimited
             ],
           },
         },
@@ -134,7 +141,7 @@ async function main() {
 
     // Create test users
     const users = await Promise.all([
-      // 1. Trial User
+      // 1. Trial User (Active)
       prisma.user.create({
         data: {
           email: 'trial@example.com',
@@ -143,13 +150,13 @@ async function main() {
           role: 'USER',
           subscription: {
             create: {
-              planId: plans[0].id, // Trial plan
+              planId: plans[0].id,
               status: 'trial',
               currentPeriodStart: new Date(),
-              currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-              trialStart: new Date(),
+              currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+              isInTrial: true,
               trialEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-            }
+            },
           },
           settings: {
             create: {
@@ -176,7 +183,8 @@ async function main() {
               planId: plans[1].id,
               status: 'active',
               currentPeriodStart: new Date(),
-              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              isInTrial: false
             },
           },
           settings: {
@@ -204,7 +212,8 @@ async function main() {
               planId: plans[2].id,
               status: 'active',
               currentPeriodStart: new Date(),
-              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              isInTrial: false
             },
           },
           settings: {
@@ -233,6 +242,7 @@ async function main() {
               status: 'expired',
               currentPeriodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
               currentPeriodEnd: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000),
+              isInTrial: false,
               trialEnd: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000)
             },
           },
@@ -252,7 +262,7 @@ async function main() {
       // 5. Plan Ended User (Expired Pro)
       prisma.user.create({
         data: {
-          email: 'ex@example.com',
+          email: 'expired@example.com',
           password: await bcrypt.hash('password123', 10),
           name: 'Expired Pro User',
           role: 'USER',
@@ -261,7 +271,8 @@ async function main() {
               planId: plans[2].id,
               status: 'expired',
               currentPeriodStart: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-              currentPeriodEnd: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+              currentPeriodEnd: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+              isInTrial: false
             },
           },
           settings: {
@@ -279,7 +290,7 @@ async function main() {
       }),
     ]);
 
-    // Create test social accounts
+    // Create test social accounts for each user
     const socialAccounts = await Promise.all([
       // Trial user's accounts
       prisma.socialAccount.create({

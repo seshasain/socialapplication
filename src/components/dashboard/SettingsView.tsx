@@ -16,12 +16,12 @@ import {
   ChevronRight,
   RefreshCw
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../../utils/api';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
-import { PLANS } from '../../types/plans';
-import { Link } from 'react-router-dom';
+import { PLANS, BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES, SocialPlatform, ALL_PLATFORMS } from '../../types/plans';
+import { getPlatformIcon, PLATFORM_COLORS } from '../../utils/platformUtils';
 
 interface UserSettings {
   id: string;
@@ -69,6 +69,15 @@ interface NotificationSetting {
   enabled: boolean;
 }
 
+interface ConnectedPlatform {
+  id: string;
+  platform: string;
+  username?: string;
+  profileUrl?: string;
+  lastSync?: string;
+  status: 'active' | 'error' | 'revoked';
+}
+
 export default function SettingsView() {
   const [activeTab, setActiveTab] = useState('profile');
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -108,14 +117,16 @@ export default function SettingsView() {
       enabled: true
     }
   ]);
+  const [connectedPlatforms, setConnectedPlatforms] = useState<ConnectedPlatform[]>([]);
 
   useEffect(() => {
     fetchUserData();
+    fetchConnectedPlatforms();
   }, []);
 
   const fetchUserData = async () => {
     try {
-      const response = await api.get('/user/profile');
+      const response = await api.get('/api/user/profile');
       const userData = response.data;
       
       setProfile({
@@ -141,6 +152,15 @@ export default function SettingsView() {
       console.error('Error fetching user data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch user data');
       setLoading(false);
+    }
+  };
+
+  const fetchConnectedPlatforms = async () => {
+    try {
+      const response = await api.get('/api/social-accounts');
+      setConnectedPlatforms(response.data);
+    } catch (err) {
+      console.error('Error fetching connected platforms:', err);
     }
   };
 
@@ -204,6 +224,26 @@ export default function SettingsView() {
         setting.id === id ? { ...setting, enabled: !setting.enabled } : setting
       )
     );
+  };
+
+  const handleDisconnectPlatform = async (platformId: string) => {
+    try {
+      await api.delete(`/api/social-accounts/${platformId}`);
+      setConnectedPlatforms(prev => prev.filter(p => p.id !== platformId));
+      toast.success('Platform disconnected successfully');
+    } catch (err) {
+      toast.error('Failed to disconnect platform');
+    }
+  };
+
+  const handleRefreshPlatform = async (platformId: string) => {
+    try {
+      await api.post(`/api/social-accounts/${platformId}/refresh`);
+      await fetchConnectedPlatforms();
+      toast.success('Platform connection refreshed');
+    } catch (err) {
+      toast.error('Failed to refresh platform connection');
+    }
   };
 
   const renderProfileTab = () => (
@@ -324,29 +364,33 @@ export default function SettingsView() {
       </div>
 
       <div className="space-y-4">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        {/* Password Section */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
           <div className="flex justify-between items-center">
             <div className="flex items-center">
-              <Key className="w-5 h-5 text-gray-400 mr-3" />
-              <div>
-                <h4 className="text-sm font-medium text-gray-900">Password</h4>
-                <p className="text-sm text-gray-500">Update your password</p>
+              <div className="p-3 bg-blue-50 rounded-lg">
+                <Key className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="ml-4">
+                <h4 className="text-base font-medium text-gray-900">Password</h4>
+                <p className="text-sm text-gray-500">Update your account password</p>
               </div>
             </div>
             <button
               onClick={() => setShowChangePassword(!showChangePassword)}
-              className="text-sm text-blue-600 hover:text-blue-700"
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
             >
               Change Password
             </button>
           </div>
 
           {showChangePassword && (
-            <form onSubmit={handlePasswordChange} className="mt-4 space-y-4">
+            <form onSubmit={handlePasswordChange} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Current Password
                 </label>
+                <div className="relative">
                 <input
                   type="password"
                   value={passwordData.currentPassword}
@@ -356,13 +400,20 @@ export default function SettingsView() {
                       currentPassword: e.target.value,
                     }))
                   }
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring-blue-500 pr-10"
+                    required
+                    minLength={8}
                 />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <Lock className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   New Password
                 </label>
+                <div className="relative">
                 <input
                   type="password"
                   value={passwordData.newPassword}
@@ -372,13 +423,23 @@ export default function SettingsView() {
                       newPassword: e.target.value,
                     }))
                   }
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
+                    className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring-blue-500 pr-10"
+                    required
+                    minLength={8}
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <Lock className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Password must be at least 8 characters long
+                </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Confirm New Password
                 </label>
+                <div className="relative">
                 <input
                   type="password"
                   value={passwordData.confirmPassword}
@@ -388,59 +449,227 @@ export default function SettingsView() {
                       confirmPassword: e.target.value,
                     }))
                   }
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring-blue-500 pr-10"
+                    required
+                    minLength={8}
                 />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <Lock className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end space-x-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowChangePassword(false)}
-                  className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900"
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  disabled={saveStatus === 'saving' || 
+                    !passwordData.currentPassword || 
+                    !passwordData.newPassword || 
+                    !passwordData.confirmPassword ||
+                    passwordData.newPassword !== passwordData.confirmPassword}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  Update Password
+                  {saveStatus === 'saving' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Password'
+                  )}
                 </button>
               </div>
             </form>
           )}
         </div>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center">
+        {/* Account Management Section */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
             <div className="flex items-center">
-              <Shield className="w-5 h-5 text-gray-400 mr-3" />
-              <div>
-                <h4 className="text-sm font-medium text-gray-900">Account Management</h4>
-                <p className="text-sm text-gray-500">Manage your account status</p>
+            <div className="p-3 bg-red-50 rounded-lg">
+              <Shield className="w-5 h-5 text-red-600" />
               </div>
+            <div className="ml-4">
+              <h4 className="text-base font-medium text-gray-900">Account Management</h4>
+              <p className="text-sm text-gray-500">Manage your account status and data</p>
             </div>
           </div>
-          <div className="mt-4 space-y-3">
+          
+          <div className="mt-6 space-y-3">
             <button
               onClick={() => navigate('/account/delete')}
-              className="w-full flex items-center justify-between px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors group border border-red-100"
             >
               <span className="flex items-center">
                 <AlertTriangle className="w-4 h-4 mr-2" />
                 Delete Account
               </span>
-              <ChevronRight className="w-4 h-4" />
+              <div className="flex items-center text-red-400">
+                <span className="text-xs mr-2 group-hover:opacity-100 opacity-0 transition-opacity">Permanently delete your account</span>
+                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </button>
             <button
               onClick={() => navigate('/account/reactivate')}
-              className="w-full flex items-center justify-between px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors group border border-blue-100"
             >
               <span className="flex items-center">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Reactivate Account
               </span>
-              <ChevronRight className="w-4 h-4" />
+              <div className="flex items-center text-blue-400">
+                <span className="text-xs mr-2 group-hover:opacity-100 opacity-0 transition-opacity">Restore your deactivated account</span>
+                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPlatformsTab = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900">Connected Platforms</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          Manage your connected social media accounts and their permissions.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6">
+          <h4 className="text-sm font-medium text-gray-900 mb-4">Basic Platforms</h4>
+          <div className="space-y-4">
+            {BASIC_PLATFORMS.map((platform) => {
+              const connected = connectedPlatforms.find(
+                p => p.platform.toLowerCase() === platform.toLowerCase()
+              );
+              const icon = getPlatformIcon(platform);
+              const colors = PLATFORM_COLORS[platform];
+
+              return (
+                <div
+                  key={platform}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${colors.bg} ${colors.text}`}>
+                      {icon}
+                    </div>
+                    <div>
+                      <h5 className="font-medium">{PLATFORM_NAMES[platform]}</h5>
+                      {connected ? (
+                        <p className="text-sm text-gray-500">
+                          Connected as @{connected.username}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-500">Not connected</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {connected && (
+                      <>
+                        <button
+                          onClick={() => handleRefreshPlatform(connected.id)}
+                          className="p-2 text-gray-400 hover:text-gray-500 rounded-full hover:bg-gray-100"
+                        >
+                          <RefreshCw className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDisconnectPlatform(connected.id)}
+                          className="px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                        >
+                          Disconnect
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-gray-900">Pro Platforms</h4>
+            {currentPlan !== 'pro' && (
+              <Link
+                to="/dashboard/billing"
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Upgrade to Pro
+                <ChevronRight className="w-4 h-4 inline-block ml-1" />
+              </Link>
+            )}
+          </div>
+          <div className="space-y-4">
+            {PRO_PLATFORMS.map((platform) => {
+              const connected = connectedPlatforms.find(
+                p => p.platform.toLowerCase() === platform.toLowerCase()
+              );
+              const icon = getPlatformIcon(platform);
+              const colors = PLATFORM_COLORS[platform];
+              const isLocked = currentPlan !== 'pro';
+
+              return (
+                <div
+                  key={platform}
+                  className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg ${
+                    isLocked ? 'opacity-50' : ''
+                  }`}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${colors.bg} ${colors.text}`}>
+                      {icon}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="font-medium">{PLATFORM_NAMES[platform]}</h5>
+                        <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
+                          PRO
+                        </span>
+                      </div>
+                      {connected ? (
+                        <p className="text-sm text-gray-500">
+                          Connected as @{connected.username}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          {isLocked ? 'Upgrade to Pro to connect' : 'Not connected'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {connected && (
+                      <>
+                        <button
+                          onClick={() => handleRefreshPlatform(connected.id)}
+                          className="p-2 text-gray-400 hover:text-gray-500 rounded-full hover:bg-gray-100"
+                        >
+                          <RefreshCw className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDisconnectPlatform(connected.id)}
+                          className="px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                        >
+                          Disconnect
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -456,116 +685,206 @@ export default function SettingsView() {
         </p>
       </div>
 
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="mt-4 text-lg text-gray-600">
-            Choose the perfect plan for your social media management needs
-          </p>
-        </div>
-
-        <div className="mt-12 grid md:grid-cols-3 gap-8">
-          {/* Basic Plan */}
-          <div className={`rounded-lg shadow-sm border ${currentPlan === 'basic' ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'} p-8`}>
-            <h2 className="text-xl font-semibold text-gray-900">Basic</h2>
-            <p className="mt-4 text-gray-600">Essential social media management</p>
-            <div className="mt-4">
-              <span className="text-4xl font-bold text-gray-900">
-                ${PLANS.basic.price.monthly}
-              </span>
-              <span className="text-base font-medium text-gray-500">/mo</span>
+      <div className="space-y-8">
+        {/* Current Plan Status */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex items-center">
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <CreditCard className="w-5 h-5 text-blue-600" />
             </div>
-            <ul className="mt-8 space-y-4">
-              {PLANS.basic.features.map((feature, index) => (
-                <li key={index} className="flex items-start">
-                  <Check className="w-5 h-5 text-green-500 mr-2" />
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => handleUpgrade('basic')}
-              disabled={currentPlan === 'basic'}
-              className={`mt-8 w-full py-2 px-4 rounded-lg font-medium ${
-                currentPlan === 'basic'
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {currentPlan === 'basic' ? 'Current Plan' : 'Upgrade to Basic'}
-            </button>
+            <div className="ml-4">
+              <h4 className="text-base font-medium text-gray-900">Current Plan</h4>
+              <p className="text-sm text-gray-500">
+                {subscription?.status === 'trial' ? 'Free Trial' : 
+                 subscription?.planId ? PLANS[subscription.planId as keyof typeof PLANS]?.name : 'No Plan'}
+              </p>
+              {subscription?.currentPeriodStart && subscription?.currentPeriodEnd && (
+                <div className="mt-2 text-xs text-gray-500">
+                  <p>Started: {new Date(subscription.currentPeriodStart).toLocaleDateString()}</p>
+                  <p>Ends: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}</p>
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Pro Plan */}
-          <div className={`rounded-lg shadow-sm border ${currentPlan === 'pro' ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'} p-8`}>
-            <div className="absolute top-0 right-0 -mr-1 -mt-1 px-3 py-1 bg-blue-600 text-white text-sm font-medium rounded-full transform translate-x-2 -translate-y-2">
-              Popular
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900">Pro</h2>
-            <p className="mt-4 text-gray-600">Advanced features for growing teams</p>
-            <div className="mt-4">
-              <span className="text-4xl font-bold text-gray-900">
-                ${PLANS.pro.price.monthly}
-              </span>
-              <span className="text-base font-medium text-gray-500">/mo</span>
-            </div>
-            <ul className="mt-8 space-y-4">
-              {PLANS.pro.features.map((feature, index) => (
-                <li key={index} className="flex items-start">
-                  <Check className="w-5 h-5 text-green-500 mr-2" />
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => handleUpgrade('pro')}
-              disabled={currentPlan === 'pro'}
-              className={`mt-8 w-full py-2 px-4 rounded-lg font-medium ${
-                currentPlan === 'pro'
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {currentPlan === 'pro' ? 'Current Plan' : 'Upgrade to Pro'}
-            </button>
-          </div>
-
-          {/* Trial Status */}
-          {isInTrial && (
-            <div className="rounded-lg shadow-sm border border-gray-200 p-8 bg-gray-50">
-              <h2 className="text-xl font-semibold text-gray-900">Trial Status</h2>
-              <div className="mt-4">
-                <p className="text-gray-600">
-                  You're currently on a free trial with access to Basic features.
-                  {user?.subscription.trialEnd && (
-                    <>
-                      <br />
-                      Trial ends on:{' '}
-                      {new Date(user.subscription.trialEnd).toLocaleDateString()}
-                    </>
-                  )}
+          {isInTrial && user?.subscription?.trialEnd && (
+            <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-100">
+              <div className="flex items-center">
+                <Calendar className="w-5 h-5 text-yellow-600 mr-2" />
+                <p className="text-sm text-yellow-700">
+                  Trial ends on {new Date(user.subscription.trialEnd).toLocaleDateString()}
                 </p>
-              </div>
-              <div className="mt-8">
-                <h3 className="font-medium text-gray-900">Available Platforms:</h3>
-                <ul className="mt-4 space-y-2">
-                  {PLANS.trial.features.map((platform) => (
-                    <li key={platform} className="flex items-center text-gray-600">
-                      <Check className="w-4 h-4 text-green-500 mr-2" />
-                      {platform.charAt(0).toUpperCase() + platform.slice(1)}
-                    </li>
-                  ))}
-                </ul>
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-12 text-center">
-          <p className="text-gray-600">
-            Need a custom plan? {' '}
-            <a href="mailto:support@example.com" className="text-blue-600 hover:text-blue-500">
-              Contact us
+        {/* Available Plans */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <h4 className="text-base font-medium text-gray-900">Available Plans</h4>
+            <p className="mt-1 text-sm text-gray-500">Choose the perfect plan for your needs</p>
+          </div>
+          
+          <div className="p-6">
+            <div className="grid grid-cols-2 gap-6">
+              {/* Basic Plan */}
+              {subscription?.planId !== 'basic' && (
+                <div className={`p-6 rounded-xl border ${
+                  subscription?.planId === 'basic' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                } h-full`}>
+                  <div className="flex flex-col h-full">
+                  <div>
+                      <h5 className="text-lg font-medium text-gray-900">Basic Plan</h5>
+                      <p className="mt-1 text-sm text-gray-500">Essential features for individuals</p>
+                      <div className="mt-4">
+                        <span className="text-3xl font-bold text-gray-900">${PLANS.basic.price.monthly}</span>
+                        <span className="text-gray-500">/month</span>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex-grow">
+                      <h6 className="text-sm font-medium text-gray-900 mb-4">Features included:</h6>
+                      <ul className="space-y-3">
+                        {PLANS.basic.features.map((feature, index) => (
+                          <li key={index} className="flex items-center text-sm text-gray-600">
+                            <Check className="w-4 h-4 text-green-500 mr-2 flex-shrink-0" />
+                            <span className="capitalize">{feature.replace(/_/g, ' ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-4">
+                        <h6 className="text-sm font-medium text-gray-900 mb-2">Plan Limits:</h6>
+                        <ul className="space-y-2">
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Monthly Posts:</span>
+                            <span className="font-medium">{PLANS.basic.limits.monthlyPosts}</span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Scheduled Posts:</span>
+                            <span className="font-medium">{PLANS.basic.limits.scheduledPosts}</span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Team Members:</span>
+                            <span className="font-medium">{PLANS.basic.limits.teamMembers}</span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Analytics History:</span>
+                            <span className="font-medium">{PLANS.basic.limits.analyticsHistory} days</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <button
+                        onClick={() => handleUpgrade('basic')}
+                        disabled={subscription?.planId === 'basic'}
+                        className={`w-full px-4 py-2 rounded-lg text-sm font-medium ${
+                          subscription?.planId === 'basic'
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
+                        }`}
+                      >
+                        {subscription?.planId === 'basic' ? 'Current Plan' : 'Select Basic'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pro Plan */}
+              {subscription?.planId !== 'pro' && (
+                <div className={`p-6 rounded-xl border ${
+                  subscription?.planId === 'pro' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                } h-full`}>
+                  <div className="flex flex-col h-full">
+                    <div>
+                      <h5 className="text-xl font-semibold text-gray-900">Pro Plan</h5>
+                      <p className="mt-1 text-sm text-gray-500">Advanced features for growing teams</p>
+                      <div className="mt-4">
+                        <span className="text-4xl font-bold text-gray-900">${PLANS.pro.price.monthly}</span>
+                        <span className="text-gray-500">/month</span>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex-grow">
+                      <h6 className="text-sm font-medium text-gray-900 mb-4">Features included:</h6>
+                      <ul className="space-y-3">
+                        {PLANS.pro.features
+                          .filter(feature => !PLANS.basic.features.includes(feature))
+                          .map((feature, index) => (
+                            <li key={index} className="flex items-center text-sm text-gray-600">
+                              <div className="bg-blue-100 rounded-full p-1 mr-2">
+                                <Check className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                              </div>
+                              <span className="capitalize">{feature.replace(/_/g, ' ')}</span>
+                            </li>
+                        ))}
+                      </ul>
+                      <div className="mt-4">
+                        <h6 className="text-sm font-medium text-gray-900 mb-2">Enhanced Limits:</h6>
+                        <ul className="space-y-2">
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Monthly Posts:</span>
+                            <span className="font-medium">
+                              {PLANS.pro.limits.monthlyPosts === 'unlimited' || PLANS.pro.limits.monthlyPosts === -1 
+                                ? 'Unlimited' 
+                                : PLANS.pro.limits.monthlyPosts}
+                            </span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Scheduled Posts:</span>
+                            <span className="font-medium">
+                              {PLANS.pro.limits.scheduledPosts === 'unlimited' || PLANS.pro.limits.scheduledPosts === -1 
+                                ? 'Unlimited' 
+                                : PLANS.pro.limits.scheduledPosts}
+                            </span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Team Members:</span>
+                            <span className="font-medium">{PLANS.pro.limits.teamMembers}</span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Analytics History:</span>
+                            <span className="font-medium">{PLANS.pro.limits.analyticsHistory} days</span>
+                          </li>
+                          <li className="flex items-center text-sm text-gray-600">
+                            <span className="w-32">Posts/Platform:</span>
+                            <span className="font-medium">
+                              {PLANS.pro.limits.postsPerPlatform === 'unlimited' || PLANS.pro.limits.postsPerPlatform === -1 
+                                ? 'Unlimited' 
+                                : PLANS.pro.limits.postsPerPlatform}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <button
+                        onClick={() => handleUpgrade('pro')}
+                        disabled={subscription?.planId === 'pro'}
+                        className={`w-full px-4 py-3 rounded-lg text-sm font-medium ${
+                          subscription?.planId === 'pro'
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg'
+                        }`}
+                      >
+                        {subscription?.planId === 'pro' ? 'Current Plan' : 'Upgrade to Pro'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Contact Support */}
+        <div className="bg-gray-50 rounded-xl p-6 text-center">
+          <p className="text-sm text-gray-600">
+            Need a custom enterprise plan?{' '}
+            <a 
+              href="mailto:support@example.com" 
+              className="text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Contact our sales team
             </a>
           </p>
         </div>
@@ -575,53 +894,52 @@ export default function SettingsView() {
 
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User },
-    { id: 'security', name: 'Security', icon: Lock },
+    { id: 'platforms', name: 'Platforms', icon: Globe },
     { id: 'notifications', name: 'Notifications', icon: Bell },
+    { id: 'security', name: 'Security', icon: Shield },
     { id: 'billing', name: 'Billing', icon: CreditCard },
   ];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-      </div>
-
-      {/* Settings Navigation */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="flex border-b border-gray-200">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center px-6 py-3 text-sm font-medium ${
-                activeTab === tab.id
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <tab.icon className="w-4 h-4 mr-2" />
-              {tab.name}
-            </button>
-          ))}
+    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="bg-white rounded-lg shadow">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-4 px-6 text-sm font-medium flex items-center ${
+                  activeTab === tab.id
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <tab.icon className="w-5 h-5 mr-2" />
+                {tab.name}
+              </button>
+            ))}
+          </nav>
         </div>
 
         <div className="p-6">
           {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center">
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center">
               <AlertTriangle className="w-5 h-5 mr-2" />
               {error}
             </div>
           )}
 
           {activeTab === 'profile' && renderProfileTab()}
+          {activeTab === 'platforms' && renderPlatformsTab()}
           {activeTab === 'notifications' && renderNotificationsTab()}
           {activeTab === 'security' && renderSecurityTab()}
           {activeTab === 'billing' && renderBillingTab()}
@@ -633,12 +951,6 @@ export default function SettingsView() {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="flex justify-end">
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Save Changes
-        </button>
       </div>
     </div>
   );

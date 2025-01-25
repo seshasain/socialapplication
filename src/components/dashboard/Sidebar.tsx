@@ -21,6 +21,7 @@ import PricingModal from '../modals/PricingModal';
 import SupportModal from '../modals/SupportModal';
 import FeedbackModal from '../modals/FeedbackModal';
 import { useAuth } from '../../context/AuthContext';
+import type { PlanType } from '../../types/plans';
 
 type View =
   | 'overview'
@@ -33,9 +34,10 @@ type View =
 interface SidebarProps {
   currentView: View;
   onViewChange: (view: View) => void;
+  userPlan: PlanType;
 }
 
-export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
+export default function Sidebar({ currentView, onViewChange, userPlan }: SidebarProps) {
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
@@ -51,6 +53,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
 
   const isPremium = user?.subscription?.planId === 'pro';
   const isTrialUser = user?.subscription?.status === 'trial';
+  const isBasicUser = user?.subscription?.planId === 'basic';
   const viewChange = false;
 
   useEffect(() => {
@@ -90,6 +93,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   };
 
   const getUsageColor = (used: number, limit: number) => {
+    if (!used || !limit || limit === Infinity) return 'text-blue-600 bg-blue-600';
     const percentage = (used / limit) * 100;
     if (percentage >= 90) return 'text-red-600 bg-red-600';
     if (percentage >= 75) return 'text-yellow-600 bg-yellow-600';
@@ -97,6 +101,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   };
 
   const calculatePercentage = (value: number, max: number) => {
+    if (!value || !max || max === Infinity) return 0;
     return Math.min(Math.max((value / max) * 100, 0), 100);
   };
 
@@ -106,7 +111,7 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
     // Show for trial users
     if (isTrialUser) return true;
     
-    // Show for paid subscriptions with 7 or fewer days left
+    // Show for all paid subscriptions with 7 or fewer days left
     return usageStats.daysLeft <= 7;
   };
 
@@ -146,9 +151,9 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
       )}
 
       <div
-        className={`fixed lg:static inset-y-0 left-0 transform ${
-          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col h-screen`}
+        className={`fixed lg:sticky top-0 inset-y-0 left-0 transform ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        } transition-transform duration-300 ease-in-out z-40 w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col h-screen overflow-y-auto`}
       >
         {/* Header Section */}
         <div className="p-6">
@@ -245,9 +250,9 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
                       )[0]
                     }`}
                   >
-                    {usageStats.postsLimit === 1000
-                      ? '∞'
-                      : `${usageStats.postsUsed}/${usageStats.postsLimit}`}
+                    {isPremium
+                      ? `${usageStats.postsUsed || 0} / ∞`
+                      : `${usageStats.postsUsed || 0}/${usageStats.postsLimit || 0}`}
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -258,13 +263,12 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
                       )[1]
                     }`}
                     style={{
-                      width:
-                        usageStats.postsLimit === 1000
-                          ? '100%'
-                          : `${calculatePercentage(
-                              usageStats.postsUsed,
-                              usageStats.postsLimit
-                            )}%`,
+                      width: isPremium
+                        ? '100%'
+                        : `${calculatePercentage(
+                            usageStats.postsUsed || 0,
+                            usageStats.postsLimit || 0
+                          )}%`
                     }}
                   />
                 </div>
@@ -284,16 +288,22 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
             }`}
           >
             <div className="flex items-center mb-3">
-              {isPremium && <Crown className="w-5 h-5 mr-2 text-yellow-200" />}
-              <p
-                className={`text-sm ${
-                  isPremium ? 'text-yellow-100' : 'text-blue-100'
-                }`}
-              >
-                {isPremium
-                  ? 'Enjoying Premium Features'
-                  : 'Upgrade to Pro for advanced features'}
-              </p>
+              {isPremium ? (
+                <>
+                  <Crown className="w-5 h-5 mr-2 text-yellow-200" />
+                  <p className="text-sm text-yellow-100">Pro Plan</p>
+                </>
+              ) : isBasicUser ? (
+                <>
+                  <Shield className="w-5 h-5 mr-2 text-blue-200" />
+                  <p className="text-sm text-blue-100">Basic Plan</p>
+                </>
+              ) : (
+                <>
+                  <Crown className="w-5 h-5 mr-2 text-blue-200" />
+                  <p className="text-sm text-blue-100">Upgrade to Pro for advanced features</p>
+                </>
+              )}
             </div>
             {!isPremium && (
               <button

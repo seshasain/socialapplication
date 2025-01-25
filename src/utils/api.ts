@@ -145,5 +145,14 @@ export const user = {
 export const subscription = {
   checkTrialEligibility: () => api.get('/api/subscription/trial-eligibility'),
   convertTrial: (planId: string) => api.post('/api/subscription/convert-trial', { planId }),
-  // ... existing subscription endpoints
+  getTrialStatus: () => api.get('/api/subscription/trial/status'),
+  getTrialUsage: () => api.get('/api/subscription/trial/usage'),
+  getLastExtensionRequest: () => api.get('/api/subscription/trial/extension-request'),
+  getReferralInfo: () => api.get('/api/subscription/trial/referral'),
+  requestExtension: (days: number, reason: string) => 
+    api.post('/api/subscription/trial/extend', { days, reason }),
+  updatePaymentMethod: (paymentMethodId: string) => 
+    api.put('/api/subscription/payment-method', { paymentMethodId }),
+  cancelSubscription: () => api.post('/api/subscription/cancel'),
+  reactivateSubscription: () => api.post('/api/subscription/reactivate')
 }; 

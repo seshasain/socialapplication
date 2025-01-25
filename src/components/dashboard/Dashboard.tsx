@@ -90,8 +90,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-      <Sidebar currentView={currentView} onViewChange={handleViewChange} />
+    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <Sidebar 
+        currentView={currentView} 
+        onViewChange={handleViewChange}
+        userPlan={user?.subscription?.planId || 'trial'}
+      />
 
       <div className="flex-1 flex flex-col">
         {user?.subscription?.status === 'trial' && <TrialBanner />}
@@ -134,6 +138,7 @@ export default function Dashboard() {
           onSave={handleNewPost}
           onPostSubmit={handlePostSubmit}
           connectedAccounts={socialAccounts}
+          userPlan={user?.subscription?.planId || 'trial'}
         />
       )}
 

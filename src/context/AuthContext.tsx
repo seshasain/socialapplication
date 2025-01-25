@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '../types/user';
+import type { TrialState, TrialExtensionRequest } from '../types/trial';
 import { auth } from '../utils/api';
 import { subscription } from '../utils/api';
 
@@ -7,15 +8,18 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  trialState: TrialState | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   signup: (data: SignupData) => Promise<{ token: string; user: User; redirectUrl: string }>;
   signInWithGoogle: () => Promise<void>;
   refreshUser: () => Promise<void>;
   startTrial: () => Promise<void>;
-  extendTrial: (days: number) => Promise<void>;
+  extendTrial: (days: number, reason: string) => Promise<void>;
   convertTrialToPaid: (planId: string) => Promise<void>;
   checkTrialEligibility: () => Promise<boolean>;
+  refreshTrialState: () => Promise<void>;
+  getReferralInfo: () => Promise<void>;
 }
 
 interface SignupData {
@@ -32,6 +36,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [trialState, setTrialState] = useState<TrialState | null>(null);
+
+  const refreshTrialState = async () => {
+    if (!user?.subscription?.isInTrial) {
+      setTrialState(null);
+      return;
+    }
+
+    try {
+      const [trialStatus, trialUsage, extensionRequest, referralInfo] = await Promise.all([
+        subscription.getTrialStatus(),
+        subscription.getTrialUsage(),
+        subscription.getLastExtensionRequest(),
+        subscription.getReferralInfo()
+      ]);
+
+      setTrialState({
+        isActive: trialStatus.isActive,
+        daysLeft: trialStatus.daysLeft,
+        usage: trialUsage,
+        hasRequestedExtension: !!extensionRequest,
+        lastExtensionRequest: extensionRequest,
+        referralInfo: referralInfo
+      });
+    } catch (error) {
+      console.error('Failed to refresh trial state:', error);
+    }
+  };
 
   const refreshUser = async () => {
     const token = localStorage.getItem('token');
@@ -46,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await auth.me();
       const userData = response.data;
       
-      // Format user data with proper trial status
       const formattedUser: User = {
         ...userData,
         subscription: {
@@ -57,6 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setUser(formattedUser);
       setIsAuthenticated(true);
+
+      // Refresh trial state if user is in trial
+      if (formattedUser.subscription?.isInTrial) {
+        await refreshTrialState();
+      }
     } catch (error: any) {
       console.error('Failed to refresh user data:', error);
       if (error.response?.status === 401) {
@@ -151,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    // Implement Google Sign-in logic
+    // Implement Google Sign-in logic 
     throw new Error('Not implemented');
   };
 
@@ -165,10 +201,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const extendTrial = async (days: number) => {
+  const extendTrial = async (days: number, reason: string) => {
     try {
       await auth.extendTrial(days);
       await refreshUser();
+      await refreshTrialState();
     } catch (error) {
       console.error('Failed to extend trial:', error);
       throw error;
@@ -195,12 +232,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const getReferralInfo = async () => {
+    try {
+      const response = await subscription.getReferralInfo();
+      if (trialState) {
+        setTrialState({
+          ...trialState,
+          referralInfo: response.data
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get referral info:', error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{ 
         user, 
         isAuthenticated,
         isLoading,
+        trialState,
         login, 
         logout, 
         signup, 
@@ -209,7 +262,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         startTrial,
         extendTrial,
         convertTrialToPaid,
-        checkTrialEligibility
+        checkTrialEligibility,
+        refreshTrialState,
+        getReferralInfo
       }}
     >
       {children}

@@ -57,7 +57,7 @@ export default function TrialDashboard() {
     });
   }, []);
 
-  if (!user?.subscription.isInTrial) {
+  if (user?.subscription?.status !== 'trial') {
     return null;
   }
 

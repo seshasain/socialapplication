@@ -17,9 +17,12 @@ import SettingsView from './dashboard/SettingsView';
 import Overview from './dashboard/Overview';
 import HistoryView from './dashboard/HistoryView';
 import NewPostModal from './modals/NewPostModal';
+import TrialBanner from './TrialBanner';
 import type { Post } from '../types/posts';
-import { SocialAccount } from '../types/overview';
+import type { SocialAccount } from '../types/overview';
+import type { PlanType } from '../types/plans';
 import { posts, socialAccounts as socialAccountsApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 type View =
   | 'overview'
@@ -29,12 +32,23 @@ type View =
   | 'settings'
   | 'history';
 
+interface PostStatusUpdate {
+  id: string;
+  platform: string;
+  status: 'published' | 'scheduled' | 'failed' | 'processing';
+  error?: string;
+  publishedAt?: string;
+  scheduledFor?: string;
+}
+
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const userPlan = user?.subscription?.planId as PlanType || 'trial';
 
   // Get the current view from URL search params or default to 'overview'
   const searchParams = new URLSearchParams(location.search);
@@ -72,8 +86,14 @@ export default function Dashboard() {
     }
   };
 
-  const handlePostSubmit = async () => {
-    // Refresh data after post submission
+  const handlePostSubmit = async (statuses: Array<{
+    id: string;
+    platform: string;
+    status: 'published' | 'scheduled' | 'failed' | 'processing';
+    error?: string;
+    publishedAt?: string;
+    scheduledFor?: string;
+  }>) => {
     await fetchSocialAccounts();
   };
 
@@ -96,12 +116,20 @@ export default function Dashboard() {
     }
   };
 
+  // Only show trial banner if user is in trial period
+  const showTrialBanner = user?.subscription?.isInTrial;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
-        <Sidebar />
+        <Sidebar 
+          currentView={currentView} 
+          onViewChange={setCurrentView}
+          userPlan={userPlan}
+        />
         <main className="flex-1 p-6">
           <div className="max-w-7xl mx-auto">
+            {showTrialBanner && <TrialBanner />}
             {error && (
               <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg">
                 {error}
@@ -119,6 +147,7 @@ export default function Dashboard() {
           onSave={handleNewPost}
           onPostSubmit={handlePostSubmit}
           connectedAccounts={socialAccounts}
+          userPlan={userPlan}
         />
       )}
     </div>

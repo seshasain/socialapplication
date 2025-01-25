@@ -27,6 +27,83 @@ import {
   Twitter,
   Linkedin
 } from 'lucide-react';
+import { BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES, SocialPlatform } from '../types/plans';
+import { getPlatformIcon, PLATFORM_COLORS } from '../utils/platformUtils';
+
+const PLAN_FEATURES = {
+  trial: {
+    name: 'Trial',
+    price: 0,
+    description: 'Try all features free for 14 days',
+    features: [
+      '30 monthly posts',
+      '10 scheduled posts',
+      '1 team member',
+      '7 days analytics history',
+      '10 posts per platform',
+      'Basic platforms only'
+    ],
+    platforms: BASIC_PLATFORMS,
+    cta: 'Start Free Trial'
+  },
+  basic: {
+    name: 'Basic',
+    price: 9.99,
+    description: 'Perfect for individuals and small teams',
+    features: [
+      '100 monthly posts',
+      '30 scheduled posts',
+      '1 team member',
+      '30 days analytics history',
+      '30 posts per platform',
+      'Basic platforms only'
+    ],
+    platforms: BASIC_PLATFORMS,
+    cta: 'Get Started'
+  },
+  pro: {
+    name: 'Pro',
+    price: 29.99,
+    description: 'Best for growing businesses',
+    features: [
+      'Unlimited social accounts',
+      'Priority scheduling',
+      'Team collaboration',
+      'Priority support',
+      'Custom reports',
+      'AI content suggestions',
+      'Bulk scheduling',
+      'All platforms included'
+    ],
+    platforms: [...BASIC_PLATFORMS, ...PRO_PLATFORMS],
+    cta: 'Upgrade to Pro'
+  }
+};
+
+const PlatformSection = ({ platforms, title }: { platforms: SocialPlatform[], title: string }) => (
+  <div className="mt-6">
+    <h4 className="text-sm font-medium text-gray-900 mb-4">{title}</h4>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {platforms.map((platform) => {
+        const icon = getPlatformIcon(platform);
+        const colors = PLATFORM_COLORS[platform];
+        return (
+          <div
+            key={platform}
+            className={`flex items-center space-x-3 p-3 rounded-lg ${colors.bg}`}
+          >
+            <div className={`flex-shrink-0 ${colors.text}`}>
+              {icon}
+            </div>
+            <span className="text-sm font-medium text-gray-900">
+              {PLATFORM_NAMES[platform]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
 
 export default function LandingPage() {
   return (
@@ -701,6 +778,35 @@ export default function LandingPage() {
     `}
   </script>
 </div>
+
+      {/* Platform Sections */}
+      <section className="py-16 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Connect All Your Social Media
+            </h2>
+            <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
+              Manage your social media presence across multiple platforms from one dashboard
+            </p>
+          </div>
+
+          <div className="mt-12">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <PlatformSection 
+                title="Basic Plan Platforms" 
+                platforms={BASIC_PLATFORMS}
+              />
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <PlatformSection 
+                  title="Additional Pro Plan Platforms" 
+                  platforms={PRO_PLATFORMS}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

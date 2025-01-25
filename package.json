@@ -30,15 +30,18 @@
     "@fullcalendar/list": "^6.1.10",
     "@fullcalendar/react": "^6.1.10",
     "@fullcalendar/timegrid": "^6.1.10",
+    "@headlessui/react": "^2.2.0",
     "@prisma/client": "^5.10.2",
     "@tanstack/react-query": "^5.64.2",
     "@types/backblaze-b2": "^1.5.6",
+    "@types/node-cron": "^3.0.11",
     "aws-sdk": "^2.1565.0",
     "axios": "1.7.6",
     "backblaze-b2": "^1.7.0",
     "bcryptjs": "^2.4.3",
     "canvas-confetti": "^1.9.2",
     "chart.js": "^4.4.2",
+    "clsx": "^2.1.1",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -54,6 +57,7 @@
     "limiter": "2.0.1",
     "lucide-react": "^0.344.0",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "node-schedule": "^2.1.1",
     "rate-limit-redis": "^4.2.0",
@@ -68,12 +72,14 @@
     "react-toastify": "^9.1.1",
     "recharts": "^2.12.0",
     "sharp": "^0.33.2",
+    "tailwind-merge": "^2.6.0",
     "twitter-api-v2": "^1.16.1",
     "uuid": "^9.0.0",
     "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.0",
     "@types/express-serve-static-core": "^5.0.5",
     "@types/jsonwebtoken": "^9.0.8",
@@ -95,6 +101,7 @@
     "prisma": "^5.10.2",
     "tailwindcss": "^3.4.1",
     "terser": "^5.37.0",
+    "ts-node": "^10.9.2",
     "tsx": "^4.7.1",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.3.0",
@@ -102,5 +109,8 @@
   },
   "resolutions": {
     "limiter": "2.0.1"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
