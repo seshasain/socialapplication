@@ -1,17 +1,12 @@
 import config from './config';
-import { performanceMonitor } from './performance';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-type LogCategory = 'api' | 'auth' | 'ui' | 'performance' | 'analytics' | 'system';
 
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
-  category: LogCategory;
   message: string;
   data?: any;
-  error?: Error;
-  context?: Record<string, any>;
 }
 
 interface LoggerOptions {
@@ -19,7 +14,6 @@ interface LoggerOptions {
   persistLogs?: boolean;
   remoteLogging?: boolean;
   filterLevel?: LogLevel;
-  categories?: LogCategory[];
 }
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -30,86 +24,68 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 class Logger {
+  private static instance: Logger;
   private logs: LogEntry[] = [];
+  private readonly MAX_LOGS = 1000;
   private options: LoggerOptions;
-  private remoteEndpoint?: string;
 
-  constructor(options: LoggerOptions = {}) {
+  private constructor() {
     this.options = {
       maxEntries: 1000,
       persistLogs: true,
       remoteLogging: config.isProduction(),
-      filterLevel: config.isDevelopment() ? 'debug' : 'info',
-      categories: ['api', 'auth', 'ui', 'performance', 'analytics', 'system'],
-      ...options
+      filterLevel: config.isDevelopment() ? 'debug' : 'info'
     };
 
     if (this.options.persistLogs) {
       this.loadPersistedLogs();
     }
 
-    if (this.options.remoteLogging) {
-      this.remoteEndpoint = config.get('logging.remoteEndpoint');
+    if (typeof window !== 'undefined') {
+      window.addEventListener('error', this.handleUncaughtError.bind(this));
+      window.addEventListener('unhandledrejection', this.handleUnhandledRejection.bind(this));
     }
-
-    // Handle uncaught errors
-    window.addEventListener('error', this.handleGlobalError.bind(this));
-    window.addEventListener('unhandledrejection', this.handleUnhandledRejection.bind(this));
   }
 
-  debug(message: string, category: LogCategory = 'system', data?: any) {
-    this.log('debug', message, category, data);
+  static getInstance(): Logger {
+    if (!Logger.instance) {
+      Logger.instance = new Logger();
+    }
+    return Logger.instance;
   }
 
-  info(message: string, category: LogCategory = 'system', data?: any) {
-    this.log('info', message, category, data);
-  }
-
-  warn(message: string, category: LogCategory = 'system', data?: any) {
-    this.log('warn', message, category, data);
-  }
-
-  error(message: string, category: LogCategory = 'system', error?: Error, data?: any) {
-    this.log('error', message, category, data, error);
-  }
-
-  private log(
-    level: LogLevel,
-    message: string,
-    category: LogCategory,
-    data?: any,
-    error?: Error
-  ) {
+  private log(level: LogLevel, message: string, data?: any) {
     if (LOG_LEVELS[level] < LOG_LEVELS[this.options.filterLevel!]) {
-      return;
-    }
-
-    if (this.options.categories && !this.options.categories.includes(category)) {
       return;
     }
 
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
-      category,
       message,
-      data,
-      error,
-      context: this.getContext()
+      data
     };
 
-    this.addEntry(entry);
-    this.outputToConsole(entry);
-
-    if (this.options.remoteLogging && LOG_LEVELS[level] >= LOG_LEVELS.error) {
-      this.sendToRemote(entry);
-    }
-  }
-
-  private addEntry(entry: LogEntry) {
     this.logs.push(entry);
-    if (this.logs.length > this.options.maxEntries!) {
-      this.logs = this.logs.slice(-this.options.maxEntries!);
+    if (this.logs.length > this.MAX_LOGS) {
+      this.logs.shift();
+    }
+
+    const styles = {
+      debug: 'color: gray',
+      info: 'color: blue',
+      warn: 'color: orange',
+      error: 'color: red; font-weight: bold'
+    };
+
+    if (import.meta.env.DEV) {
+      console.log(
+        `%c${entry.timestamp} [${level.toUpperCase()}] ${message}`,
+        styles[level]
+      );
+      if (data) {
+        console.log(data);
+      }
     }
 
     if (this.options.persistLogs) {
@@ -117,77 +93,41 @@ class Logger {
     }
   }
 
-  private outputToConsole(entry: LogEntry) {
-    const timestamp = entry.timestamp.split('T')[1].split('.')[0];
-    const prefix = `[${timestamp}] [${entry.category.toUpperCase()}] [${entry.level.toUpperCase()}]`;
-    
-    switch (entry.level) {
-      case 'debug':
-        console.debug(prefix, entry.message, entry.data || '');
-        break;
-      case 'info':
-        console.info(prefix, entry.message, entry.data || '');
-        break;
-      case 'warn':
-        console.warn(prefix, entry.message, entry.data || '');
-        break;
-      case 'error':
-        console.error(prefix, entry.message, entry.error || '', entry.data || '');
-        break;
-    }
+  debug(message: string, data?: any) {
+    this.log('debug', message, data);
   }
 
-  private async sendToRemote(entry: LogEntry) {
-    if (!this.remoteEndpoint) return;
-
-    try {
-      const response = await fetch(this.remoteEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(entry)
-      });
-
-      if (!response.ok) {
-        console.error('Failed to send log to remote endpoint:', response.statusText);
-      }
-    } catch (error) {
-      console.error('Failed to send log to remote endpoint:', error);
-    }
+  info(message: string, data?: any) {
+    this.log('info', message, data);
   }
 
-  private getContext(): Record<string, any> {
-    return {
-      url: window.location.href,
-      userAgent: navigator.userAgent,
-      timestamp: Date.now(),
-      environment: config.getEnvironment(),
-      performance: performanceMonitor.generateReport()
-    };
+  warn(message: string, data?: any) {
+    this.log('warn', message, data);
   }
 
-  private handleGlobalError(event: ErrorEvent) {
+  error(message: string, error?: Error | any) {
+    this.log('error', message, {
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error
+    });
+  }
+
+  handleUncaughtError = (event: ErrorEvent) => {
     this.error(
       'Uncaught error',
-      'system',
-      event.error,
-      {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno
-      }
+      event.error
     );
-  }
+  };
 
-  private handleUnhandledRejection(event: PromiseRejectionEvent) {
+  handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     this.error(
       'Unhandled promise rejection',
-      'system',
       event.reason instanceof Error ? event.reason : new Error(String(event.reason))
     );
-  }
+  };
 
   private persistLogs() {
     try {
@@ -208,34 +148,10 @@ class Logger {
     }
   }
 
-  getLogs(
-    options: {
-      level?: LogLevel;
-      category?: LogCategory;
-      startTime?: Date;
-      endTime?: Date;
-      limit?: number;
-    } = {}
-  ): LogEntry[] {
-    let filtered = this.logs;
-
-    if (options.level) {
-      filtered = filtered.filter(log => log.level === options.level);
-    }
-    if (options.category) {
-      filtered = filtered.filter(log => log.category === options.category);
-    }
-    if (options.startTime) {
-      filtered = filtered.filter(log => new Date(log.timestamp) >= options.startTime!);
-    }
-    if (options.endTime) {
-      filtered = filtered.filter(log => new Date(log.timestamp) <= options.endTime!);
-    }
-    if (options.limit) {
-      filtered = filtered.slice(-options.limit);
-    }
-
-    return filtered;
+  getLogs(level?: LogLevel): LogEntry[] {
+    return level 
+      ? this.logs.filter(log => log.level === level)
+      : this.logs;
   }
 
   clearLogs() {
@@ -263,5 +179,5 @@ class Logger {
   }
 }
 
-export const logger = new Logger();
+export const logger = Logger.getInstance();
 export default logger; 

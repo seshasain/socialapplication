@@ -26,7 +26,7 @@ export class APIClient {
   constructor(baseURL: string = API_URL) {
     this.client = axios.create({
       baseURL,
-      timeout: 30000,
+      timeout: 60000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -72,32 +72,30 @@ export class APIClient {
           throw new NotFoundError();
         }
 
-        // Handle network errors
-        if (!error.response) {
+        // Handle network errors and timeouts
+        if (!error.response || error.code === 'ECONNABORTED') {
+          // Retry logic for network errors and timeouts
+          if (this.shouldRetry(config)) {
+            config.retryCount = (config.retryCount || 0) + 1;
+            const retryDelay = config.retryDelay || 1000;
+            const requestKey = this.getRequestKey(config);
+            
+            // Check if there's already a retry in progress
+            const existingRetry = this.retryQueue.get(requestKey);
+            if (existingRetry) return existingRetry;
+
+            const retryPromise = new Promise((resolve) => {
+              setTimeout(resolve, retryDelay);
+            }).then(() => {
+              return this.client(config);
+            }).finally(() => {
+              this.retryQueue.delete(requestKey);
+            });
+
+            this.retryQueue.set(requestKey, retryPromise);
+            return retryPromise;
+          }
           throw new NetworkError();
-        }
-
-        // Handle retries
-        if (this.shouldRetry(config)) {
-          config.retryCount = (config.retryCount || 0) + 1;
-          
-          const retryDelay = config.retryDelay || RETRY_DELAY;
-          const requestKey = this.getRequestKey(config);
-          
-          // Check if there's already a retry in progress
-          const existingRetry = this.retryQueue.get(requestKey);
-          if (existingRetry) return existingRetry;
-
-          const retryPromise = new Promise((resolve) => {
-            setTimeout(resolve, retryDelay);
-          }).then(() => {
-            return this.client(config);
-          }).finally(() => {
-            this.retryQueue.delete(requestKey);
-          });
-
-          this.retryQueue.set(requestKey, retryPromise);
-          return retryPromise;
         }
 
         throw createError(error);
@@ -108,7 +106,7 @@ export class APIClient {
   private shouldRetry(config: RetryConfig): boolean {
     if (!config.retry) return false;
     if (!config.retryCount) return true;
-    return config.retryCount < (config.maxRetries || MAX_RETRIES);
+    return config.retryCount < (config.maxRetries || 3);
   }
 
   private getRequestKey(config: RetryConfig): string {
@@ -133,12 +131,16 @@ export class APIClient {
 
   async post<T = any>(url: string, data?: any, config: RetryConfig = {}): Promise<T> {
     try {
-      const { retry, retryCount, retryDelay, maxRetries, ...axiosConfig } = config;
+      const { retry = true, retryCount = 0, retryDelay = 1000, maxRetries = 3, ...axiosConfig } = config;
       const response = await this.client.post<T>(url, data, {
         ...axiosConfig,
+        retry,
+        retryCount,
+        retryDelay,
+        maxRetries,
         headers: {
           ...axiosConfig.headers,
-          'X-Retry-Count': retryCount?.toString()
+          'X-Retry-Count': retryCount.toString()
         }
       });
       return response.data;

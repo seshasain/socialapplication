@@ -24,6 +24,8 @@ import TeamView from './components/dashboard/context/TeamView';
 import SettingsView from './components/dashboard/SettingsView';
 import HistoryView from './components/dashboard/HistoryView';
 import ExtensionRequest from './components/trial/ExtensionRequest';
+import { getSubscriptionType } from "./utils/subscription";
+import { NotionIntegration } from './pages/NotionIntegration';
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -113,6 +115,11 @@ function AppContent() {
             <Route path="/team" element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/notion" element={
+              <ProtectedRoute>
+                <NotionIntegration />
               </ProtectedRoute>
             } />
             <Route path="/trial/extend" element={

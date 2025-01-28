@@ -4,10 +4,18 @@ import type { PrismaTransactionClient } from '../types/prisma';
 
 const prisma = new PrismaClient();
 
+enum SubscriptionStatus {
+  TRIAL = 'TRIAL',
+  ACTIVE = 'ACTIVE',
+  PAST_DUE = 'PAST_DUE',
+  CANCELING = 'CANCELING',
+  CANCELLED = 'CANCELLED'
+}
+
 export class TrialService {
   async getTrialStatus(userId: string) {
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: 'trial' }
+      where: { userId, status: SubscriptionStatus.TRIAL }
     });
 
     if (!subscription) {
@@ -94,7 +102,7 @@ export class TrialService {
     const db = tx || prisma;
     
     const subscription = await db.subscription.findFirst({
-      where: { userId, status: 'trial' }
+      where: { userId, status: SubscriptionStatus.TRIAL }
     });
 
     if (!subscription) {
@@ -195,7 +203,7 @@ export class TrialService {
     }
 
     const subscription = await db.subscription.findFirst({
-      where: { userId, status: 'trial' }
+      where: { userId, status: SubscriptionStatus.TRIAL }
     });
 
     if (!subscription?.trialEnd) {

@@ -2,6 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plan, PlanType, PlanFeature, PlanLimits, PLANS, BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES, SocialPlatform } from '../types/plans';
 import { useAuth } from '../context/AuthContext';
+import { SubscriptionStatus } from '../types/subscription';
+import { Check } from 'lucide-react';
 
 interface AuthUser {
   id: string;
@@ -22,6 +24,16 @@ interface PricingPlansProps {
 }
 
 type LimitKey = keyof PlanLimits;
+
+interface PricingPlanProps {
+  name: string;
+  price: number;
+  features: string[];
+  isPopular?: boolean;
+  currentPlan?: boolean;
+  status?: SubscriptionStatus;
+  onSelect: (plan: PlanType) => void;
+}
 
 export default function PricingPlans({ initialPlanId, showAnnual = false, className = '' }: PricingPlansProps) {
   const navigate = useNavigate();

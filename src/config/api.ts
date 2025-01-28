@@ -6,6 +6,16 @@ export const API_URL = isDevelopment
   ? 'http://localhost:5000'
   : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
 
+// API configuration
+export const API_CONFIG = {
+  timeout: 60000, // 60 seconds
+  retryAttempts: 3,
+  retryDelay: 1000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+};
+
 // Define all API routes
 export const API_ROUTES = {
   auth: {

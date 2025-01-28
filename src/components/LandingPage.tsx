@@ -27,14 +27,12 @@ import {
   Twitter,
   Linkedin
 } from 'lucide-react';
-import { BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES, SocialPlatform } from '../types/plans';
+import { BASIC_PLATFORMS, PRO_PLATFORMS, PLATFORM_NAMES, SocialPlatform, PLANS } from '../types/plans';
 import { getPlatformIcon, PLATFORM_COLORS } from '../utils/platformUtils';
 
-const PLAN_FEATURES = {
-  trial: {
-    name: 'Trial',
-    price: 0,
-    description: 'Try all features free for 14 days',
+const plans = [
+  {
+    ...PLANS.trial,
     features: [
       '30 monthly posts',
       '10 scheduled posts',
@@ -42,14 +40,10 @@ const PLAN_FEATURES = {
       '7 days analytics history',
       '10 posts per platform',
       'Basic platforms only'
-    ],
-    platforms: BASIC_PLATFORMS,
-    cta: 'Start Free Trial'
+    ]
   },
-  basic: {
-    name: 'Basic',
-    price: 9.99,
-    description: 'Perfect for individuals and small teams',
+  {
+    ...PLANS.basic,
     features: [
       '100 monthly posts',
       '30 scheduled posts',
@@ -57,14 +51,10 @@ const PLAN_FEATURES = {
       '30 days analytics history',
       '30 posts per platform',
       'Basic platforms only'
-    ],
-    platforms: BASIC_PLATFORMS,
-    cta: 'Get Started'
+    ]
   },
-  pro: {
-    name: 'Pro',
-    price: 29.99,
-    description: 'Best for growing businesses',
+  {
+    ...PLANS.pro,
     features: [
       'Unlimited social accounts',
       'Priority scheduling',
@@ -74,11 +64,9 @@ const PLAN_FEATURES = {
       'AI content suggestions',
       'Bulk scheduling',
       'All platforms included'
-    ],
-    platforms: [...BASIC_PLATFORMS, ...PRO_PLATFORMS],
-    cta: 'Upgrade to Pro'
+    ]
   }
-};
+];
 
 const PlatformSection = ({ platforms, title }: { platforms: SocialPlatform[], title: string }) => (
   <div className="mt-6">

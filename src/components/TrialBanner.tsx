@@ -5,6 +5,7 @@ import { Clock, Users, Calendar, Globe, ExternalLink } from 'lucide-react';
 import { TRIAL_LIMITS } from '../types/trial';
 import { BASIC_PLATFORMS, PLATFORM_NAMES } from '../types/plans';
 import api from '../utils/api';
+import { SubscriptionStatus } from '../types/subscription';
 
 interface UsageIndicatorProps {
   current: number;
@@ -67,7 +68,7 @@ export default function TrialBanner() {
       }
     };
 
-    if (user?.subscription?.status === 'trial') {
+    if (user?.subscription?.status === SubscriptionStatus.TRIAL) {
       fetchTrialStats();
       // Refresh stats every 5 minutes
       const interval = setInterval(fetchTrialStats, 5 * 60 * 1000);
@@ -81,7 +82,7 @@ export default function TrialBanner() {
   }
 
   // Early return if not in trial
-  if (user.subscription.status !== 'trial' || !user.subscription.trialEnd) {
+  if (user.subscription.status !== SubscriptionStatus.TRIAL || !user.subscription.trialEnd) {
     return null;
   }
 

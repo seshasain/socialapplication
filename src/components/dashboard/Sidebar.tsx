@@ -15,6 +15,7 @@ import {
   X,
   Shield,
   Headphones,
+  Database
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import PricingModal from '../modals/PricingModal';
@@ -22,6 +23,7 @@ import SupportModal from '../modals/SupportModal';
 import FeedbackModal from '../modals/FeedbackModal';
 import { useAuth } from '../../context/AuthContext';
 import type { PlanType } from '../../types/plans';
+import { SubscriptionStatus } from '../../types/subscription';
 
 type View =
   | 'overview'
@@ -29,7 +31,8 @@ type View =
   | 'analytics'
   | 'team'
   | 'settings'
-  | 'history';
+  | 'history'
+  | 'notion';
 
 interface SidebarProps {
   currentView: View;
@@ -52,7 +55,7 @@ export default function Sidebar({ currentView, onViewChange, userPlan }: Sidebar
   const navigate = useNavigate();
 
   const isPremium = user?.subscription?.planId === 'pro';
-  const isTrialUser = user?.subscription?.status === 'trial';
+  const isTrialUser = user?.subscription?.status === SubscriptionStatus.TRIAL;
   const isBasicUser = user?.subscription?.planId === 'basic';
   const viewChange = false;
 
@@ -122,6 +125,7 @@ export default function Sidebar({ currentView, onViewChange, userPlan }: Sidebar
     { icon: BarChart2, label: 'Analytics', value: 'analytics' as View },
     { icon: Users2, label: 'Team', value: 'team' as View },
     { icon: Settings, label: 'Settings', value: 'settings' as View },
+    { icon: Database, label: 'Notion', value: 'notion' as View },
   ];
 
   // Mobile menu button component

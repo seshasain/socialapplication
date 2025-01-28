@@ -3,6 +3,15 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+// Define subscription status enum to match our standardized version
+enum SubscriptionStatus {
+  TRIAL = 'TRIAL',
+  ACTIVE = 'ACTIVE',
+  PAST_DUE = 'PAST_DUE',
+  CANCELING = 'CANCELING',
+  CANCELLED = 'CANCELLED'
+}
+
 async function main() {
   try {
     // Clear existing data
@@ -54,6 +63,7 @@ async function main() {
       prisma.plan.create({
         data: {
           name: 'basic',
+          displayName: 'Basic Plan',
           description: 'Perfect for individuals and small businesses',
           price: 9.99,
           interval: 'monthly',
@@ -87,6 +97,7 @@ async function main() {
       prisma.plan.create({
         data: {
           name: 'pro',
+          displayName: 'Pro Plan',
           description: 'For growing businesses and teams',
           price: 29.99,
           interval: 'monthly',
@@ -144,7 +155,7 @@ async function main() {
           subscription: {
             create: {
               planId: plans[0].id, // Trial plan
-              status: 'trial',
+              status: SubscriptionStatus.TRIAL,
               currentPeriodStart: new Date(),
               currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
               trialStart: new Date(),
@@ -174,7 +185,7 @@ async function main() {
           subscription: {
             create: {
               planId: plans[1].id,
-              status: 'active',
+              status: SubscriptionStatus.ACTIVE,
               currentPeriodStart: new Date(),
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
             },
@@ -202,7 +213,7 @@ async function main() {
           subscription: {
             create: {
               planId: plans[2].id,
-              status: 'active',
+              status: SubscriptionStatus.ACTIVE,
               currentPeriodStart: new Date(),
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
             },
@@ -230,7 +241,7 @@ async function main() {
           subscription: {
             create: {
               planId: plans[0].id,
-              status: 'expired',
+              status: SubscriptionStatus.CANCELLED,
               currentPeriodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
               currentPeriodEnd: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000),
               trialEnd: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000)
@@ -259,7 +270,7 @@ async function main() {
           subscription: {
             create: {
               planId: plans[2].id,
-              status: 'expired',
+              status: SubscriptionStatus.CANCELLED,
               currentPeriodStart: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
               currentPeriodEnd: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
             },

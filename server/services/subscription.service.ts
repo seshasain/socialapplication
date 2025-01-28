@@ -1,12 +1,20 @@
-import { PrismaClient, Subscription, Plan, UsageRecord, Prisma } from '@prisma/client';
+import { PrismaClient, Subscription as PrismaSubscription, Plan as PrismaPlan, UsageRecord, Prisma } from '@prisma/client';
 import { plans } from '../config/plans';
 
 const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error']
 });
 
-type SubscriptionWithPlan = Subscription & {
-  plan: Plan;
+enum SubscriptionStatus {
+  TRIAL = 'TRIAL',
+  ACTIVE = 'ACTIVE',
+  PAST_DUE = 'PAST_DUE',
+  CANCELING = 'CANCELING',
+  CANCELLED = 'CANCELLED'
+}
+
+type SubscriptionWithPlan = PrismaSubscription & {
+  plan: PrismaPlan;
 };
 
 type PlatformUsage = {
@@ -15,7 +23,7 @@ type PlatformUsage = {
 
 type PrismaTransactionClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
-type SubscriptionWithMetadata = Subscription & {
+type SubscriptionWithMetadata = PrismaSubscription & {
   metadata: Prisma.JsonObject | null;
 };
 
@@ -85,7 +93,7 @@ export class SubscriptionService {
       data: {
         userId,
         planId: 'trial',
-        status: 'trial',
+        status: SubscriptionStatus.TRIAL,
         currentPeriodStart: trialStart,
         currentPeriodEnd: trialEnd,
         trialStart,
@@ -100,8 +108,10 @@ export class SubscriptionService {
     });
 
     if (!subscription) return true;
-
-    return subscription.trialEnd === null || new Date(subscription.trialEnd) < new Date();
+    
+    if (subscription.trialStart) return false;
+    
+    return true;
   }
 
   async extendTrial(userId: string, days: number): Promise<void> {
@@ -168,7 +178,7 @@ export class SubscriptionService {
     };
   }
 
-  async getCurrentPlan(userId: string): Promise<Plan | null> {
+  async getCurrentPlan(userId: string): Promise<PrismaPlan | null> {
     const subscription = await this.prisma.subscription.findUnique({
       where: { userId },
       include: {
@@ -221,10 +231,14 @@ export class SubscriptionService {
         where: { userId },
         data: {
           planId,
-          status: 'active',
+          status: SubscriptionStatus.ACTIVE,
           currentPeriodStart: startDate,
           currentPeriodEnd: endDate,
-          cancelAtPeriodEnd: false
+          cancelAtPeriodEnd: false,
+          ...(currentSubscription.status === SubscriptionStatus.TRIAL ? {
+            trialStart: null,
+            trialEnd: null
+          } : {})
         }
       });
 
@@ -261,7 +275,7 @@ export class SubscriptionService {
       where: { userId },
       data: {
         cancelAtPeriodEnd: true,
-        status: 'canceling'
+        status: SubscriptionStatus.CANCELING
       }
     });
   }
@@ -271,7 +285,7 @@ export class SubscriptionService {
       where: { userId },
       data: {
         cancelAtPeriodEnd: false,
-        status: 'active'
+        status: SubscriptionStatus.ACTIVE
       }
     });
   }
@@ -362,7 +376,7 @@ export class SubscriptionService {
         where: { userId },
         data: {
           planId,
-          status: 'active',
+          status: SubscriptionStatus.ACTIVE,
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
         }
@@ -433,7 +447,7 @@ export class SubscriptionService {
       await this.prisma.subscription.update({
         where: { id: subscriptionId },
         data: {
-          status: 'canceled',
+          status: SubscriptionStatus.CANCELLED,
           currentPeriodEnd: subscription.currentPeriodEnd
         }
       });
@@ -470,7 +484,7 @@ export class SubscriptionService {
         data: {
           currentPeriodStart: newPeriodStart,
           currentPeriodEnd: newPeriodEnd,
-          status: 'active'
+          status: SubscriptionStatus.ACTIVE
         }
       });
     });
@@ -608,7 +622,7 @@ export class SubscriptionService {
       await tx.subscription.update({
         where: { userId },
         data: {
-          status: 'active',
+          status: SubscriptionStatus.ACTIVE,
           currentPeriodStart: resumeDate,
           currentPeriodEnd: newPeriodEnd
         }
@@ -661,7 +675,7 @@ export class SubscriptionService {
     await this.prisma.subscription.update({
       where: { id: subscriptionId },
       data: {
-        status: 'past_due'
+        status: SubscriptionStatus.PAST_DUE
       }
     });
   }
@@ -669,7 +683,7 @@ export class SubscriptionService {
   async processFailedSubscriptions(): Promise<void> {
     const pastDueSubscriptions = await this.prisma.subscription.findMany({
       where: {
-        status: 'past_due'
+        status: SubscriptionStatus.PAST_DUE
       }
     }) as SubscriptionWithMetadata[];
 
@@ -685,7 +699,7 @@ export class SubscriptionService {
           where: { id: subscription.id },
           data: {
             plan: { connect: { id: 'free' } },
-            status: 'active'
+            status: SubscriptionStatus.ACTIVE
           }
         });
       }

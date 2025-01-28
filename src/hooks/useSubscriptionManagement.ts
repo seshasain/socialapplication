@@ -1,24 +1,35 @@
 import { useState } from 'react';
 import { API_URL } from '../config/api';
-import { Plan, PlanType } from '../types/plans';
+import { PlanType } from '../types/plans';
+import { SubscriptionStatus } from '../types/subscription';
+import { useAuth } from '../context/AuthContext';
+import { subscription } from '../utils/api';
 
-interface UpgradeOptions {
+export interface UpgradeOptions {
   preserveUnusedPosts?: boolean;
   transferSettings?: boolean;
   startImmediately?: boolean;
 }
 
-interface UseSubscriptionManagementReturn {
+export interface SubscriptionState {
+  status: SubscriptionStatus;
+  planId: string;
+  currentPeriodEnd: Date;
+  cancelAtPeriodEnd: boolean;
+  trialEnd?: Date | null;
+}
+
+export interface UseSubscriptionManagementReturn {
   loading: boolean;
   error: string | null;
   upgradePlan: (newPlanId: PlanType, options?: UpgradeOptions) => Promise<void>;
-  cancelSubscription: (reason?: string) => Promise<void>;
+  cancelSubscription: () => Promise<void>;
   reactivateSubscription: () => Promise<void>;
   updatePaymentMethod: (paymentMethodId: string) => Promise<void>;
-  getCurrentPlan: () => Promise<Plan | null>;
+  getCurrentPlan: () => Promise<SubscriptionState>;
   getUpgradePreview: (newPlanId: PlanType) => Promise<{
     prorated_amount: number;
-    next_billing_date: string;
+    next_billing_date: Date;
     unused_time_credit: number;
   }>;
 }
@@ -26,6 +37,10 @@ interface UseSubscriptionManagementReturn {
 export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user, refreshUser } = useAuth();
+  const isTrialUser = user?.subscription?.status === SubscriptionStatus.TRIAL;
+  const isBasicUser = user?.subscription?.planId === 'basic';
+  const isProUser = user?.subscription?.planId === 'pro';
 
   const upgradePlan = async (newPlanId: PlanType, options: UpgradeOptions = {}) => {
     try {
@@ -33,7 +48,12 @@ export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token');
 
-      const response = await fetch(`${API_URL}/api/subscription/upgrade`, {
+      const currentPlan = await getCurrentPlan();
+      const endpoint = currentPlan.status === SubscriptionStatus.TRIAL ? 
+        '/api/subscription/convert-trial' : 
+        '/api/subscription/upgrade';
+
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -53,7 +73,7 @@ export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
       }
 
       // Refresh application state after successful upgrade
-      window.location.reload();
+      await refreshUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upgrade plan');
       throw err;
@@ -62,7 +82,7 @@ export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
     }
   };
 
-  const cancelSubscription = async (reason?: string) => {
+  const cancelSubscription = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
@@ -71,16 +91,16 @@ export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
       const response = await fetch(`${API_URL}/api/subscription/cancel`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ reason })
+          'Authorization': `Bearer ${token}`
+        }
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to cancel subscription');
+        throw new Error('Failed to cancel subscription');
       }
+
+      // Refresh application state
+      await refreshUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel subscription');
       throw err;
@@ -103,9 +123,11 @@ export function useSubscriptionManagement(): UseSubscriptionManagementReturn {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to reactivate subscription');
+        throw new Error('Failed to reactivate subscription');
       }
+
+      // Refresh application state
+      await refreshUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reactivate subscription');
       throw err;

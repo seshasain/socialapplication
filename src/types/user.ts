@@ -1,19 +1,20 @@
 import { PlanType } from './plans';
+import { SubscriptionStatus } from './subscription';
 
 export interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
-  subscription: {
-    planId: PlanType;
-    status: 'active' | 'inactive' | 'cancelled' | 'trial';
-    currentPeriodStart?: Date;
-    currentPeriodEnd?: Date;
-    cancelAtPeriodEnd?: boolean;
-    trialStart: Date | null;
-    trialEnd: Date | null;
-    isInTrial: boolean;
+  subscription?: {
+    id: string;
+    status: SubscriptionStatus;
+    planId: string;
+    currentPeriodStart: Date;
+    currentPeriodEnd: Date;
+    trialStart?: Date | null;
+    trialEnd?: Date | null;
+    cancelAtPeriodEnd: boolean;
   };
   settings?: {
     emailNotifications: boolean;

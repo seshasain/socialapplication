@@ -1,13 +1,14 @@
 import axios from 'axios';
 import { API_URL, API_ROUTES } from '../config/api';
 
+// Create axios instance with retry configuration
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: true,
-  timeout: 30000, // Increase timeout to 30 seconds
+  timeout: 60000, // Increase timeout to 60 seconds
   timeoutErrorMessage: 'Server request timed out. Please try again.',
 });
 
@@ -25,10 +26,23 @@ interface CustomError extends Error {
   status?: number;
 }
 
-// Handle response errors
+// Handle response errors with retry logic
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const { config } = error;
+    
+    // Only retry on network errors or timeouts
+    if (!error.response || error.code === 'ECONNABORTED') {
+      config.retryCount = (config.retryCount || 0) + 1;
+      
+      if (config.retryCount <= 3) {
+        // Wait 1s before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return api(config);
+      }
+    }
+    
     if (error.code === 'ECONNABORTED') {
       throw new Error('Server request timed out. Please try again.');
     }
@@ -85,9 +99,28 @@ export const auth = {
   login: async (data: LoginData) => {
     console.log('Login request:', { url: API_ROUTES.auth.login, data });
     try {
-      const response = await api.post(API_ROUTES.auth.login, data);
-      console.log('Login response:', response.data);
-      return response;
+      // Configure retry logic for login
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1 second
+      let retryCount = 0;
+
+      while (retryCount < maxRetries) {
+        try {
+          const response = await api.post(API_ROUTES.auth.login, data, {
+            timeout: 10000, // Shorter timeout for login
+          });
+          console.log('Login response:', response.data);
+          return response;
+        } catch (error: any) {
+          if (error.code === 'ECONNABORTED' && retryCount < maxRetries - 1) {
+            console.log(`Login attempt ${retryCount + 1} failed, retrying...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            retryCount++;
+            continue;
+          }
+          throw error;
+        }
+      }
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -118,15 +151,15 @@ export const posts = {
 
 // Social accounts endpoints
 export const socialAccounts = {
-  list: () => api.get(API_ROUTES.socialAccounts.list),
-  connect: (platform: string) => api.post(API_ROUTES.socialAccounts.connect, { platform }),
-  disconnect: (id: string) => api.delete(API_ROUTES.socialAccounts.disconnect(id)),
+  list: () => api.get('/api/social-accounts'),
+  connect: (platform: string) => api.get('/api/social-accounts/connect', { params: { platform } }),
+  disconnect: (accountId: string) => api.delete(`/api/social-accounts/${accountId}`)
 };
 
 // Analytics endpoints
 export const analytics = {
-  overview: (params?: any) => api.get(API_ROUTES.analytics.overview, { params }),
-  stats: () => api.get(API_ROUTES.analytics.stats),
+  stats: () => api.get('/api/analytics/stats'),
+  overview: (params: { type: 'upcoming' | 'history' }) => api.get('/api/analytics/overview', { params })
 };
 
 export const team = {

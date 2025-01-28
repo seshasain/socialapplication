@@ -1,3 +1,4 @@
+import api from '../utils/api';
 import { analytics, socialAccounts } from '../utils/api';
 
 interface OverviewResponse {
@@ -49,16 +50,38 @@ export async function fetchOverviewData(): Promise<OverviewResponse> {
 export async function connectSocialAccount(platform: string) {
   try {
     const response = await socialAccounts.connect(platform);
-    return response.data;
+    
+    // Get the OAuth URL from the response
+    const { authUrl } = response.data;
+    
+    if (!authUrl) {
+      throw new Error('No authentication URL received from server');
+    }
+    
+    // Open the OAuth window
+    window.location.href = authUrl;
   } catch (error: any) {
     throw new Error(error.response?.data?.error || 'Failed to connect account');
   }
 }
 
-export async function disconnectSocialAccount(accountId: string) {
+export const disconnectSocialAccount = async (accountId: string) => {
+  console.log('Attempting to disconnect account:', accountId);
   try {
-    await socialAccounts.disconnect(accountId);
-  } catch (error) {
+    const response = await api.delete(`/api/social-accounts/${accountId}`);
+    console.log('Disconnect response:', response.data);
+    return response.data;
+  } catch (error: unknown) {
+    console.error('Disconnect API error:', error);
+    if (error && typeof error === 'object' && 'response' in error && 
+        error.response && typeof error.response === 'object' && 
+        'data' in error.response && error.response.data && 
+        typeof error.response.data === 'object' && 
+        'error' in error.response.data && 
+        typeof error.response.data.error === 'string') {
+      console.error('Disconnect error details:', error.response.data);
+      throw new Error(error.response.data.error);
+    }
     throw new Error('Failed to disconnect account');
   }
-}
+};

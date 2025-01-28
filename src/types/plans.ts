@@ -51,6 +51,7 @@ export interface PlanLimits {
 export interface Plan {
   id: PlanType;
   name: string;
+  displayName: string;
   price: {
     monthly: number;
     annual: number;
@@ -91,99 +92,106 @@ export const PLANS: Record<PlanType, Plan> = {
   trial: {
     id: 'trial',
     name: 'Free Trial',
+    displayName: 'Free Trial',
     description: 'Try our platform for 14 days',
     price: {
       monthly: 0,
       annual: 0
     },
     features: [
-      'facebook',
-      'instagram',
+      'twitter', 
+      'facebook', 
+      'instagram', 
+      'threads',
       'basic_analytics',
       'post_scheduling',
+      'content_calendar',
       'hashtag_suggestions'
     ],
     limits: {
-      monthlyPosts: 30,
-      scheduledPosts: 10,
-      analyticsHistory: 7,
-      aiSuggestions: 10,
+      monthlyPosts: 100,
+      scheduledPosts: 20,
+      analyticsHistory: 14,
+      aiSuggestions: 15,
       teamMembers: 1,
-      postsPerPlatform: 10
+      monthlyRollover: false,
+      postsPerPlatform: 30
     }
   },
   basic: {
     id: 'basic',
     name: 'Basic',
+    displayName: 'Basic',
     description: 'Perfect for individuals and small businesses',
     price: {
       monthly: 9.99,
       annual: 99.99
     },
     features: [
-      'facebook',
-      'instagram',
+      'twitter', 
+      'facebook', 
+      'instagram', 
       'threads',
       'linkedin',
       'basic_analytics',
       'post_scheduling',
+      'ai_suggestions',
       'content_calendar',
       'hashtag_suggestions',
       'post_metrics',
+      'social_inbox',
       'content_library'
     ],
     limits: {
-      monthlyPosts: 100,
-      scheduledPosts: 30,
+      monthlyPosts: 300,
+      scheduledPosts: 50,
       analyticsHistory: 30,
-      aiSuggestions: 50,
-      teamMembers: 2,
+      aiSuggestions: 100,
+      teamMembers: 1,
       monthlyRollover: true,
-      postsPerPlatform: 30
+      postsPerPlatform: 100
     }
   },
   pro: {
     id: 'pro',
     name: 'Professional',
-    description: 'For growing businesses and teams',
+    displayName: 'Professional',
+    description: 'Advanced features for growing businesses and professionals',
     price: {
-      monthly: 29.99,
-      annual: 299.99
+      monthly: 19.99,
+      annual: 199.99
     },
     features: [
-      // Basic platforms
-      'facebook',
-      'instagram',
-      'threads',
-      'linkedin',
-      // Pro platforms
-      'twitter',
-      'youtube',
-      'pinterest',
+      'twitter', 
+      'facebook', 
+      'instagram', 
+      'threads', 
+      'linkedin', 
+      'youtube', 
+      'pinterest', 
       'tiktok',
-      // Basic features
-      'basic_analytics',
-      'post_scheduling',
-      'content_calendar',
-      'hashtag_suggestions',
-      'post_metrics',
-      'content_library',
-      // Pro features
       'advanced_analytics',
       'priority_scheduling',
-      'ai_suggestions',
+      'bulk_scheduling',
+      'ai_content_creation',
+      'ab_testing',
+      'custom_reports',
+      'competitor_analysis',
+      'white_label_reports',
+      'api_access',
       'team_collaboration',
       'priority_support',
-      'bulk_scheduling'
+      'advanced_social_inbox',
+      'unlimited_content_library'
     ],
     limits: {
-      monthlyPosts: 'unlimited',
-      scheduledPosts: 'unlimited',
-      analyticsHistory: 365,
+      monthlyPosts: 1500,
+      scheduledPosts: 300,
+      analyticsHistory: 90,
       aiSuggestions: 'unlimited',
-      teamMembers: 10,
+      teamMembers: 5,
       monthlyRollover: true,
-      postsPerPlatform: 'unlimited'
+      postsPerPlatform: 500
     }
   }
 }; 

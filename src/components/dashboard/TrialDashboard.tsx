@@ -1,14 +1,24 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { TRIAL_LIMITS, TrialUsage } from '../../types/trial';
+import { TRIAL_LIMITS } from '../../types/trial';
 import { Clock, Users, Calendar, Gift, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { SubscriptionStatus } from '../../types/subscription';
 
 interface UsageIndicatorProps {
   current: number;
   max: number;
   label: string;
   icon: React.ReactNode;
+}
+
+interface TrialUsage {
+  postsToday: number;
+  totalPosts: number;
+  scheduledPosts: number;
+  referralCount: number;
+  teamMembers: number;
+  platformUsage: Record<string, number>;
 }
 
 function UsageIndicator({ current, max, label, icon }: UsageIndicatorProps) {
@@ -38,26 +48,34 @@ function UsageIndicator({ current, max, label, icon }: UsageIndicatorProps) {
 
 export default function TrialDashboard() {
   const { user } = useAuth();
-  const [usage, setUsage] = React.useState<TrialUsage>({
+  const [usage, setUsage] = useState<TrialUsage>({
     postsToday: 0,
     totalPosts: 0,
     scheduledPosts: 0,
     referralCount: 0,
-    teamMembers: 1
+    teamMembers: 0,
+    platformUsage: {}
   });
 
-  React.useEffect(() => {
-    // Mock data - replace with actual API calls
+  // TODO: Replace with actual API call
+  const fetchTrialStats = () => {
     setUsage({
       postsToday: 2,
       totalPosts: 8,
       scheduledPosts: 3,
       referralCount: 1,
-      teamMembers: 1
+      teamMembers: 1,
+      platformUsage: {}
     });
-  }, []);
+  };
 
-  if (user?.subscription?.status !== 'trial') {
+  useEffect(() => {
+    if (user?.subscription?.status === SubscriptionStatus.TRIAL) {
+      fetchTrialStats();
+    }
+  }, [user]);
+
+  if (user?.subscription?.status !== SubscriptionStatus.TRIAL) {
     return null;
   }
 

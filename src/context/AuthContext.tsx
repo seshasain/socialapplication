@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '../types/user';
-import type { TrialState, TrialExtensionRequest } from '../types/trial';
+import type { TrialState, TrialUsage, TrialExtensionRequest, ReferralInfo } from '../types/trial';
 import { auth } from '../utils/api';
 import { subscription } from '../utils/api';
+import { SubscriptionStatus } from '../types/subscription';
 
 interface AuthContextType {
   user: User | null;
@@ -30,6 +31,44 @@ interface SignupData {
   captchaToken: string;
 }
 
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error('Error in AuthContext:', error);
+    console.error('Error info:', errorInfo);
+  }
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-50 text-red-700 rounded-lg">
+          <h3 className="font-medium">Something went wrong</h3>
+          <p className="mt-1 text-sm">{this.state.error?.message}</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -39,13 +78,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [trialState, setTrialState] = useState<TrialState | null>(null);
 
   const refreshTrialState = async () => {
-    if (!user?.subscription?.isInTrial) {
+    if (!user?.subscription?.status || user.subscription.status !== SubscriptionStatus.TRIAL) {
       setTrialState(null);
       return;
     }
 
     try {
-      const [trialStatus, trialUsage, extensionRequest, referralInfo] = await Promise.all([
+      const [trialStatusRes, trialUsageRes, extensionRequestRes, referralInfoRes] = await Promise.all([
         subscription.getTrialStatus(),
         subscription.getTrialUsage(),
         subscription.getLastExtensionRequest(),
@@ -53,12 +92,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       setTrialState({
-        isActive: trialStatus.isActive,
-        daysLeft: trialStatus.daysLeft,
-        usage: trialUsage,
-        hasRequestedExtension: !!extensionRequest,
-        lastExtensionRequest: extensionRequest,
-        referralInfo: referralInfo
+        isActive: trialStatusRes.data.isActive,
+        daysLeft: trialStatusRes.data.daysLeft,
+        usage: trialUsageRes.data,
+        hasRequestedExtension: !!extensionRequestRes.data,
+        lastExtensionRequest: extensionRequestRes.data,
+        referralInfo: referralInfoRes.data
       });
     } catch (error) {
       console.error('Failed to refresh trial state:', error);
@@ -78,19 +117,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await auth.me();
       const userData = response.data;
       
-      const formattedUser: User = {
-        ...userData,
-        subscription: {
-          ...userData.subscription,
-          isInTrial: userData.subscription?.status === 'trial',
-        }
-      };
-      
-      setUser(formattedUser);
+      setUser(userData);
       setIsAuthenticated(true);
 
       // Refresh trial state if user is in trial
-      if (formattedUser.subscription?.isInTrial) {
+      if (userData.subscription?.status === SubscriptionStatus.TRIAL) {
         await refreshTrialState();
       }
     } catch (error: any) {
@@ -116,29 +147,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      console.log('AuthContext: Attempting login...');
       const response = await auth.login({ email, password });
-      console.log('AuthContext: Login response received:', response.data);
+      if (!response?.data) {
+        throw new Error('Invalid response from server');
+      }
       
-      const data = response.data;
-      if (!data.token) {
+      const { token, user: userData } = response.data;
+      if (!token) {
         throw new Error('No token received from server');
       }
       
       const formattedUser: User = {
-        ...data.user,
-        subscription: data.user.subscription || {
+        ...userData,
+        subscription: userData.subscription || {
           planId: 'free',
-          status: 'active'
+          status: SubscriptionStatus.ACTIVE
         }
       };
       
-      localStorage.setItem('token', data.token);
+      localStorage.setItem('token', token);
       setUser(formattedUser);
       setIsAuthenticated(true);
-      console.log('AuthContext: Login successful, user set');
     } catch (error) {
-      console.error('AuthContext: Login failed:', error);
       throw error;
     }
   };
@@ -169,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...userData,
         subscription: userData.subscription || {
           planId: 'free',
-          status: 'active'
+          status: SubscriptionStatus.ACTIVE
         }
       };
       

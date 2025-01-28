@@ -16,10 +16,11 @@ export interface TrialUsage {
   postsToday: number;
   totalPosts: number;
   scheduledPosts: number;
-  lastPostDate?: Date;
   referralCount: number;
   teamMembers: number;
-  platformUsage: Record<SocialPlatform, number>;
+  platformUsage: {
+    [platform: string]: number;
+  };
 }
 
 export interface TrialExtensionRequest {
@@ -29,8 +30,7 @@ export interface TrialExtensionRequest {
   requestedDays: number;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: Date;
-  reviewedAt?: Date;
-  reviewNotes?: string;
+  updatedAt: Date;
 }
 
 export interface ReferralInfo {
@@ -42,12 +42,12 @@ export interface ReferralInfo {
 }
 
 export const TRIAL_LIMITS: TrialLimits = {
-  maxPostsPerDay: 3,
+  maxPostsPerDay: 5,
   maxAnalyticsDays: 7,
   availablePlatforms: ['facebook', 'instagram', 'threads', 'linkedin'],
-  maxScheduledPosts: 5,
-  maxTeamMembers: 1,
-  maxPostsPerPlatform: 10,
+  maxScheduledPosts: 10,
+  maxTeamMembers: 2,
+  maxPostsPerPlatform: 20,
   trialDurationDays: 14,
   maxExtensionDays: 7,
   maxReferralExtensionDays: 30
@@ -68,6 +68,6 @@ export interface TrialState {
   daysLeft: number;
   usage: TrialUsage;
   hasRequestedExtension: boolean;
-  lastExtensionRequest?: TrialExtensionRequest;
-  referralInfo?: ReferralInfo;
+  lastExtensionRequest: TrialExtensionRequest | null;
+  referralInfo: ReferralInfo | null;
 } 

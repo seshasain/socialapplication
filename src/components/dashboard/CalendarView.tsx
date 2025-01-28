@@ -31,6 +31,8 @@ import PostStatusModal from '../modals/PostStatusModal';
 import { API_ROUTES } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { TRIAL_LIMITS } from '../../types/trial';
+import { SubscriptionStatus } from '../../types/subscription';
+import { PlanType } from '../../types/plans';
 
 interface CalendarPost extends Omit<Post, 'scheduledDate'> {
   title: string;
@@ -76,7 +78,7 @@ export default function CalendarView() {
   const [scheduledPosts, setScheduledPosts] = React.useState<ScheduledPost[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  const isTrialUser = user?.subscription?.status === 'trial';
+  const isTrialUser = user?.subscription?.status === SubscriptionStatus.TRIAL;
   const scheduledPostCount = scheduledPosts.length;
   const isPostLimitReached = isTrialUser && scheduledPostCount >= TRIAL_LIMITS.maxScheduledPosts;
 
@@ -620,6 +622,7 @@ export default function CalendarView() {
           connectedAccounts={connectedAccounts}
           defaultScheduledDate={selectedDate ?? undefined}
           defaultScheduleEnabled={true}
+          userPlan={(user?.subscription?.planId || 'basic') as PlanType}
         />
       )}
 

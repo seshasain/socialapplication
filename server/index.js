@@ -23,6 +23,7 @@ import mediaRoutes from './routes/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
 import { ensureAuthorized } from './storage/b2.js';
+import { SubscriptionStatus } from '@prisma/client';
 
 dotenv.config();
 
@@ -66,7 +67,8 @@ async function verifyDatabaseConnection() {
       console.error(`❌ Database connection attempt ${retries} failed:`, {
         error: error.message,
         code: error.code,
-        meta: error.meta
+        meta: error.meta,
+        stack: error.stack
       });
       
       if (retries < maxRetries) {
@@ -77,8 +79,17 @@ async function verifyDatabaseConnection() {
   }
   
   console.error('❌ Failed to connect to database after maximum retries');
+  process.exit(1); // Exit if we can't connect to the database
   return false;
 }
+
+// Call verifyDatabaseConnection before starting the server
+app.use(async (req, res, next) => {
+  if (!await verifyDatabaseConnection()) {
+    return res.status(503).json({ error: 'Database connection failed' });
+  }
+  next();
+});
 
 // Middleware for CORS
 app.use((req, res, next) => {
@@ -379,7 +390,8 @@ app.get('/api/auth/linkedin/callback', async (req, res) => {
     const storedData = oauthTokens.get(state);
 
     if (!storedData) {
-      throw new Error('Invalid state parameter');
+      console.error('Invalid state parameter');
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=linkedin&status=error`);
     }
 
     const { userId } = storedData;
@@ -408,73 +420,113 @@ app.get('/api/auth/linkedin/callback', async (req, res) => {
     });
     const profile = await profileResponse.json();
 
-    await prisma.socialAccount.create({
-      data: {
-        platform: 'linkedin',
-        accessToken: access_token,
-        username: `${profile.localizedFirstName} ${profile.localizedLastName}`,
-        profileUrl: `https://linkedin.com/in/${profile.id}`,
-        userId
-      },
+    // Find existing account
+    const existingAccount = await prisma.socialAccount.findFirst({
+      where: {
+        userId,
+        platform: 'linkedin'
+      }
     });
 
+    if (existingAccount) {
+      await prisma.socialAccount.update({
+        where: { id: existingAccount.id },
+        data: {
+          accessToken: access_token,
+          username: `${profile.localizedFirstName} ${profile.localizedLastName}`,
+          profileUrl: `https://linkedin.com/in/${profile.id}`
+        }
+      });
+    } else {
+      await prisma.socialAccount.create({
+        data: {
+          platform: 'linkedin',
+          accessToken: access_token,
+          username: `${profile.localizedFirstName} ${profile.localizedLastName}`,
+          profileUrl: `https://linkedin.com/in/${profile.id}`,
+          userId
+        }
+      });
+    }
+
     oauthTokens.delete(state);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?linkedin=connected`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=linkedin&status=connected`);
   } catch (error) {
     console.error('LinkedIn callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?linkedin=error`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=linkedin&status=error`);
   }
 });
+// Twitter OAuth callback
 app.get('/api/auth/twitter/callback', async (req, res) => {
   try {
     const { oauth_token, oauth_verifier } = req.query;
     
     if (!oauth_token || !oauth_verifier) {
-      throw new Error('Missing OAuth token or verifier');
+      console.error('Missing OAuth tokens');
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=twitter&status=error`);
     }
 
-    // Retrieve stored data
-    const storedData = oauthTokens.get(oauth_token);
-    if (!storedData) {
-      throw new Error('Invalid OAuth token');
+    // Get stored tokens
+    const storedTokens = oauthTokens.get(oauth_token);
+    if (!storedTokens) {
+      console.error('No stored tokens found');
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=twitter&status=error`);
     }
 
-    const { oauth_token_secret, userId } = storedData;
+    const { oauth_token_secret, userId } = storedTokens;
 
+    // Create client
     const client = new TwitterApi({
       appKey: process.env.TWITTER_API_KEY,
       appSecret: process.env.TWITTER_API_SECRET,
       accessToken: oauth_token,
-      accessSecret: oauth_token_secret,
+      accessSecret: oauth_token_secret
     });
 
-    // Get final tokens
-    const { client: loggedClient, accessToken, accessSecret } = 
+    // Get access tokens
+    const { accessToken, accessSecret, screenName, userId: twitterUserId } = 
       await client.login(oauth_verifier);
 
-    // Get user info
-    const twitterUser = await loggedClient.v2.me();
-
-    // Save account
-    const socialAccount = await prisma.socialAccount.create({
-      data: {
+    // Find existing account
+    const existingAccount = await prisma.socialAccount.findFirst({
+      where: {
         userId,
-        platform: 'twitter',
-        username: twitterUser.data.username,
-        profileUrl: `https://twitter.com/${twitterUser.data.username}`,
-        accessToken,
-        accessSecret,
-        followerCount: twitterUser.data.public_metrics?.followers_count || 0
+        platform: 'twitter'
       }
     });
 
-    // Clean up stored token
-    oauthTokens.delete(oauth_token);
+    if (existingAccount) {
+      // Update existing account
+      await prisma.socialAccount.update({
+        where: { id: existingAccount.id },
+        data: {
+          username: screenName,
+          profileUrl: `https://twitter.com/${screenName}`,
+          accessToken,
+          accessSecret,
+          followerCount: 0
+        }
+      });
+    } else {
+      // Create new account
+      await prisma.socialAccount.create({
+        data: {
+          userId,
+          platform: 'twitter',
+          username: screenName,
+          profileUrl: `https://twitter.com/${screenName}`,
+          accessToken,
+          accessSecret,
+          followerCount: 0
+        }
+      });
+    }
 
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?twitter=connected`);
+    console.log('Twitter auth successful:', { screenName });
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=twitter&status=connected`);
   } catch (error) {
-    console.error('Twitter callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?twitter=error`);
+    console.error('Twitter auth error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=twitter&status=error`);
   }
 });
 
@@ -505,23 +557,43 @@ app.get('/api/auth/facebook/callback', async (req, res) => {
     );
     const profile = await profileResponse.json();
 
-    await prisma.socialAccount.create({
-      data: {
-        platform: 'facebook',
-        accessToken: access_token,
-        username: profile.name,
-        profileUrl: `https://facebook.com/${profile.id}`,
-        userId
-      },
+    // Find existing account
+    const existingAccount = await prisma.socialAccount.findFirst({
+      where: {
+        userId,
+        platform: 'facebook'
+      }
     });
 
+    if (existingAccount) {
+      await prisma.socialAccount.update({
+        where: { id: existingAccount.id },
+        data: {
+          accessToken: access_token,
+          username: profile.name,
+          profileUrl: `https://facebook.com/${profile.id}`
+        }
+      });
+    } else {
+      await prisma.socialAccount.create({
+        data: {
+          platform: 'facebook',
+          accessToken: access_token,
+          username: profile.name,
+          profileUrl: `https://facebook.com/${profile.id}`,
+          userId
+        }
+      });
+    }
+
     oauthTokens.delete(state);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?facebook=connected`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=facebook&status=connected`);
   } catch (error) {
     console.error('Facebook callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard?facebook=error`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=facebook&status=error`);
   }
 });
+
 // Instagram Business API routes
 app.get('/api/auth/instagram', async (req, res) => {
   try {
@@ -667,74 +739,69 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // First, find user with minimal data
     const user = await prisma.user.findUnique({
       where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        role: true
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Then fetch full user data
+    const fullUserData = await prisma.user.findUnique({
+      where: { id: user.id },
       include: {
         settings: true,
         subscription: {
           include: {
-            plan: true,
-          },
+            plan: {
+              include: {
+                features: true,
+                limits: true
+              }
+            }
+          }
         },
-        socialAccounts: {
-          select: {
-            id: true,
-            platform: true,
-            username: true,
-            profileUrl: true,
-            followerCount: true,
-          },
-        },
-      },
+        socialAccounts: true
+      }
     });
-
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
 
     // Format user data
     const userData = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      subscription: user.subscription ? {
-        planId: user.subscription.plan.name.toLowerCase(),
-        status: user.subscription.status,
-        currentPeriodEnd: user.subscription.currentPeriodEnd,
-        cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd,
-      } : {
-        planId: 'free',
-        status: 'active',
-      },
-      settings: user.settings || {
-        emailNotifications: true,
-        pushNotifications: true,
-        smsNotifications: false,
-        language: 'en',
-        theme: 'light',
-        autoSchedule: true,
-        defaultVisibility: 'public',
-      },
-      timezone: user.timezone || 'UTC',
-      bio: user.bio || '',
-      avatar: user.avatar,
-      socialAccounts: user.socialAccounts,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      ...fullUserData,
+      subscription: fullUserData.subscription ? {
+        ...fullUserData.subscription,
+        planId: fullUserData.subscription.plan.name.toLowerCase(),
+        features: fullUserData.subscription.plan.features,
+        limits: fullUserData.subscription.plan.limits
+      } : null,
+      password: undefined
     };
 
-    res.json({ token, user: userData });
+    res.json({ user: userData, token });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Failed to login' });
   }
 });
 
@@ -815,12 +882,12 @@ app.post('/api/auth/signup', async (req, res) => {
     const subscription = await prisma.subscription.create({
       data: {
         userId: user.id,
-        planId: trialPlan.id,
-        status: 'trial',
+        planId: 'trial',
+        status: SubscriptionStatus.TRIAL,
         currentPeriodStart: new Date(),
-        currentPeriodEnd: trialEnd,
+        currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         trialStart: new Date(),
-        trialEnd: trialEnd,
+        trialEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -2428,7 +2495,7 @@ app.get('/api/user/usage', authenticateToken, async (req, res) => {
     }
 
     // For trial users, use trial duration from plan limits
-    const daysLimit = user.subscription.status === 'trial' ? 14 : 30;
+    const daysLimit = user.subscription.status === SubscriptionStatus.TRIAL ? 14 : 30;
 
     res.json({
       postsUsed: totalPosts || 0,
@@ -3099,29 +3166,47 @@ app.post('/api/subscription/convert-trial', authenticateToken, async (req, res) 
     }
 
     // Verify user is in trial
-    if (user.subscription.status !== 'trial') {
+    if (user.subscription.status !== SubscriptionStatus.TRIAL) {
       return res.status(400).json({ error: 'User is not in trial period' });
     }
 
     // Get the selected plan
-    const plan = await prisma.plan.findUnique({
-      where: { id: planId }
-    });
-
+    const plan = plans[planId];
     if (!plan) {
       return res.status(404).json({ error: 'Selected plan not found' });
     }
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
 
     // Update subscription
     const updatedSubscription = await prisma.subscription.update({
       where: { id: user.subscription.id },
       data: {
-        planId: plan.id,
-        status: 'active',
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        planId: planId,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        // Clear trial data
         trialStart: null,
-        trialEnd: null
+        trialEnd: null,
+        // Ensure cancellation flags are cleared
+        cancelAtPeriodEnd: false
+      }
+    });
+
+    // Create a usage record to track the conversion
+    await prisma.usageRecord.create({
+      data: {
+        subscriptionId: updatedSubscription.id,
+        feature: 'subscription_conversion',
+        quantity: 1,
+        metadata: {
+          fromPlan: 'trial',
+          toPlan: planId,
+          conversionDate: now.toISOString()
+        }
       }
     });
 
@@ -3141,7 +3226,13 @@ app.get('/api/subscription/trial-eligibility', authenticateToken, async (req, re
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: {
-        subscription: true
+        subscription: {
+          select: {
+            status: true,
+            trialStart: true,
+            trialEnd: true
+          }
+        }
       }
     });
 
@@ -3149,11 +3240,20 @@ app.get('/api/subscription/trial-eligibility', authenticateToken, async (req, re
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if user has never had a trial or their trial has expired
+    // User is eligible if:
+    // 1. They never had a subscription
+    // 2. They never had a trial before (check trialStart)
+    // 3. Their current subscription is not in trial status
     const isEligible = !user.subscription || 
-      (user.subscription.status !== 'trial' && !user.subscription.trialEnd);
+      (!user.subscription.trialStart && user.subscription.status !== SubscriptionStatus.TRIAL);
 
-    res.json({ isEligible });
+    res.json({ 
+      isEligible,
+      currentStatus: user.subscription?.status || null,
+      message: isEligible ? 
+        'You are eligible for a free trial!' : 
+        'You have already used your trial period.'
+    });
   } catch (error) {
     console.error('Error checking trial eligibility:', error);
     res.status(500).json({ error: 'Failed to check trial eligibility' });
@@ -3286,26 +3386,232 @@ app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Verify account ownership
-    const socialAccount = await prisma.socialAccount.findFirst({
+    console.log('Disconnect request:', { id, userId });
+
+    // First find the account to verify ownership
+    const account = await prisma.socialAccount.findFirst({
       where: {
         id,
         userId
       }
     });
 
-    if (!socialAccount) {
-      return res.status(404).json({ error: 'Social account not found' });
+    console.log('Found account:', account);
+
+    if (!account) {
+      console.log('Account not found or unauthorized');
+      return res.status(404).json({ error: 'Social account not found or you do not have permission to disconnect it' });
     }
 
-    // Delete the social account
+    // If account exists and belongs to user, delete it
+    const deletedAccount = await prisma.socialAccount.delete({
+      where: { id }
+    });
+
+    console.log('Successfully deleted account:', deletedAccount);
+
+    res.json({ 
+      success: true,
+      message: 'Account successfully disconnected',
+      platform: account.platform
+    });
+  } catch (error) {
+    console.error('Account disconnection error:', error);
+    if (error.message.includes('Social account not found')) {
+      res.status(404).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to disconnect account' });
+    }
+  }
+});
+
+// OAuth initialization endpoints
+app.get('/api/social-accounts/connect', authenticateToken, async (req, res) => {
+  try {
+    const { platform } = req.query;
+    
+    if (!platform) {
+      return res.status(400).json({ error: 'Platform parameter is required' });
+    }
+    
+    const userId = req.user.id;
+
+    switch (platform.toLowerCase()) {
+      case 'twitter': {
+        const client = new TwitterApi({
+          appKey: process.env.TWITTER_API_KEY,
+          appSecret: process.env.TWITTER_API_SECRET
+        });
+
+        const authLink = await client.generateAuthLink(
+          `${process.env.APP_URL}/api/auth/twitter/callback`
+        );
+
+        // Store OAuth tokens
+        oauthTokens.set(authLink.oauth_token, {
+          oauth_token_secret: authLink.oauth_token_secret,
+          userId
+        });
+
+        res.json({ authUrl: authLink.url });
+        break;
+      }
+
+      case 'facebook': {
+        const state = Math.random().toString(36).substring(7);
+        const redirectUri = `${process.env.APP_URL}/api/auth/facebook/callback`;
+        
+        // Store state for validation
+        oauthTokens.set(state, { userId });
+
+        const authUrl = `https://www.facebook.com/v12.0/dialog/oauth?client_id=${
+          process.env.FACEBOOK_APP_ID
+        }&redirect_uri=${
+          encodeURIComponent(redirectUri)
+        }&state=${state}&scope=pages_show_list,pages_read_engagement,pages_manage_posts`;
+
+        res.json({ authUrl });
+        break;
+      }
+
+      case 'linkedin': {
+        const state = Math.random().toString(36).substring(7);
+        const redirectUri = `${process.env.APP_URL}/api/auth/linkedin/callback`;
+        
+        // Store state for validation
+        oauthTokens.set(state, { userId });
+
+        const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
+          process.env.LINKEDIN_CLIENT_ID
+        }&redirect_uri=${
+          encodeURIComponent(redirectUri)
+        }&state=${state}&scope=r_liteprofile%20w_member_social`;
+
+        res.json({ authUrl });
+        break;
+      }
+
+      default:
+        return res.status(400).json({ error: `Unsupported platform: ${platform}` });
+    }
+  } catch (error) {
+    console.error('OAuth initialization error:', error);
+    res.status(500).json({ error: 'Failed to initialize OAuth flow' });
+  }
+});
+
+// Disconnect endpoint
+app.delete('/api/social-accounts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const account = await prisma.socialAccount.findFirst({
+      where: { id, userId }
+    });
+
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
     await prisma.socialAccount.delete({
       where: { id }
     });
 
-    res.status(200).json({ message: 'Social account disconnected successfully' });
+    res.json({ success: true });
   } catch (error) {
-    console.error('Social account disconnect error:', error);
-    res.status(500).json({ error: 'Failed to disconnect social account' });
+    console.error('Account disconnection error:', error);
+    res.status(500).json({ error: 'Failed to disconnect account' });
   }
 });
+
+// Define subscription status enum
+// const SubscriptionStatus = {
+//   TRIAL: 'TRIAL',
+//   ACTIVE: 'ACTIVE',
+//   PAST_DUE: 'PAST_DUE',
+//   CANCELING: 'CANCELING',
+//   CANCELLED: 'CANCELLED'
+// };
+
+// Update subscription status checks
+app.get('/api/subscription/status', authenticateToken, async (req, res) => {
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: req.user.id, status: SubscriptionStatus.ACTIVE }
+    });
+    // ... rest of the code ...
+  } catch (error) {
+    console.error('Error fetching subscription status:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription status' });
+  }
+});
+
+app.get('/api/subscription/trial', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.TRIAL }
+  });
+  // ... existing code ...
+});
+
+app.post('/api/subscription/cancel', authenticateToken, async (req, res) => {
+  await prisma.subscription.update({
+    where: { userId: req.user.id },
+    data: {
+      status: SubscriptionStatus.CANCELING,
+      cancelAtPeriodEnd: true
+    }
+  });
+  // ... existing code ...
+});
+
+app.post('/api/subscription/reactivate', authenticateToken, async (req, res) => {
+  await prisma.subscription.update({
+    where: { userId: req.user.id },
+    data: {
+      status: SubscriptionStatus.ACTIVE,
+      cancelAtPeriodEnd: false
+    }
+  });
+  // ... existing code ...
+});
+
+// ... existing code ...
+
+// Update subscription status checks
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.ACTIVE }
+  });
+  // ... existing code ...
+});
+
+app.post('/api/subscription/upgrade', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.ACTIVE }
+  });
+  // ... existing code ...
+});
+
+app.get('/api/subscription/trial/status', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.TRIAL }
+  });
+  // ... existing code ...
+});
+
+app.post('/api/subscription/upgrade/preview', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.ACTIVE }
+  });
+  // ... existing code ...
+});
+
+app.get('/api/subscription/usage', authenticateToken, async (req, res) => {
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId: req.user.id, status: SubscriptionStatus.ACTIVE }
+  });
+  // ... existing code ...
+});
+
+// ... existing code ...

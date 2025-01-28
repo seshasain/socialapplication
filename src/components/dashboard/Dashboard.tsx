@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAppState } from '../../context/AppStateContext';
 import { useAuth } from '../../context/AuthContext';
+import { SubscriptionStatus } from '../../types/subscription';
+import { PlanType, PLANS } from '../../types/plans';
 import Overview from './Overview';
 import CalendarView from './CalendarView';
 import Analytics from './Analytics';
@@ -15,8 +17,25 @@ import type { Platform } from '../modals/PostStatusModal';
 import Sidebar from './Sidebar';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
-type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history';
+type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history' | 'notion';
+
+interface PostStatus {
+  id: string;
+  platform: string;
+  status: 'published' | 'scheduled' | 'failed' | 'processing';
+  error?: string;
+  publishedAt?: string;
+  scheduledFor?: string;
+}
+
+interface Post {
+  id: string;
+  content: string;
+  platforms: Platform[];
+  scheduledFor?: string;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -30,24 +49,30 @@ export default function Dashboard() {
   const currentView = (searchParams.get('view') as View) || 'overview';
   
   const { posts, socialAccounts, refreshData } = useAppState();
+  const userPlan = (user?.subscription?.planId || 'basic') as PlanType;
 
-  const handleViewChange = (view: View) => {
+  const handleViewChange = useCallback((view: View) => {
     searchParams.set('view', view);
     navigate({ search: searchParams.toString() });
-  };
+  }, [navigate, searchParams]);
 
   const handleNewPost = async (post: any) => {
     try {
+      setError(null);
       const response = await api.post('/api/posts', post);
       await refreshData();
       setShowNewPostModal(false);
-      // Handle post statuses
-      if (response.data.platforms) {
+      
+      if (response?.data?.platforms) {
         handlePostSubmit(response.data.platforms);
       }
+      
+      toast.success('Post created successfully');
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create post';
       console.error('Error creating post:', err);
-      setError('Failed to create post. Please try again.');
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -94,12 +119,17 @@ export default function Dashboard() {
       <Sidebar 
         currentView={currentView} 
         onViewChange={handleViewChange}
-        userPlan={user?.subscription?.planId || 'trial'}
+        userPlan={userPlan}
       />
 
       <div className="flex-1 flex flex-col">
-        {user?.subscription?.status === 'trial' && <TrialBanner />}
+        {user?.subscription?.status === SubscriptionStatus.TRIAL && <TrialBanner />}
         <main className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="mx-8 mt-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
           <div className="flex justify-between items-center px-8 pt-6 mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
@@ -138,7 +168,7 @@ export default function Dashboard() {
           onSave={handleNewPost}
           onPostSubmit={handlePostSubmit}
           connectedAccounts={socialAccounts}
-          userPlan={user?.subscription?.planId || 'trial'}
+          userPlan={userPlan}
         />
       )}
 

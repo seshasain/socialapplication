@@ -1,63 +1,40 @@
 import React, { useState } from 'react';
-import { X, Check, Crown, Zap } from 'lucide-react';
+import { X, Check, Crown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PLANS, PlanType, Plan } from '../../types/plans';
 
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface PricingPlan {
-  id: string;
-  name: string;
-  price: number;
-  description: string;
-  features: string[];
+interface ExtendedPlan extends Omit<Plan, 'features'> {
   icon: React.ElementType;
   popular?: boolean;
+  features: string[];
 }
 
 export default function PricingModal({ isOpen, onClose }: PricingModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<string>('pro');
+  const [selectedPlan, setSelectedPlan] = useState<PlanType>('pro');
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
 
-  const plans: PricingPlan[] = [
+  const plans: ExtendedPlan[] = [
     {
-      id: 'pro',
-      name: 'Pro',
-      price: 29,
-      description: 'Perfect for growing businesses',
+      ...PLANS.pro,
       icon: Crown,
+      popular: true,
       features: [
         'Advanced Analytics',
-        'Up to 10 social accounts',
-        'Scheduled posts',
-        'Custom reporting',
-        'Team collaboration',
-        'Priority support'
-      ],
-      popular: true
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      price: 99,
-      description: 'For larger organizations',
-      icon: Zap,
-      features: [
-        'Everything in Pro',
-        'Unlimited social accounts',
-        'AI content suggestions',
-        'Advanced team roles',
-        'Custom branding',
-        'API access',
-        'Dedicated account manager'
+        'Priority Support',
+        'Team Collaboration',
+        'Custom Reports',
+        'API Access'
       ]
     }
   ];
 
-  const handleUpgrade = async (planId: string) => {
+  const handleUpgrade = async (planId: PlanType) => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
@@ -135,7 +112,7 @@ export default function PricingModal({ isOpen, onClose }: PricingModalProps) {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-xl font-bold text-gray-900">
-                        {plan.name}
+                        {plan.displayName}
                       </h3>
                       <p className="text-gray-600 mt-1">{plan.description}</p>
                     </div>
@@ -150,7 +127,7 @@ export default function PricingModal({ isOpen, onClose }: PricingModalProps) {
 
                   <div className="mb-6">
                     <span className="text-4xl font-bold text-gray-900">
-                      ${plan.price}
+                      ${plan.price.monthly}
                     </span>
                     <span className="text-gray-600">/month</span>
                   </div>
@@ -175,7 +152,7 @@ export default function PricingModal({ isOpen, onClose }: PricingModalProps) {
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {loading ? 'Processing...' : `Upgrade to ${plan.name}`}
+                    {loading ? 'Processing...' : `Upgrade to ${plan.displayName}`}
                   </button>
                 </div>
               );

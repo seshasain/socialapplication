@@ -3,6 +3,14 @@ import cron from 'node-cron';
 
 const prisma = new PrismaClient();
 
+enum SubscriptionStatus {
+  TRIAL = 'TRIAL',
+  ACTIVE = 'ACTIVE',
+  PAST_DUE = 'PAST_DUE',
+  CANCELING = 'CANCELING',
+  CANCELLED = 'CANCELLED'
+}
+
 async function processMonthlyRollover() {
   try {
     console.log('Starting monthly rollover process...');
@@ -10,7 +18,7 @@ async function processMonthlyRollover() {
     // Get all active subscriptions with their related data
     const subscriptions = await prisma.subscription.findMany({
       where: {
-        status: 'active'
+        status: SubscriptionStatus.ACTIVE
       },
       include: {
         plan: {

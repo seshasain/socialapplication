@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Check, X, Rocket, Zap, Star, ArrowRight, Shield, Sparkles, Users, MessageCircle } from 'lucide-react';
+import { PLANS } from '../types/plans';
 
 function App() {
   const [isAnnual, setIsAnnual] = useState(false);

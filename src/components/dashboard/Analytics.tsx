@@ -27,6 +27,7 @@ import PerformanceGraph from './analytics/PerformanceGraph';
 import PostsList from './analytics/PostsList';
 import { analytics } from '../../utils/api';
 import { TRIAL_LIMITS } from '../../types/trial';
+import { SubscriptionStatus } from '../../types/subscription';
 
 interface ChartDataset {
   label: string;
@@ -91,6 +92,13 @@ interface AnalyticsData {
   }[];
 }
 
+interface AnalyticsParams {
+  type: 'upcoming' | 'history';
+  timeRange?: string;
+  platform?: string;
+  performance?: string;
+}
+
 const transformChartData = (analyticsData: AnalyticsData | null): ChartData | null => {
   if (!analyticsData?.analytics) return null;
 
@@ -150,7 +158,7 @@ export default function Analytics() {
   const [comparisonMetric, setComparisonMetric] = useState('engagement');
   const { user } = useAuth();
 
-  const isTrialUser = user?.subscription?.status === 'trial';
+  const isTrialUser = user?.subscription?.status === SubscriptionStatus.TRIAL;
 
   useEffect(() => {
     if (!isTrialUser) {
@@ -165,11 +173,14 @@ export default function Analytics() {
       setLoading(true);
       setError(null); // Clear any previous errors
       
-      const response = await analytics.overview({
+      const params: AnalyticsParams = {
+        type: 'history',
         timeRange,
         platform: platformFilter,
         performance: performanceFilter
-      });
+      };
+      
+      const response = await analytics.overview(params);
       
       setAnalyticsData(response.data);
     } catch (err) {
