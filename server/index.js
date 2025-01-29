@@ -24,6 +24,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
 import { ensureAuthorized } from './storage/b2.js';
 import { SubscriptionStatus } from '@prisma/client';
+import { Client } from '@notionhq/client';
 
 dotenv.config();
 
@@ -3615,3 +3616,185 @@ app.get('/api/subscription/usage', authenticateToken, async (req, res) => {
 });
 
 // ... existing code ...
+
+// Notion OAuth routes
+app.get('/api/auth/notion', authenticateToken, async (req, res) => {
+  try {
+    if (!process.env.NOTION_CLIENT_ID) {
+      throw new Error('Notion client ID not configured');
+    }
+
+    const state = Math.random().toString(36).substring(7);
+    const redirectUri = `${process.env.APP_URL}/api/auth/notion/callback`;
+    
+    // Store state and user ID for validation
+    oauthTokens.set(state, {
+      userId: req.user.id,
+      timestamp: Date.now()
+    });
+
+    const authUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${
+      process.env.NOTION_CLIENT_ID
+    }&redirect_uri=${
+      encodeURIComponent(redirectUri)
+    }&response_type=code&state=${state}&owner=user`;
+
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Notion auth error:', error);
+    res.status(500).json({ error: 'Failed to initialize Notion authentication' });
+  }
+});
+
+app.get('/api/auth/notion/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    const storedData = oauthTokens.get(state);
+
+    if (!storedData) {
+      throw new Error('Invalid state parameter');
+    }
+
+    const { userId } = storedData;
+    
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://api.notion.com/v1/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(
+          `${process.env.NOTION_CLIENT_ID}:${process.env.NOTION_CLIENT_SECRET}`
+        ).toString('base64')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: `${process.env.APP_URL}/api/auth/notion/callback`
+      })
+    });
+
+    const { 
+      access_token,
+      workspace_id,
+      workspace_name,
+      workspace_icon,
+      bot_id 
+    } = await tokenResponse.json();
+
+    // Save or update Notion integration in database
+    await prisma.notionIntegration.upsert({
+      where: {
+        userId_workspaceId: {
+          userId,
+          workspaceId: workspace_id
+        }
+      },
+      update: {
+        accessToken: access_token,
+        workspaceName: workspace_name,
+        workspaceIcon: workspace_icon,
+        botId: bot_id,
+        lastUpdated: new Date()
+      },
+      create: {
+        userId,
+        workspaceId: workspace_id,
+        workspaceName: workspace_name,
+        workspaceIcon: workspace_icon,
+        accessToken: access_token,
+        botId: bot_id
+      }
+    });
+
+    // Clean up
+    oauthTokens.delete(state);
+
+    // Redirect back to app
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=notion&status=connected`);
+  } catch (error) {
+    console.error('Notion callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?platform=notion&status=error`);
+  }
+});
+
+// Notion database endpoints
+app.get('/api/notion/databases', authenticateToken, async (req, res) => {
+  try {
+    const integration = await prisma.notionIntegration.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { lastUpdated: 'desc' }
+    });
+
+    if (!integration) {
+      return res.status(404).json({ error: 'Notion integration not found' });
+    }
+
+    const notion = new Client({ auth: integration.accessToken });
+    
+    const response = await notion.search({
+      filter: { property: 'object', value: 'database' }
+    });
+
+    const databases = response.results.map(db => ({
+      id: db.id,
+      title: db.title[0]?.plain_text || 'Untitled',
+      description: db.description?.[0]?.plain_text || null,
+      lastEdited: db.last_edited_time
+    }));
+
+    res.json({ databases });
+  } catch (error) {
+    console.error('Failed to fetch Notion databases:', error);
+    res.status(500).json({ error: 'Failed to fetch databases' });
+  }
+});
+
+app.post('/api/notion/select-database', authenticateToken, async (req, res) => {
+  try {
+    const { databaseId } = req.body;
+    
+    if (!databaseId) {
+      return res.status(400).json({ error: 'Database ID is required' });
+    }
+
+    const integration = await prisma.notionIntegration.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { lastUpdated: 'desc' }
+    });
+
+    if (!integration) {
+      return res.status(404).json({ error: 'Notion integration not found' });
+    }
+
+    const notion = new Client({ auth: integration.accessToken });
+    
+    // Verify database access
+    const database = await notion.databases.retrieve({
+      database_id: databaseId
+    });
+
+    // Update user's selected database
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        settings: {
+          update: {
+            notionDatabaseId: databaseId
+          }
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      database: {
+        id: database.id,
+        title: database.title[0]?.plain_text || 'Untitled',
+        description: database.description?.[0]?.plain_text || null
+      }
+    });
+  } catch (error) {
+    console.error('Failed to select Notion database:', error);
+    res.status(500).json({ error: 'Failed to select database' });
+  }
+});

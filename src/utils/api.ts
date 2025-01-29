@@ -97,7 +97,12 @@ interface SignupData {
 // Auth endpoints
 export const auth = {
   login: async (data: LoginData) => {
-    console.log('Login request:', { url: API_ROUTES.auth.login, data });
+    console.log('Login request details:', { 
+      baseURL: API_URL,
+      endpoint: API_ROUTES.auth.login,
+      data,
+      headers: api.defaults.headers
+    });
     try {
       // Configure retry logic for login
       const maxRetries = 3;
@@ -106,12 +111,28 @@ export const auth = {
 
       while (retryCount < maxRetries) {
         try {
+          console.log(`Login attempt ${retryCount + 1}/${maxRetries}`);
           const response = await api.post(API_ROUTES.auth.login, data, {
             timeout: 10000, // Shorter timeout for login
           });
           console.log('Login response:', response.data);
           return response;
         } catch (error: any) {
+          console.log('Login attempt error details:', {
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data,
+            code: error.code,
+            message: error.message,
+            isAxiosError: error.isAxiosError,
+            config: {
+              url: error.config?.url,
+              method: error.config?.method,
+              baseURL: error.config?.baseURL,
+              timeout: error.config?.timeout,
+            }
+          });
+          
           if (error.code === 'ECONNABORTED' && retryCount < maxRetries - 1) {
             console.log(`Login attempt ${retryCount + 1} failed, retrying...`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));

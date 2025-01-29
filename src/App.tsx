@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Navbar from './components/Navbar';
@@ -26,6 +26,28 @@ import HistoryView from './components/dashboard/HistoryView';
 import ExtensionRequest from './components/trial/ExtensionRequest';
 import { getSubscriptionType } from "./utils/subscription";
 import { NotionIntegration } from './pages/NotionIntegration';
+import { ThemeProvider, CssBaseline } from '@mui/material';
+import { createTheme } from '@mui/material/styles';
+import AppLayout from './components/layout/AppLayout';
+import IntegrationsPage from './pages/IntegrationsPage';
+import DashboardPage from './pages/DashboardPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import SettingsPage from './pages/SettingsPage';
+
+// Create a theme instance
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+    background: {
+      default: '#f5f5f5',
+    },
+  },
+});
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -67,94 +89,97 @@ function AppContent() {
   }
 
   return (
-    <Router>
-      <AppRoot>
-        <Toaster position="top-right" />
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-          <Navbar />
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/account/reactivate" element={<AccountReactivation />} />
-            
-            {/* Protected Routes */}
-            <Route path="/dashboard/*" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/account/delete" element={
-              <ProtectedRoute>
-                <AccountDeletion />
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/posts/*" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/analytics" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/team" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/notion" element={
-              <ProtectedRoute>
-                <NotionIntegration />
-              </ProtectedRoute>
-            } />
-            <Route path="/trial/extend" element={
-              <ProtectedRoute>
-                <ExtensionRequest />
-              </ProtectedRoute>
-            } />
-          </Routes>
-          <ToastContainer
-            position="top-right"
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="dark"
-            toastStyle={{
-              backgroundColor: '#333',
-              color: '#fff',
-              borderRadius: '8px',
-              padding: '15px',
-              fontSize: '16px',
-              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
-            }}
-            bodyStyle={{
-              fontWeight: '500',
-              fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
-            }}
-          />
-        </div>
-      </AppRoot>
-    </Router>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <AppRoot>
+          <Toaster position="top-right" />
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+            <Navbar />
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/account/reactivate" element={<AccountReactivation />} />
+              
+              {/* Protected Routes */}
+              <Route path="/dashboard/*" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/account/delete" element={
+                <ProtectedRoute>
+                  <AccountDeletion />
+                </ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/posts/*" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/analytics" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/integrations" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/team" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/trial/extend" element={
+                <ProtectedRoute>
+                  <ExtensionRequest />
+                </ProtectedRoute>
+              } />
+            </Routes>
+            <ToastContainer
+              position="top-right"
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="dark"
+              toastStyle={{
+                backgroundColor: '#333',
+                color: '#fff',
+                borderRadius: '8px',
+                padding: '15px',
+                fontSize: '16px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
+              }}
+              bodyStyle={{
+                fontWeight: '500',
+                fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
+              }}
+            />
+          </div>
+        </AppRoot>
+      </Router>
+    </ThemeProvider>
   );
 }
 

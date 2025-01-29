@@ -36,6 +36,7 @@ export interface NotionConnectionState {
   isConnected: boolean;
   selectedDatabase?: NotionDatabase;
   lastSync?: Date;
+  step: number;
 }
 
 export interface NotionError {

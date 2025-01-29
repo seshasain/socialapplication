@@ -18,6 +18,7 @@ import Sidebar from './Sidebar';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { NotionIntegration } from '../../pages/NotionIntegration';
 
 type View = 'overview' | 'calendar' | 'analytics' | 'team' | 'settings' | 'history' | 'notion';
 
@@ -109,6 +110,8 @@ export default function Dashboard() {
         return <SettingsView />;
       case 'history':
         return <HistoryView />;
+      case 'notion':
+        return <NotionIntegration />;
       default:
         return null;
     }

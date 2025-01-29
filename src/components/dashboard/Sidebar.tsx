@@ -32,7 +32,7 @@ type View =
   | 'team'
   | 'settings'
   | 'history'
-  | 'notion';
+  | 'integrations';
 
 interface SidebarProps {
   currentView: View;
@@ -120,12 +120,12 @@ export default function Sidebar({ currentView, onViewChange, userPlan }: Sidebar
 
   const menuItems = [
     { icon: Layout, label: 'Overview', value: 'overview' as View },
+    { icon: Database, label: 'Integrations', value: 'integrations' as View },
     { icon: History, label: 'History', value: 'history' as View },
     { icon: Calendar, label: 'Calendar', value: 'calendar' as View },
     { icon: BarChart2, label: 'Analytics', value: 'analytics' as View },
     { icon: Users2, label: 'Team', value: 'team' as View },
-    { icon: Settings, label: 'Settings', value: 'settings' as View },
-    { icon: Database, label: 'Notion', value: 'notion' as View },
+    { icon: Settings, label: 'Settings', value: 'settings' as View }
   ];
 
   // Mobile menu button component
