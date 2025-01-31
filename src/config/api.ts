@@ -3,7 +3,7 @@ const isDevelopment = import.meta.env.MODE === 'development';
 
 // Set the API URL based on environment
 export const API_URL = isDevelopment 
-  ? 'http://localhost:3001'
+  ? 'http://localhost:5000'
   : 'https://crosspodium-api-katv4u7upa-uc.a.run.app';
 
 // API configuration
