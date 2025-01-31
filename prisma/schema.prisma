@@ -46,6 +46,7 @@ model User {
   notionIntegrations NotionIntegration[]
   contentSources ContentSource[]
   contentPosts   ContentPost[]
+  integrations   Integration[]
 
   @@index([referredBy])
 }
@@ -442,6 +443,44 @@ model SyncStatus {
   itemsProcessed  Int          @default(0)
   error           String?
   createdAt       DateTime      @default(now())
+}
+
+model Integration {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  type          String   // google_docs, wordpress, notion
+  accessToken   String
+  refreshToken  String?
+  expiresAt     DateTime?
+  scope         String?
+  metadata      Json?    // Additional platform-specific data
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  status        String   @default("active") // active, revoked, expired
+  lastSyncedAt  DateTime?
+  syncStatus    String?  // success, failed, in_progress
+  errorMessage  String?
+  settings      Json?    // Integration-specific settings
+  syncHistory   IntegrationSync[]
+
+  @@index([userId])
+  @@index([type])
+}
+
+model IntegrationSync {
+  id            String   @id @default(cuid())
+  integrationId String
+  integration   Integration @relation(fields: [integrationId], references: [id])
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  status        String   // success, failed, in_progress
+  itemsProcessed Int     @default(0)
+  errorMessage  String?
+  metadata      Json?
+
+  @@index([integrationId])
+  @@index([status])
 }
 
 

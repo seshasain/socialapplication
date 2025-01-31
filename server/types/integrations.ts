@@ -41,4 +41,25 @@ export interface WordPressConfig {
   siteUrl: string;
   accessToken: string;
   postTypes: string[];
+}
+
+export interface NotionConfig {
+  accessToken: string;
+  databaseId: string;
+}
+
+export interface NotionPage {
+  id: string;
+  properties: {
+    title: {
+      title: Array<{
+        plain_text: string;
+      }>;
+    };
+    content: {
+      rich_text: Array<{
+        plain_text: string;
+      }>;
+    };
+  };
 } 

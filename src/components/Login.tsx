@@ -14,12 +14,15 @@ export default function Login() {
     password: '',
   });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { login, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSubmitting(true);
 
     try {
       await login(formData.email, formData.password);
@@ -29,11 +32,15 @@ export default function Login() {
       navigate(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     try {
+      setError('');
+      setIsGoogleLoading(true);
       await signInWithGoogle();
       // Check for redirect path
       const redirectPath = localStorage.getItem('redirectPath') || '/dashboard';
@@ -41,6 +48,8 @@ export default function Login() {
       navigate(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Failed to sign in with Google');
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -217,12 +226,23 @@ export default function Login() {
             >
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 rounded-lg font-medium
                   transform transition-all duration-200 ease-in-out
                   hover:from-blue-700 hover:to-blue-800 hover:shadow-lg hover:scale-[1.02]
-                  active:scale-[0.98]"
+                  active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Sign in
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Signing in...
+                  </div>
+                ) : (
+                  'Sign in'
+                )}
               </button>
             </motion.div>
           </form>
@@ -241,16 +261,30 @@ export default function Login() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
               className="mt-4 w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg
                 bg-white text-gray-700 transition-all duration-200 ease-in-out
-                hover:bg-gray-50 hover:border-gray-400 hover:shadow-md"
+                hover:bg-gray-50 hover:border-gray-400 hover:shadow-md
+                disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <img
-                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                alt="Google"
-                className="w-5 h-5 mr-2"
-              />
-              Sign in with Google
+              {isGoogleLoading ? (
+                <div className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Connecting...
+                </div>
+              ) : (
+                <>
+                  <img
+                    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                    alt="Google"
+                    className="w-5 h-5 mr-2"
+                  />
+                  Sign in with Google
+                </>
+              )}
             </motion.button>
           </div>
 

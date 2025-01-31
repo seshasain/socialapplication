@@ -136,11 +136,6 @@ function AppContent() {
                   <Dashboard />
                 </ProtectedRoute>
               } />
-              <Route path="/integrations" element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } />
               <Route path="/team" element={
                 <ProtectedRoute>
                   <Dashboard />

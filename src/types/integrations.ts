@@ -46,6 +46,31 @@ export interface WordPressConfig {
   postTypes: string[];
 }
 
+export interface NotionConfig {
+  accessToken: string;
+  databaseId: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  workspaceIcon?: string;
+  botId?: string;
+}
+
+export interface NotionPage {
+  id: string;
+  properties: {
+    title: {
+      title: Array<{
+        plain_text: string;
+      }>;
+    };
+    content: {
+      rich_text: Array<{
+        plain_text: string;
+      }>;
+    };
+  };
+}
+
 export interface ContentSourceConfig {
   google_docs?: {
     folderId?: string;
@@ -58,6 +83,13 @@ export interface ContentSourceConfig {
     postTypes: string[];
     categories?: string[];
     autoPost: boolean;
+  };
+  notion?: {
+    databaseId: string;
+    syncInterval: number;
+    autoSync: boolean;
+    templateId?: string;
+    filterTags?: string[];
   };
 }
 
