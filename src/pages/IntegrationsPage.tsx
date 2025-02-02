@@ -953,9 +953,9 @@ const IntegrationsPage: React.FC = () => {
           
           <div className="border-b border-gray-200">
             <div className="flex justify-between items-center px-6">
-              <Tabs
-                value={tabValue}
-                onChange={handleTabChange}
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
                 className="min-h-[64px]"
                 sx={{
                   '& .MuiTab-root': {
@@ -995,7 +995,7 @@ const IntegrationsPage: React.FC = () => {
                   }
                   {...a11yProps(1)}
                 />
-              </Tabs>
+          </Tabs>
 
               <div className="flex items-center space-x-3">
                 <div className="relative">
@@ -1036,21 +1036,21 @@ const IntegrationsPage: React.FC = () => {
             </div>
           </div>
 
-          <TabPanel value={tabValue} index={0}>
+        <TabPanel value={tabValue} index={0}>
             <div className="p-6">
-              <IntegrationsList
-                onSourceSelect={(sourceId) => {
-                  setSelectedSourceId(sourceId);
-                  setTabValue(1);
-                }}
-              />
+          <IntegrationsList
+            onSourceSelect={(sourceId) => {
+              setSelectedSourceId(sourceId);
+              setTabValue(1);
+            }}
+          />
             </div>
-          </TabPanel>
-          <TabPanel value={tabValue} index={1}>
+        </TabPanel>
+        <TabPanel value={tabValue} index={1}>
             <div className="p-6">
-              <ContentPostsList sourceId={selectedSourceId} />
+          <ContentPostsList sourceId={selectedSourceId} />
             </div>
-          </TabPanel>
+        </TabPanel>
         </div>
       </motion.div>
 

@@ -127,23 +127,23 @@ const authenticateToken = async (req: Request, res: Response, next: NextFunction
   if (!token) {
     res.status(401).json({ error: 'No token provided' });
     return;
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, email: true, role: true }
-    });
-
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
     }
 
+    try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
+      const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, email: true, role: true }
+      });
+
+      if (!user) {
+      res.status(401).json({ error: 'User not found' });
+      return;
+      }
+
     (req as AuthenticatedRequest).user = user;
-    next();
-  } catch (error) {
+      next();
+    } catch (error) {
     console.error('Token verification error:', error);
     res.status(403).json({ error: 'Invalid token' });
   }
@@ -164,7 +164,7 @@ app.use('/api/media', mediaRoutes);
 // Health check endpoint
 app.get('/', async (_req: Request, res: Response) => {
   const dbConnected = await verifyDatabaseConnection();
-  res.json({ 
+    res.json({
     status: dbConnected ? 'ok' : 'database_error', 
     message: 'Server is running',
     port,
