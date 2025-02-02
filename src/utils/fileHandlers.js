@@ -5,28 +5,6 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import B2 from 'backblaze-b2';
 
-interface FileUploadResponse {
-  id: string;
-  url: string;
-  filename: string;
-  mimetype: string;
-  size: number;
-  b2Key: string;
-}
-
-interface UploadProgressEvent {
-  lengthComputable: boolean;
-  loaded: number;
-  total: number;
-}
-
-interface FileObject {
-  buffer: Buffer;
-  originalname: string;
-  mimetype: string;
-  size: number;
-}
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -37,45 +15,44 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 // Initialize B2 client
 const b2 = new B2({
-  applicationKeyId: process.env.VITE_B2_APPLICATION_KEY_ID as string,
-  applicationKey: process.env.VITE_B2_APPLICATION_KEY as string,
+  applicationKeyId: process.env.VITE_B2_APPLICATION_KEY_ID,
+  applicationKey: process.env.VITE_B2_APPLICATION_KEY,
   retry: {
     retries: 3
   }
 });
 
 let authorized = false;
-let uploadUrl: string | null = null;
-let uploadAuthToken: string | null = null;
+let uploadUrl = null;
+let uploadAuthToken = null;
 
-async function ensureAuthorized(): Promise<void> {
+async function ensureAuthorized() {
   if (!authorized) {
     await b2.authorize();
     authorized = true;
   }
 }
 
-async function getUploadUrl(): Promise<{ uploadUrl: string; uploadAuthToken: string }> {
+async function getUploadUrl() {
   if (!uploadUrl || !uploadAuthToken) {
     const response = await b2.getUploadUrl({
-      bucketId: process.env.VITE_B2_BUCKET_ID as string
+      bucketId: process.env.VITE_B2_BUCKET_ID
     });
     uploadUrl = response.data.uploadUrl;
     uploadAuthToken = response.data.authorizationToken;
   }
-  return { uploadUrl, uploadAuthToken } as { uploadUrl: string; uploadAuthToken: string };
+  return { uploadUrl, uploadAuthToken };
 }
 
-async function getDownloadUrl(fileName: string): Promise<string> {
+async function getDownloadUrl(fileName) {
   await ensureAuthorized();
   
   try {
+    // Get file info first
     const response = await b2.listFileNames({
-      bucketId: process.env.VITE_B2_BUCKET_ID as string,
+      bucketId: process.env.VITE_B2_BUCKET_ID,
       startFileName: fileName,
-      maxFileCount: 1,
-      delimiter: '',
-      prefix: ''
+      maxFileCount: 1
     });
 
     if (!response.data.files.length) {
@@ -84,25 +61,21 @@ async function getDownloadUrl(fileName: string): Promise<string> {
 
     const file = response.data.files[0];
     
+    // Generate authorized download URL
     const downloadUrl = await b2.getDownloadAuthorization({
-      bucketId: process.env.VITE_B2_BUCKET_ID as string,
+      bucketId: process.env.VITE_B2_BUCKET_ID,
       fileNamePrefix: fileName,
       validDurationInSeconds: 604800, // 7 days
     });
 
-    // Use the downloadUrl from the authorization response
-    return `https://f002.backblazeb2.com/file/${process.env.VITE_B2_BUCKET_NAME}/${fileName}?Authorization=${downloadUrl.data.authorizationToken}`;
+    return `${b2.downloadUrl}/file/${process.env.VITE_B2_BUCKET_NAME}/${fileName}?Authorization=${downloadUrl.data.authorizationToken}`;
   } catch (error) {
     console.error('Error generating download URL:', error);
     throw new Error('Failed to generate download URL');
   }
 }
 
-export const uploadToB2 = async (
-  fileBuffer: Buffer,
-  contentType: string,
-  filename: string
-): Promise<string> => {
+export const uploadToB2 = async (fileBuffer, contentType, filename) => {
   try {
     if (!fileBuffer || !contentType || !filename) {
       throw new Error('Missing required parameters for B2 upload');
@@ -120,8 +93,8 @@ export const uploadToB2 = async (
       uploadAuthToken: token,
       fileName: `uploads/${filename}`,
       data: fileBuffer,
-      mime: contentType,
-      onUploadProgress: (event: UploadProgressEvent) => {
+      contentType: contentType,
+      onUploadProgress: (event) => {
         if (event.lengthComputable) {
           const percentComplete = (event.loaded / event.total) * 100;
           console.log(`Upload progress: ${percentComplete}%`);
@@ -142,11 +115,11 @@ export const uploadToB2 = async (
     return downloadUrl;
   } catch (error) {
     console.error('B2 upload error:', error);
-    throw new Error(`Failed to upload file to B2: ${(error as Error).message}`);
+    throw new Error(`Failed to upload file to B2: ${error.message}`);
   }
 };
 
-export const deleteFromB2 = async (fileName: string): Promise<void> => {
+export const deleteFromB2 = async (fileName) => {
   try {
     if (!fileName) {
       throw new Error('No filename provided for B2 deletion');
@@ -155,11 +128,9 @@ export const deleteFromB2 = async (fileName: string): Promise<void> => {
     await ensureAuthorized();
 
     const response = await b2.listFileNames({
-      bucketId: process.env.VITE_B2_BUCKET_ID as string,
+      bucketId: process.env.VITE_B2_BUCKET_ID,
       startFileName: fileName,
-      maxFileCount: 1,
-      delimiter: '',
-      prefix: ''
+      maxFileCount: 1
     });
 
     if (response.data.files.length > 0) {
@@ -171,11 +142,11 @@ export const deleteFromB2 = async (fileName: string): Promise<void> => {
     }
   } catch (error) {
     console.error('B2 delete error:', error);
-    throw new Error(`Failed to delete file from B2: ${(error as Error).message}`);
+    throw new Error(`Failed to delete file from B2: ${error.message}`);
   }
 };
 
-export async function saveFile(file: FileObject): Promise<FileUploadResponse> {
+export async function saveFile(file) {
   try {
     if (!file || !file.buffer || !file.originalname || !file.mimetype) {
       throw new Error('Invalid file object provided');
@@ -191,7 +162,6 @@ export async function saveFile(file: FileObject): Promise<FileUploadResponse> {
     if (!fileUrl) {
       throw new Error('Failed to get B2 file URL');
     }
-    
     return {
       id: uniqueId,
       url: fileUrl,
@@ -202,11 +172,10 @@ export async function saveFile(file: FileObject): Promise<FileUploadResponse> {
     };
   } catch (error) {
     console.error('File save error:', error);
-    throw new Error(`Failed to save file: ${(error as Error).message}`);
+    throw new Error(`Failed to save file: ${error.message}`);
   }
 }
-
-export async function deleteFile(filename: string, b2Key?: string): Promise<void> {
+export async function deleteFile(filename, b2Key) {
   try {
     // Delete from B2 if key exists
     if (b2Key) {
@@ -222,4 +191,4 @@ export async function deleteFile(filename: string, b2Key?: string): Promise<void
     console.error('File deletion error:', error);
     throw error;
   }
-} 
+}

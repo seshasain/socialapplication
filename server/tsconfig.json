@@ -10,13 +10,19 @@
     "outDir": "../dist/server",
     "rootDir": ".",
     "allowJs": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["*"]
+    }
   },
   "include": [
-    "**/*"
+    "**/*.ts",
+    "**/*.js"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "../dist",
+    "../src"
   ]
 } 
