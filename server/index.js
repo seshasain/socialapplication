@@ -31,30 +31,23 @@ const allowedOrigins = [
 
 // Verify database connection
 async function verifyDatabaseConnection() {
-  const maxRetries = 5;
-  const retryDelay = 5000; // 5 seconds
+  const maxRetries = 3;  // Reduced from 5
+  const retryDelay = 2000;  // Reduced from 5000
   let retries = 0;
 
   while (retries < maxRetries) {
     try {
       console.log(`Attempting to connect to database (attempt ${retries + 1}/${maxRetries})...`);
-      console.log(`Database URL: ${process.env.DATABASE_URL.replace(/:[^:@]*@/, ':****@')}`);
       
       await prisma.$connect();
       console.log('✅ Database connection successful');
-      
-      // Test query to verify full connectivity
-      const testQuery = await prisma.$queryRaw`SELECT 1`;
-      console.log('✅ Database query successful');
       
       return true;
     } catch (error) {
       retries++;
       console.error(`❌ Database connection attempt ${retries} failed:`, {
         error: error.message,
-        code: error.code,
-        meta: error.meta,
-        stack: error.stack
+        code: error.code
       });
       
       if (retries < maxRetries) {
@@ -65,8 +58,7 @@ async function verifyDatabaseConnection() {
   }
   
   console.error('❌ Failed to connect to database after maximum retries');
-  process.exit(1);
-  return false;
+  return false;  // Don't exit process, just return false
 }
 
 // Configure multer for memory storage
@@ -135,13 +127,21 @@ app.get('/', async (req, res) => {
   });
 });
 
-// Initialize services without blocking server start
+// Start server first to meet Cloud Run requirements
+const server = app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+});
+
+// Initialize services after server is started
 (async () => {
   try {
-    // Verify database connection first
+    // Verify database connection with retries
     const dbConnected = await verifyDatabaseConnection();
     if (!dbConnected) {
       console.error('⚠️ Server started but database connection failed');
+    } else {
+      console.log('✅ Database connection successful');
     }
 
     // Verify B2 credentials
@@ -152,6 +152,16 @@ app.get('/', async (req, res) => {
   }
 })();
 
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(async () => {
+    console.log('HTTP server closed');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+});
+
 // Error handling for unhandled promises
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -160,52 +170,5 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
-
-// Start server
-let server;
-const startServer = async (initialPort) => {
-  let currentPort = initialPort;
-  const maxAttempts = 10;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      server = app.listen(currentPort, () => {
-        console.log(`Server is running on port ${currentPort}`);
-        console.log(`Environment: ${process.env.NODE_ENV}`);
-      });
-      return true;
-    } catch (error) {
-      if (error.code === 'EADDRINUSE') {
-        console.log(`Port ${currentPort} is in use, trying ${currentPort + 1}...`);
-        currentPort++;
-      } else {
-        console.error('Failed to start server:', error);
-        return false;
-      }
-    }
-  }
-  console.error(`Could not find an available port after ${maxAttempts} attempts`);
-  return false;
-};
-
-// Start server with graceful shutdown
-try {
-  const success = await startServer(port);
-  if (!success) {
-    process.exit(1);
-  }
-
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    server.close(async () => {
-      console.log('HTTP server closed');
-      await prisma.$disconnect();
-      process.exit(0);
-    });
-  });
-} catch (error) {
-  console.error('Failed to start server:', error);
-  process.exit(1);
-}
 
 export default app;
