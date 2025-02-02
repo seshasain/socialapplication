@@ -119,7 +119,7 @@ export class SubscriptionService {
       where: { userId }
     });
 
-    if (!subscription || subscription.status !== 'trial') {
+    if (!subscription || subscription.status !== SubscriptionStatus.TRIAL) {
       throw new Error('No active trial found');
     }
 
@@ -538,7 +538,7 @@ export class SubscriptionService {
       throw new Error('No active subscription found');
     }
 
-    if (subscription.status !== 'active') {
+    if (subscription.status !== SubscriptionStatus.ACTIVE) {
       throw new Error('Subscription must be active to pause');
     }
 
@@ -571,7 +571,7 @@ export class SubscriptionService {
       await tx.subscription.update({
         where: { userId },
         data: {
-          status: 'paused',
+          status: SubscriptionStatus.CANCELING,
           currentPeriodEnd: pauseEnd
         }
       });
@@ -588,7 +588,7 @@ export class SubscriptionService {
       throw new Error('No subscription found');
     }
 
-    if (subscription.status !== 'paused') {
+    if (subscription.status !== SubscriptionStatus.CANCELING) {
       throw new Error('Subscription is not paused');
     }
 

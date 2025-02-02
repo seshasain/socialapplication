@@ -1,16 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SubscriptionStatus } from '@prisma/client';
 import { TRIAL_LIMITS, TRIAL_REFERRAL_CONFIG } from '../config/trial';
 import type { PrismaTransactionClient } from '../types/prisma';
 
 const prisma = new PrismaClient();
-
-enum SubscriptionStatus {
-  TRIAL = 'TRIAL',
-  ACTIVE = 'ACTIVE',
-  PAST_DUE = 'PAST_DUE',
-  CANCELING = 'CANCELING',
-  CANCELLED = 'CANCELLED'
-}
 
 export class TrialService {
   async getTrialStatus(userId: string) {
@@ -176,7 +168,7 @@ export class TrialService {
       where: {
         referredBy: userId,
         subscription: {
-          status: { not: 'cancelled' }
+          status: { not: SubscriptionStatus.CANCELLED }
         }
       }
     });

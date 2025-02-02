@@ -1,7 +1,7 @@
-import express, { Response } from 'express';
+import express, { Response, RequestHandler } from 'express';
 import { google } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
-import { authenticateToken } from '../../middleware/auth';
+import { authenticateUser } from '../../middleware/auth';
 import { AuthenticatedRequest } from '../../types/auth';
 
 const router = express.Router();
@@ -14,7 +14,7 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 // Start OAuth flow
-router.get('/auth/google', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+router.get('/auth/google', authenticateUser, ((req: AuthenticatedRequest, res: Response) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: [
@@ -26,7 +26,7 @@ router.get('/auth/google', authenticateToken, (req: AuthenticatedRequest, res: R
   });
 
   res.redirect(authUrl);
-});
+}) as RequestHandler);
 
 // OAuth callback
 router.get('/auth/google/callback', async (req, res) => {
