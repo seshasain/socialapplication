@@ -9,16 +9,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:server": "tsc -p server/tsconfig.json",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "tsx server/index.js",
+    "server": "node dist/server/index.js",
+    "dev:server": "nodemon --exec tsx server/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "dev:server": "nodemon --exec tsx server/index.js",
     "start:full": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed && concurrently \"npm run dev:server\" \"npm run dev\"",
-    "start": "npm run prisma:generate && tsx server/index.js",
-    "gcp-build": "npx prisma generate"
+    "start": "node dist/server/index.js",
+    "gcp-build": "npm run prisma:generate && npm run build:server"
   },
   "dependencies": {
     "@auth/core": "0.34.2",

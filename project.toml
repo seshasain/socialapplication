@@ -12,4 +12,14 @@ value = "true"
 
 [[build.env]]
 name = "NPM_CONFIG_PRODUCTION"
-value = "false" 
+value = "false"
+
+[build]
+include = [
+    "package.json",
+    "package-lock.json",
+    ".npmrc",
+    "server/**/*",
+    "prisma/**/*",
+    "dist/**/*"
+] 

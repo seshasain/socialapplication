@@ -5,6 +5,7 @@ steps:
       - 'GOOGLE_NODEJS_EXTRA_ARGS=--legacy-peer-deps'
       - 'NODE_ENV=production'
       - 'NPM_CONFIG_LEGACY_PEER_DEPS=true'
+      - 'NPM_CONFIG_PRODUCTION=false'
     args:
       - build
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE}:${COMMIT_SHA}'
@@ -13,6 +14,7 @@ steps:
       - '--env=GOOGLE_NODEJS_EXTRA_ARGS=--legacy-peer-deps'
       - '--env=NODE_ENV=production'
       - '--env=NPM_CONFIG_LEGACY_PEER_DEPS=true'
+      - '--env=NPM_CONFIG_PRODUCTION=false'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -27,6 +29,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--set-env-vars=NODE_ENV=production'
 
 substitutions:
   _REGION: 'us-central1'

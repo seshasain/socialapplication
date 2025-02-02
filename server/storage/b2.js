@@ -68,6 +68,7 @@ export async function uploadToB2(buffer, fileName, contentType) {
     throw error;
   }
 }
+
 export async function getFileFromB2(fileName) {
   try {
     await ensureAuthorized();
@@ -88,3 +89,24 @@ export async function getFileFromB2(fileName) {
     throw error;
   }
 }
+
+export async function verifyB2Credentials() {
+  try {
+    await b2.authorize();
+    const response = await b2.listBuckets();
+    const bucket = response.data.buckets.find(
+      b => b.bucketId === process.env.VITE_B2_BUCKET_ID
+    );
+    
+    if (!bucket) {
+      throw new Error('Bucket not found');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('B2 credentials verification failed:', error);
+    throw error;
+  }
+}
+
+export { b2 };
