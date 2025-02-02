@@ -35,6 +35,7 @@ jobs:
           VITE_B2_ENDPOINT_URL: ${{ secrets.VITE_B2_ENDPOINT_URL }}
           VITE_B2_REGION: ${{ secrets.VITE_B2_REGION }}
           VITE_B2_PUBLIC_URL: ${{ secrets.VITE_B2_PUBLIC_URL }}
+          VITE_ENV: production
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
