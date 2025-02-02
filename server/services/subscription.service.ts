@@ -1,9 +1,17 @@
-import { PrismaClient, Subscription as PrismaSubscription, Plan as PrismaPlan, UsageRecord, Prisma, SubscriptionStatus } from '@prisma/client';
+import { PrismaClient, Subscription as PrismaSubscription, Plan as PrismaPlan, UsageRecord, Prisma } from '@prisma/client';
 import { plans } from '../config/plans';
 
 const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error']
 });
+
+enum SubscriptionStatus {
+  TRIAL = 'TRIAL',
+  ACTIVE = 'ACTIVE',
+  PAST_DUE = 'PAST_DUE',
+  CANCELING = 'CANCELING',
+  CANCELLED = 'CANCELLED'
+}
 
 type SubscriptionWithPlan = PrismaSubscription & {
   plan: PrismaPlan;
@@ -111,7 +119,7 @@ export class SubscriptionService {
       where: { userId }
     });
 
-    if (!subscription || subscription.status !== SubscriptionStatus.TRIAL) {
+    if (!subscription || subscription.status !== 'trial') {
       throw new Error('No active trial found');
     }
 
@@ -522,50 +530,118 @@ export class SubscriptionService {
 
   async pauseSubscription(userId: string, duration: number): Promise<void> {
     const subscription = await this.prisma.subscription.findUnique({
-      where: { userId }
+      where: { userId },
+      include: { plan: true }
     });
 
     if (!subscription) {
-      throw new Error('No subscription found');
+      throw new Error('No active subscription found');
     }
 
-    if (subscription.status === SubscriptionStatus.CANCELING) {
-      throw new Error('Subscription is already being cancelled');
+    if (subscription.status !== 'active') {
+      throw new Error('Subscription must be active to pause');
     }
 
     const pauseStart = new Date();
     const pauseEnd = new Date(pauseStart);
     pauseEnd.setDate(pauseEnd.getDate() + duration);
 
-    await this.prisma.subscription.update({
-      where: { userId },
-      data: {
-        status: SubscriptionStatus.CANCELING,
-        pauseStart,
-        pauseEnd
+    // Calculate remaining days in current period
+    const remainingDays = Math.ceil(
+      (subscription.currentPeriodEnd.getTime() - pauseStart.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      // Create a credit for unused time
+      if (remainingDays > 0) {
+        await tx.usageRecord.create({
+          data: {
+            subscriptionId: subscription.id,
+            feature: 'pause_credit',
+            quantity: remainingDays,
+            metadata: {
+              type: 'pause_credit',
+              originalPeriodEnd: subscription.currentPeriodEnd.toISOString()
+            } as Prisma.JsonObject
+          }
+        });
       }
+
+      // Update subscription
+      await tx.subscription.update({
+        where: { userId },
+        data: {
+          status: 'paused',
+          currentPeriodEnd: pauseEnd
+        }
+      });
     });
   }
 
   async resumeSubscription(userId: string): Promise<void> {
     const subscription = await this.prisma.subscription.findUnique({
-      where: { userId }
+      where: { userId },
+      include: { plan: true }
     });
 
     if (!subscription) {
       throw new Error('No subscription found');
     }
 
-    if (subscription.status !== SubscriptionStatus.CANCELING) {
+    if (subscription.status !== 'paused') {
       throw new Error('Subscription is not paused');
     }
 
-    await this.prisma.subscription.update({
-      where: { userId },
-      data: {
-        status: SubscriptionStatus.ACTIVE,
-        pauseStart: null,
-        pauseEnd: null
+    // Find pause credit if any
+    const pauseCredit = await this.prisma.usageRecord.findFirst({
+      where: {
+        subscriptionId: subscription.id,
+        feature: 'pause_credit',
+        metadata: {
+          path: ['type'],
+          equals: 'pause_credit'
+        }
+      },
+      orderBy: {
+        id: 'desc'
+      }
+    });
+
+    const resumeDate = new Date();
+    const newPeriodEnd = new Date(resumeDate);
+
+    if (pauseCredit) {
+      // Add credited days to new period
+      newPeriodEnd.setDate(newPeriodEnd.getDate() + pauseCredit.quantity);
+    } else {
+      // Default to one month if no credit
+      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.subscription.update({
+        where: { userId },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodStart: resumeDate,
+          currentPeriodEnd: newPeriodEnd
+        }
+      });
+
+      if (pauseCredit) {
+        // Mark credit as used
+        const metadataUpdate: Prisma.JsonObject = {
+          ...(pauseCredit.metadata as Prisma.JsonObject),
+          used: true,
+          usedAt: new Date().toISOString()
+        };
+
+        await tx.usageRecord.update({
+          where: { id: pauseCredit.id },
+          data: {
+            metadata: metadataUpdate
+          }
+        });
       }
     });
   }

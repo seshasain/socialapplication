@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
-import { User } from '@prisma/client';
 
 // Extend Express Request type to include user
 declare global {
@@ -16,11 +15,7 @@ declare global {
   }
 }
 
-export interface AuthenticatedRequest extends Request {
-  user: User;
-}
-
-export const authenticateToken = (
+export const authenticateUser = (
   req: Request,
   res: Response,
   next: NextFunction
@@ -41,7 +36,8 @@ export const authenticateToken = (
       };
 
       prisma.user.findUnique({
-        where: { id: decoded.id }
+        where: { id: decoded.id },
+        select: { id: true, email: true, role: true }
       })
         .then(user => {
           if (!user) {
@@ -49,7 +45,7 @@ export const authenticateToken = (
             resolve();
             return;
           }
-          (req as AuthenticatedRequest).user = user;
+          req.user = user;
           next();
           resolve();
         })
@@ -64,7 +60,4 @@ export const authenticateToken = (
       resolve();
     }
   });
-};
-
-// Keep the existing authenticateUser function as an alias
-export const authenticateUser = authenticateToken; 
+}; 
