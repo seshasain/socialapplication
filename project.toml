@@ -8,4 +8,12 @@ value = "production"
 
 [[build.env]]
 name = "NPM_CONFIG_LEGACY_PEER_DEPS"
-value = "true" 
+value = "true"
+
+[[build.env]]
+name = "NPM_CONFIG_PRODUCTION"
+value = "false"
+
+[[build.env]]
+name = "DATABASE_URL"
+value = "postgresql://postgres.kxywrsouzhsuecppmvax:LLMnOEwBs1tpzI4b@aws-0-us-west-1.pooler.supabase.com:5432/postgres" 
