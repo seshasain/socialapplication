@@ -1,8 +1,13 @@
 steps:
-  # Install dependencies
+  # Clean and install dependencies
   - name: 'node:18'
-    entrypoint: npm
-    args: ['install', '--legacy-peer-deps']
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        rm -rf node_modules
+        rm -f package-lock.json
+        npm install --legacy-peer-deps
 
   # Generate Prisma client
   - name: 'node:18'
