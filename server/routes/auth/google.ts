@@ -1,32 +1,26 @@
-import express, { Response } from 'express';
-import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
-import { authenticateToken } from '../../middleware/auth';
-import { AuthenticatedRequest } from '../../types/auth';
+import { Router, Response, RequestHandler } from 'express';
+import { OAuth2Client } from 'google-auth-library';
+import jwt from 'jsonwebtoken';
+import { authenticateToken, AuthenticatedRequest } from '../../middleware/auth';
+import prisma from '../../lib/prisma';
 
-const router = express.Router();
-const prisma = new PrismaClient();
-
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
-);
+const router = Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Start OAuth flow
-router.get('/auth/google', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const authUrl = oauth2Client.generateAuthUrl({
+router.get('/auth/google', authenticateToken, ((req, res) => {
+  const authUrl = client.generateAuthUrl({
     access_type: 'offline',
     scope: [
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/documents.readonly',
     ],
     prompt: 'consent',
-    state: req.user.id, // Pass user ID to callback
+    state: (req as AuthenticatedRequest).user.id,
   });
 
   res.redirect(authUrl);
-});
+}) as RequestHandler);
 
 // OAuth callback
 router.get('/auth/google/callback', async (req, res) => {
@@ -39,7 +33,7 @@ router.get('/auth/google/callback', async (req, res) => {
     }
 
     // Exchange code for tokens
-    const { tokens } = await oauth2Client.getToken(code as string);
+    const { tokens } = await client.getToken(code as string);
     
     if (!tokens.access_token || !tokens.refresh_token) {
       throw new Error('Failed to get tokens');
@@ -66,5 +60,34 @@ router.get('/auth/google/callback', async (req, res) => {
     res.redirect('/integrations?error=auth_failed');
   }
 });
+
+router.get('/profile', authenticateToken, (async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: (req as AuthenticatedRequest).user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        avatar: true,
+        subscription: {
+          include: {
+            plan: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}) as RequestHandler);
 
 export default router; 
