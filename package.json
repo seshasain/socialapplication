@@ -18,10 +18,11 @@
     "dev:server": "nodemon --exec tsx server/index.js",
     "start:full": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed && concurrently \"npm run dev:server\" \"npm run dev\"",
     "start": "npm run prisma:generate && tsx server/index.js",
-    "gcp-build": "npm run prisma:generate"
+    "gcp-build": "npm run prisma:generate",
+    "preinstall": "npm install --package-lock-only --ignore-scripts"
   },
   "dependencies": {
-    "@auth/core": "0.34.2",
+    "@auth/core": "0.28.2",
     "@aws-sdk/client-s3": "^3.525.0",
     "@aws-sdk/s3-request-presigner": "^3.525.0",
     "@emotion/react": "^11.14.0",
@@ -62,7 +63,7 @@
     "google-auth-library": "^9.15.1",
     "googleapis": "^39.2.0",
     "helmet": "^7.1.0",
-    "ioredis": "^5.3.2",
+    "ioredis": "^4.28.5",
     "jsonwebtoken": "^9.0.2",
     "limiter": "2.0.1",
     "lucide-react": "^0.344.0",

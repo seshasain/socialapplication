@@ -2,23 +2,38 @@ steps:
   # Install dependencies
   - name: 'node:18'
     entrypoint: npm
-    args: ['install']
+    args: ['install', '--legacy-peer-deps']
+
+  # Generate Prisma client
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['run', 'prisma:generate']
 
   # Build the application
   - name: 'node:18'
     entrypoint: npm
     args: ['run', 'build']
+    env:
+      - 'NODE_ENV=production'
 
   # Deploy to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
       - 'deploy'
       - 'crosspodium-api'
-      - '--source'
-      - '.'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE}:${COMMIT_SHA}'
       - '--region'
-      - 'us-central1'
+      - '${_REGION}'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated' 
+      - '--allow-unauthenticated'
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'cloud-run-source-deploy'
+  _SERVICE: 'crosspodium-api'
+
+options:
+  logging: CLOUD_LOGGING_ONLY 
