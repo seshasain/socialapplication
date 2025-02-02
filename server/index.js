@@ -26,6 +26,8 @@ import B2 from 'backblaze-b2';
 import { ensureAuthorized } from './storage/b2.js';
 import { SubscriptionStatus } from '@prisma/client';
 import { Client } from '@notionhq/client';
+import integrationsRoutes from './routes/integrations';
+import userRoutes from './routes/user';
 
 dotenv.config();
 
@@ -118,7 +120,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Mount routes
-app.use('/api/integrations', integrationsRouter);
+app.use('/api/integrations', integrationsRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/media', mediaRoutes);
 
 // Enhanced health check endpoint

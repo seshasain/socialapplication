@@ -5,22 +5,27 @@ import { validateSourceConfig } from '../middleware/validation';
 import { PrismaClient } from '@prisma/client';
 import { AuthenticatedRequest } from '../types/auth';
 import asyncHandler from 'express-async-handler';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 // Get all connected sources for a user
 router.get('/sources', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
   const sources = await prisma.contentSource.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id
+    },
     include: {
       syncStatus: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: {
+          createdAt: 'desc'
+        },
         take: 1
       }
     }
   });
+
   res.json({ sources });
 }));
 
@@ -116,30 +121,32 @@ router.get('/sources/:sourceId/status', authenticateUser, asyncHandler(async (re
 // Get integration stats
 router.get('/stats', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
   const { user } = req as AuthenticatedRequest;
-  const [totalPosts, socialAccounts] = await Promise.all([
-    prisma.contentPost.count({
-      where: { userId: user.id }
-    }),
-    prisma.socialAccount.findMany({
-      where: { userId: user.id }
-    })
-  ]);
+  
+  const stats = await prisma.contentSource.groupBy({
+    by: ['type'],
+    where: {
+      userId: user.id
+    },
+    _count: {
+      _all: true
+    }
+  });
 
-  const totalFollowers = socialAccounts.reduce((sum, account) => sum + (account.followerCount || 0), 0);
-  const scheduledPosts = await prisma.post.count({
-    where: { 
-      userId: user.id,
-      scheduledDate: {
-        gt: new Date()
+  const syncStats = await prisma.syncStatus.groupBy({
+    by: ['status'],
+    where: {
+      source: {
+        userId: user.id
       }
+    },
+    _count: {
+      _all: true
     }
   });
 
   res.json({
-    totalPosts,
-    engagementRate: totalPosts > 0 ? 0 : 0, // Calculate this based on actual engagement metrics
-    totalFollowers,
-    scheduledPosts
+    sources: stats,
+    syncs: syncStats
   });
 }));
 

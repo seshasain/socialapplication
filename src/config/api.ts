@@ -51,6 +51,13 @@ export const API_ROUTES = {
   user: {
     profile: '/api/user/profile',
     settings: '/api/user/settings',
+    usage: '/api/user/usage',
     password: '/api/auth/password',
+  },
+  integrations: {
+    sources: '/api/integrations/sources',
+    stats: '/api/integrations/stats',
+    sync: (sourceId: string) => `/api/integrations/sync/${sourceId}`,
+    source: (id: string) => `/api/integrations/sources/${id}`,
   },
 } as const;
