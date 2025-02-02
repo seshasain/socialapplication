@@ -1,6 +1,8 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
+import { authenticateUser } from '../middleware/auth';
+import { AuthenticatedRequest } from '../types/auth';
+import { SubscriptionService } from '../services/subscription.service';
 
 interface PlatformUsageData {
   used: number;
@@ -24,9 +26,23 @@ interface RolloverPosts {
 
 const router = Router();
 const prisma = new PrismaClient();
+const subscriptionService = new SubscriptionService();
+
+// Type-safe middleware wrapper
+const typedHandler = (
+  handler: (req: AuthenticatedRequest, res: Response) => Promise<void>
+) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await handler(req as AuthenticatedRequest, res);
+    } catch (error) {
+      next(error);
+    }
+  };
+};
 
 // Get usage statistics
-const getStats: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+router.get('/stats', authenticateUser, typedHandler(async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).user.id;
 
@@ -118,10 +134,10 @@ const getStats: RequestHandler = async (req: Request, res: Response): Promise<vo
     console.error('Error fetching usage stats:', error);
     res.status(500).json({ error: 'Failed to fetch usage statistics' });
   }
-};
+}));
 
 // Track post usage
-const trackUsage: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+router.post('/track', authenticateUser, typedHandler(async (req, res) => {
   const { platforms, postType, count } = req.body;
   const userId = (req as AuthenticatedRequest).user.id;
 
@@ -201,9 +217,6 @@ const trackUsage: RequestHandler = async (req: Request, res: Response): Promise<
     console.error('Error tracking usage:', error);
     res.status(500).json({ error: 'Failed to track usage' });
   }
-};
-
-router.get('/stats', authenticateToken, getStats);
-router.post('/track', authenticateToken, trackUsage);
+}));
 
 export default router; 

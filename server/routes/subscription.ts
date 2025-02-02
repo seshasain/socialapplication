@@ -1,14 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateUser } from '../middleware/auth';
+import { AuthenticatedRequest } from '../types/auth';
 import { SubscriptionService } from '../services/subscription.service';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    id: string;
-    email: string;
-    role: string;
-  };
-}
 
 const router = Router();
 const subscriptionService = new SubscriptionService();
@@ -27,7 +20,7 @@ const typedHandler = (
 };
 
 // Get current plan
-router.get('/current-plan', authenticateToken as any, typedHandler(async (req, res) => {
+router.get('/current-plan', authenticateUser, typedHandler(async (req, res) => {
   const plan = await subscriptionService.getCurrentPlan(req.user.id);
   
   if (!plan) {
@@ -39,7 +32,7 @@ router.get('/current-plan', authenticateToken as any, typedHandler(async (req, r
 }));
 
 // Upgrade plan
-router.post('/upgrade', authenticateToken as any, typedHandler(async (req, res) => {
+router.post('/upgrade', authenticateUser, typedHandler(async (req, res) => {
   const { planId, preserveUnusedPosts, transferSettings, startImmediately } = req.body;
 
   await subscriptionService.upgradePlan(req.user.id, planId, {
@@ -52,26 +45,26 @@ router.post('/upgrade', authenticateToken as any, typedHandler(async (req, res) 
 }));
 
 // Cancel subscription
-router.post('/cancel', authenticateToken as any, typedHandler(async (req, res) => {
+router.post('/cancel', authenticateUser, typedHandler(async (req, res) => {
   await subscriptionService.cancelSubscription(req.user.id);
   res.json({ success: true });
 }));
 
 // Reactivate subscription
-router.post('/reactivate', authenticateToken as any, typedHandler(async (req, res) => {
+router.post('/reactivate', authenticateUser, typedHandler(async (req, res) => {
   await subscriptionService.reactivateSubscription(req.user.id);
   res.json({ success: true });
 }));
 
 // Update payment method
-router.put('/payment-method', authenticateToken as any, typedHandler(async (req, res) => {
+router.put('/payment-method', authenticateUser, typedHandler(async (req, res) => {
   const { paymentMethodId } = req.body;
   await subscriptionService.updatePaymentMethod(req.user.id, paymentMethodId);
   res.json({ success: true });
 }));
 
 // Get upgrade preview
-router.get('/upgrade-preview', authenticateToken as any, typedHandler(async (req, res) => {
+router.get('/upgrade-preview', authenticateUser, typedHandler(async (req, res) => {
   const { planId } = req.query;
   
   if (typeof planId !== 'string') {
