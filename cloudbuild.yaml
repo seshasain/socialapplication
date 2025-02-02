@@ -1,32 +1,25 @@
 steps:
-  # Clean and install dependencies
-  - name: 'node:18'
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        rm -rf node_modules
-        rm -f package-lock.json
-        npm install --legacy-peer-deps
-
-  # Generate Prisma client
-  - name: 'node:18'
-    entrypoint: npm
-    args: ['run', 'prisma:generate']
-
-  # Build the application
-  - name: 'node:18'
-    entrypoint: npm
-    args: ['run', 'build']
+  # Build using Cloud Native Buildpacks
+  - name: 'gcr.io/k8s-skaffold/pack'
     env:
+      - 'GOOGLE_NODEJS_EXTRA_ARGS=--legacy-peer-deps'
       - 'NODE_ENV=production'
+      - 'NPM_CONFIG_LEGACY_PEER_DEPS=true'
+    args:
+      - build
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE}:${COMMIT_SHA}'
+      - '--builder=gcr.io/buildpacks/builder:v1'
+      - '--path=.'
+      - '--env=GOOGLE_NODEJS_EXTRA_ARGS=--legacy-peer-deps'
+      - '--env=NODE_ENV=production'
+      - '--env=NPM_CONFIG_LEGACY_PEER_DEPS=true'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
       - 'deploy'
-      - 'crosspodium-api'
+      - '${_SERVICE}'
       - '--image'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE}:${COMMIT_SHA}'
       - '--region'
