@@ -25,7 +25,8 @@ jobs:
         run: |
           rm -rf node_modules
           rm -f package-lock.json
-          npm install --legacy-peer-deps
+          npm cache clean --force
+          npm install --no-package-lock --legacy-peer-deps
 
       - name: Build
         run: npm run build
@@ -39,6 +40,7 @@ jobs:
           VITE_B2_REGION: ${{ secrets.VITE_B2_REGION }}
           VITE_B2_PUBLIC_URL: ${{ secrets.VITE_B2_PUBLIC_URL }}
           VITE_ENV: production
+          NODE_ENV: production
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
