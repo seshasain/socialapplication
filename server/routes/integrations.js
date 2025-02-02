@@ -1,17 +1,16 @@
-import express, { Response, Request } from 'express';
+import express from 'express';
 import { integrationService } from '../services/integrations';
 import { authenticateUser } from '../middleware/auth';
 import { validateSourceConfig } from '../middleware/validation';
 import { PrismaClient } from '@prisma/client';
-import { AuthenticatedRequest } from '../types/auth';
 import asyncHandler from 'express-async-handler';
 import prisma from '../lib/prisma';
 
 const router = express.Router();
 
 // Get all connected sources for a user
-router.get('/sources', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.get('/sources', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   const sources = await prisma.contentSource.findMany({
     where: {
       userId: user.id
@@ -30,8 +29,8 @@ router.get('/sources', authenticateUser, asyncHandler(async (req: Request, res: 
 }));
 
 // Connect Google Docs
-router.post('/connect/google-docs', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.post('/connect/google-docs', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   const result = await integrationService.connectGoogleDocs(
     user.id,
     req.body.credentials
@@ -40,8 +39,8 @@ router.post('/connect/google-docs', authenticateUser, asyncHandler(async (req: R
 }));
 
 // Connect WordPress
-router.post('/connect/wordpress', authenticateUser, validateSourceConfig, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.post('/connect/wordpress', authenticateUser, validateSourceConfig, asyncHandler(async (req, res) => {
+  const { user } = req;
   const result = await integrationService.connectWordPress(
     user.id,
     req.body.config
@@ -50,14 +49,14 @@ router.post('/connect/wordpress', authenticateUser, validateSourceConfig, asyncH
 }));
 
 // Sync content from a source
-router.post('/sync/:sourceId', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
+router.post('/sync/:sourceId', authenticateUser, asyncHandler(async (req, res) => {
   const result = await integrationService.syncContent(req.params.sourceId);
   res.json(result);
 }));
 
 // Get posts from a source
-router.get('/posts/:sourceId', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.get('/posts/:sourceId', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   const posts = await prisma.contentPost.findMany({
     where: {
       sourceId: req.params.sourceId,
@@ -71,8 +70,8 @@ router.get('/posts/:sourceId', authenticateUser, asyncHandler(async (req: Reques
 }));
 
 // Update post settings
-router.patch('/posts/:postId', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.patch('/posts/:postId', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   const post = await prisma.contentPost.update({
     where: { 
       id: req.params.postId,
@@ -89,8 +88,8 @@ router.patch('/posts/:postId', authenticateUser, asyncHandler(async (req: Reques
 }));
 
 // Disconnect a source
-router.delete('/sources/:sourceId', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.delete('/sources/:sourceId', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   await prisma.contentSource.delete({
     where: { 
       id: req.params.sourceId,
@@ -101,8 +100,8 @@ router.delete('/sources/:sourceId', authenticateUser, asyncHandler(async (req: R
 }));
 
 // Get source status
-router.get('/sources/:sourceId/status', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.get('/sources/:sourceId/status', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   const status = await prisma.syncStatus.findFirst({
     where: { 
       sourceId: req.params.sourceId,
@@ -119,8 +118,8 @@ router.get('/sources/:sourceId/status', authenticateUser, asyncHandler(async (re
 }));
 
 // Get integration stats
-router.get('/stats', authenticateUser, asyncHandler(async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+router.get('/stats', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
   
   const stats = await prisma.contentSource.groupBy({
     by: ['type'],
