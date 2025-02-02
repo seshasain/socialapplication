@@ -1,14 +1,13 @@
-import express, { Response, Request } from 'express';
+import express from 'express';
 import { authenticateUser } from '../middleware/auth';
 import prisma from '../lib/prisma';
 import asyncHandler from 'express-async-handler';
-import { AuthenticatedRequest } from '../types/auth';
 
 const router = express.Router();
 
 // Get user usage statistics
-router.get('/usage', authenticateUser, asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { user } = req as AuthenticatedRequest;
+router.get('/usage', authenticateUser, asyncHandler(async (req, res) => {
+  const { user } = req;
 
   const [monthlyUsage, subscription] = await Promise.all([
     prisma.monthlyUsage.findFirst({

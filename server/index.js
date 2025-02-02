@@ -20,13 +20,13 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import mediaRoutes from './routes/media.js';
-import integrationsRoutes from './routes/integrations';
+import integrationsRoutes from './routes/integrations.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import B2 from 'backblaze-b2';
 import { ensureAuthorized } from './storage/b2.js';
 import { SubscriptionStatus } from '@prisma/client';
 import { Client } from '@notionhq/client';
-import userRoutes from './routes/user';
+import userRoutes from './routes/user.js';
 
 dotenv.config();
 
