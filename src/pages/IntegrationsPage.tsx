@@ -41,7 +41,8 @@ import {
   ListItemIcon,
   ListItemSecondaryAction,
   CircularProgress,
-  Slider
+  Slider,
+  Backdrop
 } from '@mui/material';
 import IntegrationsList from '../components/integrations/IntegrationsList';
 import ContentPostsList from '../components/integrations/ContentPostsList';
@@ -64,11 +65,15 @@ import {
   Schedule as ScheduleIcon,
   Notifications as NotificationsIcon,
   Speed as SpeedIcon,
-  History as HistoryIcon
+  History as HistoryIcon,
+  Dashboard as DashboardIcon,
+  Bolt as BoltIcon
 } from '@mui/icons-material';
-import { Plus } from 'lucide-react';
+import { Plus, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { keyframes } from '@emotion/react';
+import { API_URL } from '../config/api';
+import api from '../utils/apiClient';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -196,10 +201,9 @@ const IntegrationsPage: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/integrations/stats');
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
+      const response = await api.get('/api/integrations/stats');
+      if (response.data) {
+        setStats(response.data);
       }
     } catch (error) {
       console.error('Failed to fetch integration stats:', error);
@@ -211,9 +215,11 @@ const IntegrationsPage: React.FC = () => {
   };
 
   const handleRefresh = async () => {
+    if (isRefreshing) return; // Prevent multiple refreshes
+    
     setIsRefreshing(true);
     try {
-      await fetch('/api/integrations/sync/all', { method: 'POST' });
+      await api.post('/api/integrations/sync/all');
       await fetchStats();
     } catch (error) {
       console.error('Failed to sync integrations:', error);
@@ -772,56 +778,140 @@ const IntegrationsPage: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="px-8 py-6"
+        className="px-8 py-6 space-y-8"
       >
-        {/* Header Section */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Integrations Hub
-              {isPremium && (
-                <span className="ml-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                  PRO
-                </span>
-              )}
-            </h1>
-            <p className="mt-1 text-gray-600">
-              {isPremium 
-                ? 'Unlock the full potential of your content with premium integrations'
-                : 'Connect and manage your content sources in one place'}
-            </p>
+        {/* Premium Header Section */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8 shadow-xl">
+          <div className="relative z-10">
+            <div className="flex justify-between items-start">
+              <div className="space-y-2">
+                <h1 className="text-3xl font-bold flex items-center gap-3">
+                  Integrations Hub
+                  {isPremium && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white/20 backdrop-blur-sm">
+                      <Zap className="w-4 h-4 mr-1" />
+                      PRO
+                    </span>
+                  )}
+                </h1>
+                <p className="text-lg text-white/80 max-w-2xl">
+                  {isPremium 
+                    ? 'Unlock the full potential of your content with premium integrations and advanced automation'
+                    : 'Connect and manage your content sources in one centralized dashboard'}
+                </p>
+              </div>
+              <div className="flex items-center space-x-3">
+                <Tooltip title="Refresh">
+                  <IconButton
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    sx={{ 
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      backdropFilter: 'blur(8px)',
+                      color: 'white',
+                      padding: '10px',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                      },
+                      animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+                      '@keyframes spin': {
+                        '0%': { transform: 'rotate(0deg)' },
+                        '100%': { transform: 'rotate(360deg)' },
+                      },
+                    }}
+                  >
+                    <RefreshIcon />
+                  </IconButton>
+                </Tooltip>
+                <Button
+                  onClick={() => setAddDialogOpen(true)}
+                  sx={{
+                    background: 'white',
+                    color: 'rgb(37, 99, 235)',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    padding: '8px 20px',
+                    borderRadius: '12px',
+                    textTransform: 'none',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      background: 'rgb(255, 255, 255)',
+                      transform: 'translateY(-1px)',
+                      boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.15), 0 3px 6px -2px rgba(0, 0, 0, 0.1)',
+                    },
+                    '&:active': {
+                      transform: 'translateY(0)',
+                      boxShadow: '0 2px 4px -1px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06)',
+                    },
+                    '.MuiButton-startIcon': {
+                      marginRight: '8px',
+                    }
+                  }}
+                  startIcon={
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgb(37, 99, 235)',
+                        color: 'white',
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Box>
+                  }
+                >
+                  Add Integration
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleRefresh}
-              className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${
-                isRefreshing ? 'animate-spin' : ''
-              }`}
-            >
-              <RefreshIcon className="w-5 h-5 text-gray-600" />
-            </button>
-            <button
-              onClick={() => setAddDialogOpen(true)}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Add Integration
-            </button>
-          </div>
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/50 to-indigo-600/50" />
+          <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute -left-10 -top-10 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[
-            { title: 'Total Integrations', value: stats.total, color: 'blue' },
-            { title: 'Active', value: stats.active, color: 'green' },
-            { title: 'Failed', value: stats.failed, color: 'red' },
-            { title: 'Pending', value: stats.pending, color: 'yellow' }
+            { 
+              title: 'Total Integrations', 
+              value: stats.total, 
+              bgColor: 'rgb(239, 246, 255)',
+              iconColor: 'rgb(37, 99, 235)',
+              icon: <DashboardIcon />
+            },
+            { 
+              title: 'Active', 
+              value: stats.active, 
+              bgColor: 'rgb(240, 253, 244)',
+              iconColor: 'rgb(22, 163, 74)',
+              icon: <CheckCircleIcon />
+            },
+            { 
+              title: 'Failed', 
+              value: stats.failed, 
+              bgColor: 'rgb(254, 242, 242)',
+              iconColor: 'rgb(220, 38, 38)',
+              icon: <ErrorIcon />
+            },
+            { 
+              title: 'Pending', 
+              value: stats.pending, 
+              bgColor: 'rgb(254, 249, 195)',
+              iconColor: 'rgb(234, 179, 8)',
+              icon: <SyncIcon />
+            }
           ].map((stat, index) => (
             <motion.div
               key={index}
@@ -829,96 +919,119 @@ const IntegrationsPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-200">
-                <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full bg-${stat.color}-500 mr-2`} />
-                  <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+              <div className="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-lg transition-all duration-200 group">
+                <div className="flex items-center justify-between">
+                  <div style={{ backgroundColor: stat.bgColor }} className="w-10 h-10 rounded-lg flex items-center justify-center">
+                    <span style={{ color: stat.iconColor }}>{stat.icon}</span>
+                  </div>
+                  <span style={{ color: stat.iconColor }} className="text-sm font-medium">
+                    {index === 0 ? 'Last 30 days' : ''}
+                  </span>
                 </div>
-                <p className="mt-4 text-3xl font-bold text-gray-900">{stat.value}</p>
+                <div className="mt-4">
+                  <h3 className="text-lg font-medium text-gray-600">{stat.title}</h3>
+                  <p className="mt-2 text-3xl font-bold text-gray-900">{stat.value}</p>
+                </div>
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-transparent to-transparent group-hover:via-blue-500 transition-all duration-300" />
               </div>
             </motion.div>
           ))}
         </div>
 
         {/* Main Content */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {isRefreshing && (
-            <div className="h-1 bg-blue-100 rounded-t-xl">
-              <div className="h-full bg-blue-600 rounded-xl animate-pulse" style={{ width: '60%' }} />
+            <div className="h-1">
+              <motion.div
+                className="h-full bg-blue-600"
+                initial={{ width: "0%" }}
+                animate={{ width: "100%" }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+              />
             </div>
           )}
           
           <div className="border-b border-gray-200">
             <div className="flex justify-between items-center px-6">
-              <div className="flex-1">
-                <Tabs
-                  value={tabValue}
-                  onChange={handleTabChange}
-                  aria-label="integration tabs"
-                  className="min-h-[64px]"
-                  sx={{
-                    '& .MuiTab-root': {
-                      fontSize: '0.875rem',
-                      textTransform: 'none',
-                      fontWeight: 500,
-                      color: 'rgb(75, 85, 99)',
-                      '&.Mui-selected': {
-                        color: 'rgb(37, 99, 235)',
-                      },
+              <Tabs
+                value={tabValue}
+                onChange={handleTabChange}
+                className="min-h-[64px]"
+                sx={{
+                  '& .MuiTab-root': {
+                    fontSize: '0.875rem',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    color: 'rgb(75, 85, 99)',
+                    '&.Mui-selected': {
+                      color: 'rgb(37, 99, 235)',
                     },
-                    '& .MuiTabs-indicator': {
-                      height: 2,
-                      backgroundColor: 'rgb(37, 99, 235)',
-                    },
-                  }}
-                >
-                  <Tab 
-                    label={
-                      <div className="flex items-center space-x-2">
-                        <span>Content Sources</span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                          {stats.total}
-                        </span>
-                      </div>
-                    }
-                    {...a11yProps(0)}
-                  />
-                  <Tab 
-                    label={
-                      <div className="flex items-center space-x-2">
-                        <span>Content Posts</span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                          24
-                        </span>
-                      </div>
-                    }
-                    {...a11yProps(1)}
-                  />
-                </Tabs>
-              </div>
-              <div className="flex items-center space-x-2">
+                  },
+                  '& .MuiTabs-indicator': {
+                    height: 2,
+                    backgroundColor: 'rgb(37, 99, 235)',
+                  },
+                }}
+              >
+                <Tab 
+                  label={
+                    <div className="flex items-center space-x-2">
+                      <span>Content Sources</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        {stats.total}
+                      </span>
+                    </div>
+                  }
+                  {...a11yProps(0)}
+                />
+                <Tab 
+                  label={
+                    <div className="flex items-center space-x-2">
+                      <span>Content Posts</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                        24
+                      </span>
+                    </div>
+                  }
+                  {...a11yProps(1)}
+                />
+              </Tabs>
+
+              <div className="flex items-center space-x-3">
                 <div className="relative">
-                  <input
-                    type="text"
+                  <TextField
                     placeholder="Search integrations..."
                     value={searchQuery}
                     onChange={handleSearch}
-                    className="w-64 px-4 py-2 pr-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    variant="outlined"
+                    size="small"
+                    className="w-64"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon className="text-gray-400" />
+                        </InputAdornment>
+                      ),
+                      className: "bg-gray-50 border-0 rounded-lg",
+                    }}
                   />
-                  <SearchIcon className="absolute right-3 top-2.5 w-5 h-5 text-gray-400" />
                 </div>
-                <button
-                  onClick={() => setFilterDrawerOpen(true)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <FilterListIcon className="w-5 h-5 text-gray-600" />
-                </button>
-                <button
-                  onClick={handleSortClick}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <SortIcon className="w-5 h-5 text-gray-600" />
-                </button>
+                <Tooltip title="Filter">
+                  <IconButton
+                    onClick={() => setFilterDrawerOpen(true)}
+                    className="hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <FilterListIcon className="text-gray-600" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Sort">
+                  <IconButton
+                    onClick={handleSortClick}
+                    className="hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <SortIcon className="text-gray-600" />
+                  </IconButton>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -949,18 +1062,35 @@ const IntegrationsPage: React.FC = () => {
       
       <Collapse in={showPremiumAlert}>
         <div className="mx-8 mt-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
-            <div className="flex items-center">
-              <InfoIcon className="w-5 h-5 text-blue-600 mr-3" />
-              <p className="text-blue-700">Advanced features are available in the PRO plan</p>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg p-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  <BoltIcon className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-blue-700 font-medium">
+                    Unlock premium features with our Pro plan
+                  </p>
+                  <p className="text-sm text-blue-600/80 mt-0.5">
+                    Get access to advanced filters, automation, and more
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => {/* Handle upgrade */}}
+                variant="contained"
+                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                startIcon={<Zap className="w-4 h-4" />}
+              >
+                Upgrade to Pro
+              </Button>
             </div>
-            <button
-              onClick={() => {/* Handle upgrade */}}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Upgrade to PRO
-            </button>
-          </div>
+          </motion.div>
         </div>
       </Collapse>
 
@@ -972,6 +1102,20 @@ const IntegrationsPage: React.FC = () => {
           fetchStats();
         }}
       />
+
+      <Backdrop
+        sx={{ 
+          color: '#fff', 
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          backdropFilter: 'blur(4px)'
+        }}
+        open={isSyncing}
+      >
+        <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 flex flex-col items-center space-y-4">
+          <CircularProgress color="inherit" />
+          <Typography>Syncing your integrations...</Typography>
+        </div>
+      </Backdrop>
     </div>
   );
 };

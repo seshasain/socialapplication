@@ -18,11 +18,21 @@ export interface ContentPost {
   title: string;
   content: string;
   platforms: string[];
-  status: string;
+  status: 'published' | 'draft' | 'error';
   scheduledTime?: Date;
   images: string[];
   metadata: any;
   externalId: string;
+  featuredImage?: string;
+  excerpt?: string;
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  url?: string;
+  authors?: Array<{
+    name: string;
+    avatar?: string;
+  }>;
 }
 
 export interface SyncStatus {
@@ -30,6 +40,7 @@ export interface SyncStatus {
   sourceId: string;
   status: 'success' | 'error' | 'in_progress';
   itemsProcessed: number;
+  totalItems: number;
   error?: string;
   createdAt: Date;
 }

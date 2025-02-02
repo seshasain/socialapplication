@@ -3,7 +3,42 @@ import { Client } from '@notionhq/client';
 import axios from 'axios';
 import { oauthConfig } from '../config/oauth';
 import prisma from '../lib/prisma';
-import { randomBytes } from 'crypto';
+import { Credentials } from 'google-auth-library';
+import { Prisma } from '@prisma/client';
+
+interface OAuthState {
+  userId: string;
+  provider: string;
+}
+
+interface NotionTokenResponse {
+  access_token: string;
+  workspace_id: string;
+  owner: {
+    workspace: boolean;
+    user: {
+      id: string;
+      name: string;
+      avatar_url: string;
+    };
+  };
+}
+
+interface WordPressTokenResponse {
+  access_token: string;
+  blog_id: string;
+  blog_url: string;
+}
+
+interface IntegrationMetadata {
+  tokenType?: string | null;
+  idToken?: string | null;
+  workspaceId?: string;
+  owner?: Record<string, unknown>;
+  blogId?: string;
+  blogUrl?: string;
+  [key: string]: unknown;
+}
 
 // Initialize Google OAuth2 client
 const googleOAuth2Client = new google.auth.OAuth2(
@@ -37,7 +72,6 @@ export class OAuthService {
 
   static getWordPressAuthUrl(userId: string): string {
     const state = this.encodeState({ userId, provider: 'wordpress' });
-    // For WordPress.com OAuth
     return `https://public-api.wordpress.com/oauth2/authorize?client_id=${
       oauthConfig.wordpress.clientId
     }&redirect_uri=${encodeURIComponent(
@@ -50,6 +84,7 @@ export class OAuthService {
     const { userId } = this.decodeState(state);
     
     const { tokens } = await googleOAuth2Client.getToken(code);
+    const tokenScopes = (tokens as Credentials).scope?.split(' ') || [];
     
     // Store the integration
     return await prisma.integration.create({
@@ -59,7 +94,7 @@ export class OAuthService {
         accessToken: tokens.access_token!,
         refreshToken: tokens.refresh_token,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-        scope: tokens.scope,
+        scope: tokenScopes.join(' '),
         status: 'active',
         metadata: {
           tokenType: tokens.token_type,
@@ -73,7 +108,7 @@ export class OAuthService {
     const { userId } = this.decodeState(state);
     
     // Exchange code for access token
-    const response = await axios.post(oauthConfig.notion.tokenUrl, {
+    const response = await axios.post<NotionTokenResponse>(oauthConfig.notion.tokenUrl, {
       grant_type: 'authorization_code',
       code,
       redirect_uri: oauthConfig.notion.redirectUri
@@ -105,7 +140,7 @@ export class OAuthService {
     const { userId } = this.decodeState(state);
     
     // Exchange code for access token (WordPress.com OAuth)
-    const response = await axios.post('https://public-api.wordpress.com/oauth2/token', {
+    const response = await axios.post<WordPressTokenResponse>('https://public-api.wordpress.com/oauth2/token', {
       client_id: oauthConfig.wordpress.clientId,
       client_secret: oauthConfig.wordpress.clientSecret,
       redirect_uri: oauthConfig.wordpress.redirectUri,
@@ -145,28 +180,37 @@ export class OAuthService {
     });
 
     const { credentials } = await googleOAuth2Client.refreshAccessToken();
+    const currentMetadata = integration.metadata as IntegrationMetadata;
+
+    // Create a new metadata object with only non-null values
+    const newMetadata: Record<string, unknown> = {};
+    if (credentials.token_type) newMetadata.tokenType = credentials.token_type;
+    if (credentials.id_token) newMetadata.idToken = credentials.id_token;
+    
+    // Merge with existing metadata, filtering out null/undefined values
+    const metadata = Object.entries({ ...currentMetadata, ...newMetadata })
+      .reduce((acc, [key, value]) => {
+        if (value != null) acc[key] = value;
+        return acc;
+      }, {} as Record<string, unknown>);
 
     return await prisma.integration.update({
       where: { id: integrationId },
       data: {
         accessToken: credentials.access_token!,
         expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
-        metadata: {
-          ...integration.metadata,
-          tokenType: credentials.token_type,
-          idToken: credentials.id_token
-        }
+        metadata: metadata as Prisma.InputJsonValue
       }
     });
   }
 
   // Helper methods
-  private static encodeState(data: { userId: string; provider: string }): string {
+  private static encodeState(data: OAuthState): string {
     const stateStr = JSON.stringify(data);
     return Buffer.from(stateStr).toString('base64');
   }
 
-  private static decodeState(state: string): { userId: string; provider: string } {
+  private static decodeState(state: string): OAuthState {
     const stateStr = Buffer.from(state, 'base64').toString();
     return JSON.parse(stateStr);
   }

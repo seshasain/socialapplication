@@ -11,6 +11,9 @@ import {
   CircularProgress,
   useTheme,
   alpha,
+  Tooltip,
+  LinearProgress,
+  Badge,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -20,11 +23,17 @@ import {
   Google as GoogleIcon,
   Article as ArticleIcon,
   Notes as NotesIcon,
+  MoreVert as MoreVertIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { ContentSource, SyncStatus } from '../../types/integrations';
 import { formatDistanceToNow } from 'date-fns';
 import AddIntegrationDialog from './AddIntegrationDialog';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '../../config/api';
+import api from '../../utils/apiClient';
 
 interface IntegrationsListProps {
   onAddIntegration?: () => void;
@@ -44,10 +53,10 @@ const IntegrationsList: React.FC<IntegrationsListProps> = ({
 
   const fetchSources = async () => {
     try {
-      const response = await fetch('/api/integrations/sources');
-      if (!response.ok) throw new Error('Failed to fetch sources');
-      const data = await response.json();
-      setSources(data.sources);
+      const response = await api.get('/api/integrations/sources');
+      if (response.data) {
+        setSources(response.data.sources);
+      }
     } catch (err) {
       setError('Failed to load integrations');
       console.error(err);
@@ -63,10 +72,7 @@ const IntegrationsList: React.FC<IntegrationsListProps> = ({
   const handleSync = async (sourceId: string) => {
     setSyncingSource(sourceId);
     try {
-      const response = await fetch(`/api/integrations/sync/${sourceId}`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to sync source');
+      await api.post(`/api/integrations/sync/${sourceId}`);
       await fetchSources();
     } catch (err) {
       setError('Failed to sync content');
@@ -80,10 +86,7 @@ const IntegrationsList: React.FC<IntegrationsListProps> = ({
     if (!confirm('Are you sure you want to disconnect this integration?')) return;
     
     try {
-      const response = await fetch(`/api/integrations/sources/${sourceId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete source');
+      await api.delete(`/api/integrations/sources/${sourceId}`);
       await fetchSources();
     } catch (err) {
       setError('Failed to disconnect integration');
@@ -126,63 +129,9 @@ const IntegrationsList: React.FC<IntegrationsListProps> = ({
   }
 
   return (
-    <Box>
-      <Box 
-        display="flex" 
-        justifyContent="space-between" 
-        alignItems="center" 
-        mb={4}
-        sx={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
-          backgroundColor: 'background.paper',
-          py: 2,
-        }}
-      >
-        <Typography variant="h6" component="h2" fontWeight="500">
-          Available Integrations
-        </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => setAddDialogOpen(true)}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            px: 3,
-            py: 1,
-            boxShadow: theme.shadows[2],
-            '&:hover': {
-              boxShadow: theme.shadows[4],
-            },
-          }}
-        >
-          Add Integration
-        </Button>
-      </Box>
-
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-        >
-          <Box 
-            mb={3} 
-            p={2} 
-            bgcolor={alpha(theme.palette.error.main, 0.1)}
-            borderRadius={2}
-            border={`1px solid ${theme.palette.error.main}`}
-          >
-            <Typography color="error">{error}</Typography>
-          </Box>
-        </motion.div>
-      )}
-
-      <AnimatePresence>
-        <Grid container spacing={3}>
+    <AnimatePresence mode="wait">
+      <motion.div key="integrations-list">
+        <Grid container spacing={4}>
           {sources.map((source, index) => (
             <Grid item xs={12} md={6} lg={4} key={source.id}>
               <motion.div
@@ -191,183 +140,227 @@ const IntegrationsList: React.FC<IntegrationsListProps> = ({
                 transition={{ duration: 0.3, delay: index * 0.1 }}
               >
                 <Card
+                  className="group"
                   sx={{
-                    borderRadius: 2,
+                    borderRadius: 3,
+                    background: 'white',
                     transition: 'all 0.3s ease',
+                    border: '1px solid',
+                    borderColor: 'rgba(0,0,0,0.08)',
                     '&:hover': {
                       transform: 'translateY(-4px)',
                       boxShadow: theme.shadows[8],
+                      borderColor: 'transparent',
                     },
                   }}
                 >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Box display="flex" alignItems="center">
+                  <CardContent sx={{ p: 3 }}>
+                    {/* Header */}
+                    <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                      <Box display="flex" alignItems="center" gap={2}>
                         <Box 
                           sx={{ 
-                            mr: 2,
+                            p: 1.5,
+                            borderRadius: 2,
+                            backgroundColor: alpha(theme.palette.primary.main, 0.1),
                             color: theme.palette.primary.main,
                             display: 'flex',
                             alignItems: 'center',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              backgroundColor: alpha(theme.palette.primary.main, 0.15),
+                            }
                           }}
                         >
                           {getIntegrationIcon(source.type)}
                         </Box>
-                        <Typography variant="h6" component="h3">
-                          {source.name}
-                        </Typography>
+                        <Box>
+                          <Typography variant="h6" fontWeight="600" gutterBottom>
+                            {source.name}
+                          </Typography>
+                          <Chip
+                            label={source.type.replace('_', ' ').toUpperCase()}
+                            size="small"
+                            sx={{
+                              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                              color: theme.palette.primary.main,
+                              fontWeight: 500,
+                              borderRadius: '6px',
+                            }}
+                          />
+                        </Box>
                       </Box>
-                      <Box>
-                        <IconButton
-                          onClick={() => onSourceSelect?.(source.id)}
-                          color="primary"
-                          title="View Posts"
-                          sx={{
-                            '&:hover': {
+                      
+                      <Box display="flex" gap={1}>
+                        <Tooltip title="View Posts">
+                          <IconButton
+                            onClick={() => onSourceSelect?.(source.id)}
+                            size="small"
+                            sx={{
                               backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                            },
-                          }}
-                        >
-                          <ViewListIcon />
-                        </IconButton>
-                        <IconButton
-                          onClick={() => handleSync(source.id)}
-                          disabled={syncingSource === source.id}
-                          sx={{
-                            '&:hover': {
+                              color: theme.palette.primary.main,
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                              },
+                            }}
+                          >
+                            <ViewListIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Sync Now">
+                          <IconButton
+                            onClick={() => handleSync(source.id)}
+                            disabled={syncingSource === source.id}
+                            size="small"
+                            sx={{
                               backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                            },
-                          }}
-                        >
-                          {syncingSource === source.id ? (
-                            <CircularProgress size={24} />
-                          ) : (
-                            <RefreshIcon />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          onClick={() => handleDelete(source.id)}
-                          color="error"
-                          disabled={syncingSource === source.id}
-                          sx={{
-                            '&:hover': {
+                              color: theme.palette.primary.main,
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                              },
+                            }}
+                          >
+                            {syncingSource === source.id ? (
+                              <CircularProgress size={20} />
+                            ) : (
+                              <RefreshIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Integration">
+                          <IconButton
+                            onClick={() => handleDelete(source.id)}
+                            size="small"
+                            sx={{
                               backgroundColor: alpha(theme.palette.error.main, 0.1),
-                            },
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                              color: theme.palette.error.main,
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.error.main, 0.2),
+                              },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </Box>
 
-                    <Box mb={2}>
-                      <Chip
-                        label={source.type.replace('_', ' ').toUpperCase()}
-                        size="small"
-                        sx={{
-                          backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                          color: theme.palette.primary.main,
-                          fontWeight: 500,
-                          borderRadius: 1,
-                        }}
-                      />
-                      <Chip
-                        label={source.connected ? 'Connected' : 'Disconnected'}
-                        size="small"
-                        sx={{
-                          ml: 1,
-                          backgroundColor: source.connected 
-                            ? alpha(theme.palette.success.main, 0.1)
-                            : alpha(theme.palette.error.main, 0.1),
-                          color: source.connected
-                            ? theme.palette.success.main
-                            : theme.palette.error.main,
-                          fontWeight: 500,
-                          borderRadius: 1,
-                        }}
-                      />
-                    </Box>
-
-                    {source.lastSync && (
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          color: theme.palette.text.secondary,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                        }}
-                      >
-                        <Box 
-                          component="span" 
-                          sx={{ 
-                            width: 8, 
-                            height: 8, 
-                            borderRadius: '50%', 
-                            backgroundColor: theme.palette.success.main,
-                            display: 'inline-block',
-                          }} 
-                        />
-                        Last synced: {formatDistanceToNow(new Date(source.lastSync))} ago
-                      </Typography>
-                    )}
-
-                    {source.syncStatus?.[0] && (
-                      <Box mt={2}>
+                    {/* Status Section */}
+                    <Box 
+                      sx={{ 
+                        mt: 3,
+                        p: 2, 
+                        borderRadius: 2,
+                        backgroundColor: alpha(theme.palette.background.default, 0.5),
+                      }}
+                    >
+                      <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
                         <Chip
-                          label={`Last sync: ${source.syncStatus[0].status}`}
+                          icon={source.connected ? <CheckCircleIcon /> : <ErrorIcon />}
+                          label={source.connected ? 'Connected' : 'Disconnected'}
                           size="small"
                           sx={{
-                            backgroundColor: alpha(getStatusColor(source.syncStatus[0].status), 0.1),
-                            color: getStatusColor(source.syncStatus[0].status),
+                            backgroundColor: source.connected 
+                              ? alpha(theme.palette.success.main, 0.1)
+                              : alpha(theme.palette.error.main, 0.1),
+                            color: source.connected
+                              ? theme.palette.success.main
+                              : theme.palette.error.main,
                             fontWeight: 500,
-                            borderRadius: 1,
+                            borderRadius: '6px',
+                            '& .MuiChip-icon': {
+                              fontSize: '16px',
+                            },
                           }}
                         />
-                        {source.syncStatus[0].itemsProcessed > 0 && (
+                        {source.lastSync && (
                           <Typography 
-                            variant="body2" 
+                            variant="caption" 
                             sx={{ 
                               color: theme.palette.text.secondary,
-                              mt: 1,
                               display: 'flex',
                               alignItems: 'center',
                               gap: 0.5,
                             }}
                           >
-                            <Box 
-                              component="span" 
-                              sx={{ 
-                                width: 6, 
-                                height: 6, 
-                                borderRadius: '50%', 
-                                backgroundColor: theme.palette.info.main,
-                                display: 'inline-block',
-                              }} 
-                            />
-                            {source.syncStatus[0].itemsProcessed} items processed
+                            <ScheduleIcon sx={{ fontSize: 14 }} />
+                            {formatDistanceToNow(new Date(source.lastSync))} ago
                           </Typography>
                         )}
                       </Box>
-                    )}
+
+                      {source.syncStatus?.[0] && (
+                        <Box>
+                          <Box display="flex" alignItems="center" gap={1} mb={1}>
+                            <Typography variant="body2" color="text.secondary">
+                              Last sync status:
+                            </Typography>
+                            <Chip
+                              label={source.syncStatus[0].status}
+                              size="small"
+                              sx={{
+                                backgroundColor: alpha(getStatusColor(source.syncStatus[0].status), 0.1),
+                                color: getStatusColor(source.syncStatus[0].status),
+                                fontWeight: 500,
+                                borderRadius: '6px',
+                                height: '20px',
+                              }}
+                            />
+                          </Box>
+                          
+                          {source.syncStatus[0].itemsProcessed > 0 && (
+                            <Box>
+                              <Typography 
+                                variant="caption" 
+                                color="text.secondary"
+                                sx={{ mb: 1, display: 'block' }}
+                              >
+                                Items processed
+                              </Typography>
+                              <Box position="relative" sx={{ height: '6px', borderRadius: '3px', backgroundColor: alpha(theme.palette.primary.main, 0.1) }}>
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    height: '100%',
+                                    width: `${(source.syncStatus[0].itemsProcessed / source.syncStatus[0].totalItems) * 100}%`,
+                                    borderRadius: '3px',
+                                    backgroundColor: theme.palette.primary.main,
+                                    transition: 'width 0.3s ease',
+                                  }}
+                                />
+                              </Box>
+                              <Typography 
+                                variant="caption" 
+                                color="text.secondary"
+                                sx={{ mt: 0.5, display: 'block', textAlign: 'right' }}
+                              >
+                                {source.syncStatus[0].itemsProcessed} / {source.syncStatus[0].totalItems}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
                   </CardContent>
                 </Card>
               </motion.div>
             </Grid>
           ))}
         </Grid>
-      </AnimatePresence>
 
-      <AddIntegrationDialog
-        open={addDialogOpen}
-        onClose={() => setAddDialogOpen(false)}
-        onSuccess={() => {
-          setAddDialogOpen(false);
-          fetchSources();
-          onAddIntegration?.();
-        }}
-      />
-    </Box>
+        <AddIntegrationDialog
+          open={addDialogOpen}
+          onClose={() => setAddDialogOpen(false)}
+          onSuccess={() => {
+            setAddDialogOpen(false);
+            fetchSources();
+            onAddIntegration?.();
+          }}
+        />
+      </motion.div>
+    </AnimatePresence>
   );
 };
 

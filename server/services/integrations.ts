@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { Client as NotionClient } from '@notionhq/client';
@@ -11,16 +11,22 @@ import {
   GoogleDocsConfig, 
   WordPressConfig,
   NotionConfig,
-  NotionPage 
+  NotionPage
 } from '../types/integrations';
 
 const prisma = new PrismaClient();
 
+type IntegrationConfig = {
+  google_docs?: GoogleDocsConfig;
+  wordpress?: WordPressConfig;
+  notion?: NotionConfig;
+};
+
 interface ValidatedSource {
   id: string;
   userId: string;
-  type: 'google_docs' | 'wordpress' | 'notion';
-  config: any;
+  type: ContentSource['type'];
+  config: IntegrationConfig;
 }
 
 interface NotionProperties {
@@ -36,6 +42,52 @@ interface NotionPageContent {
   properties: NotionProperties;
 }
 
+interface GoogleDocsContent {
+  body?: {
+    content?: Array<{
+      paragraph?: {
+        elements?: Array<{
+          textRun?: {
+            content?: string;
+          };
+        }>;
+      };
+    }>;
+  };
+}
+
+interface PrismaContentSource {
+  id: string;
+  type: string;
+  name: string;
+  connected: boolean;
+  lastSync: Date | null;
+  config: Prisma.JsonValue;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function isValidSourceType(type: string): type is ContentSource['type'] {
+  return ['google_docs', 'wordpress', 'notion'].includes(type);
+}
+
+function convertToContentSource(prismaSource: PrismaContentSource): ContentSource {
+  if (!isValidSourceType(prismaSource.type)) {
+    throw new Error(`Invalid source type: ${prismaSource.type}`);
+  }
+
+  return {
+    id: prismaSource.id,
+    userId: prismaSource.userId,
+    type: prismaSource.type,
+    name: prismaSource.name,
+    connected: prismaSource.connected,
+    config: prismaSource.config,
+    lastSync: prismaSource.lastSync || undefined
+  };
+}
+
 class IntegrationService {
   private notionClient: NotionClient | null = null;
 
@@ -45,15 +97,20 @@ class IntegrationService {
     if (!source.id || !source.userId) {
       throw new Error('Invalid source: missing required fields');
     }
+
+    if (!isValidSourceType(source.type)) {
+      throw new Error('Invalid source type');
+    }
+
     return {
       id: source.id,
       userId: source.userId,
       type: source.type,
-      config: source.config,
+      config: source.config as IntegrationConfig,
     };
   }
 
-  private async createGoogleDocsClient(credentials: GoogleDocsConfig): Promise<OAuth2Client> {
+  private async createGoogleDocsClient(credentials: GoogleDocsConfig): Promise<any> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const redirectUri = process.env.GOOGLE_REDIRECT_URI;
@@ -86,6 +143,14 @@ class IntegrationService {
         fields: 'files(id, name)',
       });
 
+      const config: Prisma.InputJsonValue = {
+        accessToken: credentials.accessToken,
+        refreshToken: credentials.refreshToken,
+        folderId: credentials.folderId,
+        watchMode: 'polling',
+        autoSync: true,
+      };
+
       // Save the integration
       const source = await prisma.contentSource.create({
         data: {
@@ -93,15 +158,16 @@ class IntegrationService {
           name: 'Google Docs',
           connected: true,
           userId,
-          config: {
-            accessToken: credentials.accessToken,
-            refreshToken: credentials.refreshToken,
-            folderId: credentials.folderId,
-          },
+          config,
         },
-      }) as unknown as ContentSource;
+      });
 
-      return { success: true, source };
+      const validatedSource: PrismaContentSource = {
+        ...source,
+        type: 'google_docs'
+      };
+
+      return { success: true, source: convertToContentSource(validatedSource) };
     } catch (error) {
       console.error('Failed to connect Google Docs:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to connect to Google Docs');
@@ -122,6 +188,13 @@ class IntegrationService {
         throw new Error('Failed to connect to WordPress site');
       }
 
+      const wpConfig: Prisma.InputJsonValue = {
+        siteUrl: config.siteUrl,
+        accessToken: config.accessToken,
+        postTypes: config.postTypes,
+        autoPost: false,
+      };
+
       // Save the integration
       const source = await prisma.contentSource.create({
         data: {
@@ -129,15 +202,16 @@ class IntegrationService {
           name: 'WordPress',
           connected: true,
           userId,
-          config: {
-            siteUrl: config.siteUrl,
-            accessToken: config.accessToken,
-            postTypes: config.postTypes,
-          },
+          config: wpConfig,
         },
-      }) as unknown as ContentSource;
+      });
 
-      return { success: true, source };
+      const validatedSource: PrismaContentSource = {
+        ...source,
+        type: 'wordpress'
+      };
+
+      return { success: true, source: convertToContentSource(validatedSource) };
     } catch (error) {
       console.error('Failed to connect WordPress:', error);
       if (axios.isAxiosError(error)) {
@@ -159,6 +233,13 @@ class IntegrationService {
       // Test the connection by trying to access the database
       await this.notionClient.databases.retrieve({ database_id: config.databaseId });
 
+      const notionConfig: Prisma.InputJsonValue = {
+        accessToken: config.accessToken,
+        databaseId: config.databaseId,
+        syncInterval: 15,
+        autoSync: true,
+      };
+
       // Save the integration
       const source = await prisma.contentSource.create({
         data: {
@@ -166,14 +247,16 @@ class IntegrationService {
           name: 'Notion',
           connected: true,
           userId,
-          config: {
-            accessToken: config.accessToken,
-            databaseId: config.databaseId,
-          },
+          config: notionConfig,
         },
-      }) as unknown as ContentSource;
+      });
 
-      return { success: true, source };
+      const validatedSource: PrismaContentSource = {
+        ...source,
+        type: 'notion'
+      };
+
+      return { success: true, source: convertToContentSource(validatedSource) };
     } catch (error) {
       console.error('Failed to connect Notion:', error);
       if (error instanceof Error && error.message.includes('API token')) {
@@ -194,27 +277,38 @@ class IntegrationService {
           status: 'in_progress',
           itemsProcessed: 0,
         },
-      }) as unknown as SyncStatus;
+      });
 
       const source = await prisma.contentSource.findUnique({
         where: { id: sourceId },
-      }) as unknown as ContentSource;
+      });
 
       if (!source) {
         throw new Error('Source not found');
       }
 
+      const validatedSource: PrismaContentSource = {
+        ...source,
+        type: source.type
+      };
+
+      if (!isValidSourceType(validatedSource.type)) {
+        throw new Error('Invalid source type');
+      }
+
+      const contentSource = convertToContentSource(validatedSource);
+      const validSource = this.validateSource(contentSource);
       let itemsProcessed = 0;
 
-      switch (source.type) {
+      switch (validSource.type) {
         case 'google_docs':
-          itemsProcessed = await this.syncGoogleDocs(source);
+          itemsProcessed = await this.syncGoogleDocs(validSource);
           break;
         case 'wordpress':
-          itemsProcessed = await this.syncWordPress(source);
+          itemsProcessed = await this.syncWordPress(validSource);
           break;
         case 'notion':
-          itemsProcessed = await this.syncNotion(source);
+          itemsProcessed = await this.syncNotion(validSource);
           break;
         default:
           throw new Error('Unsupported integration type');
@@ -249,76 +343,85 @@ class IntegrationService {
     }
   }
 
-  private async syncGoogleDocs(source: ContentSource): Promise<number> {
-    const oauth2Client = await this.createGoogleDocsClient(source.config as GoogleDocsConfig);
+  private async syncGoogleDocs(source: ValidatedSource): Promise<number> {
+    const config = source.config.google_docs;
+    if (!config) throw new Error('Invalid Google Docs configuration');
+
+    const oauth2Client = await this.createGoogleDocsClient(config);
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     const docs = google.docs({ version: 'v1', auth: oauth2Client });
 
     // Get files from the specified folder or root
     const response = await drive.files.list({
-      q: (source.config as GoogleDocsConfig).folderId 
-        ? `'${(source.config as GoogleDocsConfig).folderId}' in parents`
+      q: config.folderId 
+        ? `'${config.folderId}' in parents`
         : "'root' in parents",
       fields: 'files(id, name, modifiedTime)',
     });
 
     let itemsProcessed = 0;
+    const files = response.data.files as Array<{ id: string; name: string }>;
 
-    for (const file of response.data.files || []) {
-      try {
-        // Skip files without required fields
-        if (!file.id || !file.name) {
-          console.warn('Skipping file with missing required fields:', file);
-          continue;
-        }
+    if (files) {
+      for (const file of files) {
+        try {
+          // Skip files without required fields
+          if (!file.id || !file.name) {
+            console.warn('Skipping file with missing required fields:', file);
+            continue;
+          }
 
-        // Get document content
-        const doc = await docs.documents.get({
-          documentId: file.id,
-        });
+          // Get document content
+          const doc = await docs.documents.get({
+            documentId: file.id,
+          });
 
-        // Create or update post
-        await prisma.contentPost.upsert({
-          where: {
-            sourceId_externalId: {
-              sourceId: source.id,
-              externalId: file.id,
+          const metadata: Prisma.InputJsonValue = {};
+
+          // Create or update post
+          await prisma.contentPost.upsert({
+            where: {
+              sourceId_externalId: {
+                sourceId: source.id,
+                externalId: file.id,
+              },
             },
-          },
-          create: {
-            sourceId: source.id,
-            userId: source.userId,
-            title: file.name,
-            content: this.extractContent(doc.data),
-            status: 'draft',
-            externalId: file.id,
-            platforms: [],
-            images: [],
-            metadata: {},
-          },
-          update: {
-            title: file.name,
-            content: this.extractContent(doc.data),
-          },
-        }) as unknown as ContentPost;
+            create: {
+              sourceId: source.id,
+              userId: source.userId,
+              title: file.name,
+              content: this.extractContent(doc.data as GoogleDocsContent),
+              status: 'draft',
+              externalId: file.id,
+              platforms: [],
+              images: [],
+              metadata,
+            },
+            update: {
+              title: file.name,
+              content: this.extractContent(doc.data as GoogleDocsContent),
+            },
+          });
 
-        itemsProcessed++;
-      } catch (error) {
-        console.error(`Failed to process document ${file.id}:`, error);
+          itemsProcessed++;
+        } catch (error) {
+          console.error(`Failed to process document ${file.id}:`, error);
+        }
       }
     }
 
     return itemsProcessed;
   }
 
-  private async syncWordPress(source: ContentSource): Promise<number> {
+  private async syncWordPress(source: ValidatedSource): Promise<number> {
     let itemsProcessed = 0;
-    const config = source.config as WordPressConfig;
+    const config = source.config.wordpress;
+    if (!config) throw new Error('Invalid WordPress configuration');
 
     try {
       const response = await axios.get(`${config.siteUrl}/wp-json/wp/v2/posts`, {
         headers: {
-          Authorization: `Bearer ${config.accessToken}`,
+          Authorization: `Bearer ${(source.config as unknown as WordPressConfig).accessToken}`,
         },
       });
 
@@ -345,7 +448,7 @@ class IntegrationService {
             title: post.title.rendered,
             content: post.content.rendered,
           },
-        }) as unknown as ContentPost;
+        });
 
         itemsProcessed++;
       }
@@ -362,19 +465,22 @@ class IntegrationService {
     return itemsProcessed;
   }
 
-  private async syncNotion(source: ContentSource): Promise<number> {
-    const validatedSource = this.validateSource(source);
-    let itemsProcessed = 0;
-    const config = validatedSource.config as NotionConfig;
+  private async syncNotion(source: ValidatedSource): Promise<number> {
+    const config = source.config.notion;
+    if (!config) throw new Error('Invalid Notion configuration');
 
     if (!this.notionClient) {
-      this.notionClient = new NotionClient({ auth: config.accessToken });
+      this.notionClient = new NotionClient({ 
+        auth: (source.config as unknown as NotionConfig).accessToken 
+      });
     }
 
     try {
       const response = await this.notionClient.databases.query({
         database_id: config.databaseId,
       });
+
+      let itemsProcessed = 0;
 
       for (const page of response.results) {
         // Type guard to ensure we have a valid page object
@@ -389,34 +495,34 @@ class IntegrationService {
         const pageContent = this.extractNotionContent(content.properties);
 
         // Create the content post with validated fields
-        const contentPost: Omit<ContentPost, 'id'> = {
-          sourceId: validatedSource.id,
-          userId: validatedSource.userId,
-          title,
-          content: pageContent,
-          status: 'draft',
-          externalId: page.id,
-          platforms: [],
-          images: [],
-          metadata: {},
-        };
-
         await prisma.contentPost.upsert({
           where: {
             sourceId_externalId: {
-              sourceId: validatedSource.id,
+              sourceId: source.id,
               externalId: page.id,
             },
           },
-          create: contentPost,
+          create: {
+            sourceId: source.id,
+            userId: source.userId,
+            title,
+            content: pageContent,
+            status: 'draft',
+            externalId: page.id,
+            platforms: [],
+            images: [],
+            metadata: {},
+          },
           update: {
             title,
             content: pageContent,
           },
-        }) as unknown as ContentPost;
+        });
 
         itemsProcessed++;
       }
+
+      return itemsProcessed;
     } catch (error) {
       console.error('Failed to sync Notion pages:', error);
       if (error instanceof Error && error.message.includes('API token')) {
@@ -424,8 +530,6 @@ class IntegrationService {
       }
       throw error;
     }
-
-    return itemsProcessed;
   }
 
   private isValidPageObject(page: unknown): page is PageObjectResponse {
@@ -453,11 +557,10 @@ class IntegrationService {
     return '';
   }
 
-  private extractContent(doc: any): string {
-    // Implement content extraction logic based on your needs
+  private extractContent(doc: GoogleDocsContent): string {
     return doc.body?.content
-      ?.map((item: any) => item.paragraph?.elements
-        ?.map((element: any) => element.textRun?.content || '')
+      ?.map(item => item.paragraph?.elements
+        ?.map(element => element.textRun?.content || '')
         .join('') || '')
       .join('\n') || '';
   }

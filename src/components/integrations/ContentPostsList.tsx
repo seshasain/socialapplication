@@ -8,25 +8,32 @@ import {
   IconButton,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  FormControl,
-  InputLabel,
-  Select,
+  useTheme,
+  alpha,
+  Tooltip,
+  Avatar,
+  AvatarGroup,
+  Divider,
+  Menu,
   MenuItem,
-  TextField,
+  Badge,
 } from '@mui/material';
 import {
+  MoreVert as MoreVertIcon,
+  Schedule as ScheduleIcon,
+  Link as LinkIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Schedule as ScheduleIcon,
-  Share as ShareIcon,
+  Visibility as VisibilityIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon,
+  CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
-import { ContentPost, ContentSource } from '../../types/integrations';
-import { format } from 'date-fns';
+import { ContentPost } from '../../types/integrations';
+import { formatDistanceToNow, format } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from '../../utils/apiClient';
 
 interface ContentPostsListProps {
   sourceId?: string;
@@ -36,20 +43,22 @@ const ContentPostsList: React.FC<ContentPostsListProps> = ({ sourceId }) => {
   const [posts, setPosts] = useState<ContentPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<ContentPost | null>(null);
-  const [editedPlatforms, setEditedPlatforms] = useState<string[]>([]);
-  const [editedScheduledTime, setEditedScheduledTime] = useState<string>('');
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const theme = useTheme();
+
+  useEffect(() => {
+    if (sourceId) {
+      fetchPosts();
+    }
+  }, [sourceId]);
 
   const fetchPosts = async () => {
     try {
-      const url = sourceId
-        ? `/api/integrations/posts/${sourceId}`
-        : '/api/integrations/posts';
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch posts');
-      const data = await response.json();
-      setPosts(data.posts);
+      const response = await api.get(`/api/integrations/posts/${sourceId}`);
+      if (response.data) {
+        setPosts(response.data.posts);
+      }
     } catch (err) {
       setError('Failed to load posts');
       console.error(err);
@@ -58,58 +67,39 @@ const ContentPostsList: React.FC<ContentPostsListProps> = ({ sourceId }) => {
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, [sourceId]);
-
-  const handleEditClick = (post: ContentPost) => {
-    setSelectedPost(post);
-    setEditedPlatforms(post.platforms);
-    setEditedScheduledTime(
-      post.scheduledTime
-        ? format(new Date(post.scheduledTime), "yyyy-MM-dd'T'HH:mm")
-        : ''
-    );
-    setEditDialogOpen(true);
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, postId: string) => {
+    setMenuAnchorEl(event.currentTarget);
+    setSelectedPostId(postId);
   };
 
-  const handleSaveEdit = async () => {
-    if (!selectedPost) return;
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setSelectedPostId(null);
+  };
 
-    try {
-      const response = await fetch(`/api/integrations/posts/${selectedPost.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          platforms: editedPlatforms,
-          scheduledTime: editedScheduledTime || null,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update post');
-
-      await fetchPosts();
-      setEditDialogOpen(false);
-    } catch (err) {
-      setError('Failed to update post');
-      console.error(err);
+  const getStatusIcon = (status: string): React.ReactElement | undefined => {
+    switch (status) {
+      case 'published':
+        return <CheckCircleIcon fontSize="small" />;
+      case 'draft':
+        return <WarningIcon fontSize="small" />;
+      case 'error':
+        return <ErrorIcon fontSize="small" />;
+      default:
+        return undefined;
     }
   };
 
-  const handleDelete = async (postId: string) => {
-    if (!confirm('Are you sure you want to delete this post?')) return;
-
-    try {
-      const response = await fetch(`/api/integrations/posts/${postId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete post');
-      await fetchPosts();
-    } catch (err) {
-      setError('Failed to delete post');
-      console.error(err);
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'published':
+        return '#4caf50'; // success green
+      case 'draft':
+        return '#ff9800'; // warning orange
+      case 'error':
+        return '#f44336'; // error red
+      default:
+        return '#9e9e9e'; // grey
     }
   };
 
@@ -121,127 +111,267 @@ const ContentPostsList: React.FC<ContentPostsListProps> = ({ sourceId }) => {
     );
   }
 
-  return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" component="h2">
-          Content Posts
+  if (!sourceId) {
+    return (
+      <Box 
+        display="flex" 
+        flexDirection="column" 
+        alignItems="center" 
+        justifyContent="center" 
+        minHeight="400px"
+        sx={{ 
+          backgroundColor: alpha(theme.palette.background.default, 0.5),
+          borderRadius: 3,
+          p: 4,
+        }}
+      >
+        <VisibilityIcon 
+          sx={{ 
+            fontSize: 48, 
+            color: theme.palette.text.secondary,
+            mb: 2,
+          }} 
+        />
+        <Typography variant="h6" color="text.secondary" gutterBottom>
+          Select a content source to view posts
+        </Typography>
+        <Typography variant="body2" color="text.secondary" align="center">
+          Choose a content source from the list to view its associated posts and manage them
         </Typography>
       </Box>
+    );
+  }
 
-      {error && (
-        <Box mb={2}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      )}
+  if (error) {
+    return (
+      <Box 
+        p={3} 
+        bgcolor={alpha(theme.palette.error.main, 0.1)}
+        borderRadius={2}
+        border={`1px solid ${theme.palette.error.main}`}
+      >
+        <Typography color="error">{error}</Typography>
+      </Box>
+    );
+  }
 
+  return (
+    <AnimatePresence>
       <Grid container spacing={3}>
-        {posts.map((post) => (
-          <Grid item xs={12} md={6} lg={4} key={post.id}>
-            <Card>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                  <Typography variant="h6" component="h3" noWrap>
-                    {post.title}
-                  </Typography>
-                  <Box>
-                    <IconButton onClick={() => handleEditClick(post)}>
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton onClick={() => handleDelete(post.id)} color="error">
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                </Box>
+        {posts.map((post, index) => (
+          <Grid item xs={12} key={post.id}>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: index * 0.1 }}
+            >
+              <Card
+                className="group"
+                sx={{
+                  borderRadius: 3,
+                  background: 'white',
+                  transition: 'all 0.3s ease',
+                  border: '1px solid',
+                  borderColor: 'rgba(0,0,0,0.08)',
+                  overflow: 'visible',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: theme.shadows[8],
+                    borderColor: 'transparent',
+                  },
+                }}
+              >
+                <CardContent sx={{ p: 3 }}>
+                  <Grid container spacing={3}>
+                    {/* Post Preview Image */}
+                    {post.featuredImage && (
+                      <Grid item xs={12} sm={3}>
+                        <Box
+                          sx={{
+                            width: '100%',
+                            paddingTop: '56.25%',
+                            borderRadius: 2,
+                            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                            backgroundImage: `url(${post.featuredImage})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          }}
+                        />
+                      </Grid>
+                    )}
 
-                <Box mb={2}>
-                  <Chip
-                    label={post.status}
-                    size="small"
-                    color={post.status === 'published' ? 'success' : 'default'}
-                  />
-                  {post.scheduledTime && (
-                    <Chip
-                      icon={<ScheduleIcon />}
-                      label={format(new Date(post.scheduledTime), 'PPp')}
-                      size="small"
-                      sx={{ ml: 1 }}
-                    />
-                  )}
-                </Box>
+                    {/* Post Content */}
+                    <Grid item xs={12} sm={post.featuredImage ? 9 : 12}>
+                      <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                        <Box>
+                          <Typography variant="h6" fontWeight="600" gutterBottom>
+                            {post.title}
+                          </Typography>
+                          <Box display="flex" gap={2} mb={2}>
+                            <Chip
+                              icon={getStatusIcon(post.status)}
+                              label={post.status.toUpperCase()}
+                              size="small"
+                              sx={{
+                                backgroundColor: alpha(getStatusColor(post.status), 0.1),
+                                color: getStatusColor(post.status),
+                                fontWeight: 500,
+                                borderRadius: '6px',
+                                '& .MuiChip-icon': {
+                                  color: 'inherit',
+                                },
+                              }}
+                            />
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.5,
+                                color: 'text.secondary',
+                              }}
+                            >
+                              <CalendarIcon sx={{ fontSize: 14 }} />
+                              {format(new Date(post.publishedAt || post.createdAt), 'MMM d, yyyy')}
+                            </Typography>
+                          </Box>
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary"
+                            sx={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              mb: 2,
+                            }}
+                          >
+                            {post.excerpt || post.content}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <IconButton
+                            onClick={(e) => handleMenuOpen(e, post.id)}
+                            size="small"
+                            sx={{
+                              backgroundColor: alpha(theme.palette.action.active, 0.1),
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.action.active, 0.2),
+                              },
+                            }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Box>
 
-                <Typography
-                  variant="body2"
-                  color="textSecondary"
-                  sx={{
-                    mb: 2,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical',
-                  }}
-                >
-                  {post.content}
-                </Typography>
-
-                <Box display="flex" flexWrap="wrap" gap={1}>
-                  {post.platforms.map((platform) => (
-                    <Chip
-                      key={platform}
-                      label={platform}
-                      size="small"
-                      icon={<ShareIcon />}
-                      variant="outlined"
-                    />
-                  ))}
-                </Box>
-              </CardContent>
-            </Card>
+                      <Box 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mt: 2,
+                          pt: 2,
+                          borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                        }}
+                      >
+                        <Box display="flex" alignItems="center" gap={2}>
+                          {post.url && (
+                            <Tooltip title="View Original">
+                              <IconButton
+                                size="small"
+                                href={post.url}
+                                target="_blank"
+                                sx={{
+                                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                                  color: theme.palette.primary.main,
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                                  },
+                                }}
+                              >
+                                <LinkIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {post.authors && post.authors.length > 0 && (
+                            <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.75rem' } }}>
+                              {post.authors.map((author, idx) => (
+                                <Tooltip key={idx} title={author.name}>
+                                  <Avatar 
+                                    alt={author.name} 
+                                    src={author.avatar}
+                                    sx={{
+                                      backgroundColor: theme.palette.primary.main,
+                                    }}
+                                  >
+                                    {author.name.charAt(0)}
+                                  </Avatar>
+                                </Tooltip>
+                              ))}
+                            </AvatarGroup>
+                          )}
+                        </Box>
+                        <Typography 
+                          variant="caption" 
+                          color="text.secondary"
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                          }}
+                        >
+                          <ScheduleIcon sx={{ fontSize: 14 }} />
+                          Updated {formatDistanceToNow(new Date(post.updatedAt))} ago
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </motion.div>
           </Grid>
         ))}
       </Grid>
 
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Post</DialogTitle>
-        <DialogContent>
-          <Box mt={2}>
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Platforms</InputLabel>
-              <Select
-                multiple
-                value={editedPlatforms}
-                onChange={(e) => setEditedPlatforms(e.target.value as string[])}
-                label="Platforms"
-              >
-                <MenuItem value="twitter">Twitter</MenuItem>
-                <MenuItem value="linkedin">LinkedIn</MenuItem>
-                <MenuItem value="facebook">Facebook</MenuItem>
-                <MenuItem value="instagram">Instagram</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              fullWidth
-              label="Schedule Time"
-              type="datetime-local"
-              value={editedScheduledTime}
-              onChange={(e) => setEditedScheduledTime(e.target.value)}
-              margin="normal"
-              InputLabelProps={{
-                shrink: true,
-              }}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSaveEdit} variant="contained" color="primary">
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            boxShadow: theme.shadows[8],
+            '& .MuiMenuItem-root': {
+              py: 1,
+              px: 2,
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={handleMenuClose}>
+          <EditIcon sx={{ mr: 2, fontSize: 20 }} />
+          Edit Post
+        </MenuItem>
+        <MenuItem onClick={handleMenuClose}>
+          <VisibilityIcon sx={{ mr: 2, fontSize: 20 }} />
+          Preview
+        </MenuItem>
+        <Divider />
+        <MenuItem 
+          onClick={handleMenuClose}
+          sx={{ 
+            color: theme.palette.error.main,
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.error.main, 0.1),
+            },
+          }}
+        >
+          <DeleteIcon sx={{ mr: 2, fontSize: 20 }} />
+          Delete
+        </MenuItem>
+      </Menu>
+    </AnimatePresence>
   );
 };
 
